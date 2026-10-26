@@ -103,7 +103,9 @@ class App {
     // Memecah dan membersihkan URL
     public function parseURL() {
         if (isset($_GET['url'])) {
-            $url = rtrim($_GET['url'], '/');
+            // trim (bukan rtrim): Nginx mengirim $uri lengkap dengan garis miring di depan
+            // (mis. "/pengurus/login"), sedangkan .htaccess Apache mengirimnya tanpa itu.
+            $url = trim($_GET['url'], '/');
             $url = filter_var($url, FILTER_SANITIZE_URL);
             return explode('/', $url);
         }
