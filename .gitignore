@@ -1,6 +1,6 @@
 # WA Gateway
 wa-gateway/node_modules/
-wa-gateway/auth_state/
+wa-gateway/auth_state*/
 
 # Environment / server-only secrets
 .env
