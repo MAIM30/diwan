@@ -39,7 +39,7 @@ function migrate_008_whatsapp_kirimdev(PDO $pdo, callable $say) {
             code        CHAR(6) NOT NULL,
             expires_at  DATETIME NOT NULL,
             verified    TINYINT(1) NOT NULL DEFAULT 0,
-            ip          VARCHAR(45),
+            ip          VARBINARY(16),
             created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             INDEX idx_otp_phone_code (phone, code),
             INDEX idx_otp_expires (expires_at)
