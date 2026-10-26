@@ -48,7 +48,7 @@ $hasPhoto = !empty($existing['photo_gdrive_file_id']);
     <div class="photo-field">
       <div data-photo-preview>
         <?php if ($hasPhoto): ?>
-          <span class="av av-xl"><img src="<?= BASEURL ?>/pengurus/biodata_foto?v=<?= e($existing['photo_gdrive_file_id']) ?>" alt="Foto biodata"></span>
+          <span class="photo-thumb"><img src="<?= BASEURL ?>/pengurus/biodata_foto?v=<?= e($existing['photo_gdrive_file_id']) ?>" alt="Foto biodata"></span>
         <?php else: ?>
           <?= Ui::avatar(array_merge($person, ['photo_path' => null]), 'xl') ?>
         <?php endif; ?>
@@ -57,7 +57,7 @@ $hasPhoto = !empty($existing['photo_gdrive_file_id']);
         <label for="photo">Foto untuk biodata</label>
         <input type="file" id="photo" name="photo" accept="image/jpeg,image/png,image/webp" data-shrink-image>
         <div class="help">
-          JPG, PNG, atau WebP, dipotong persegi dari tengah. Disimpan di Google Drive (folder foto), bukan di server.
+          JPG, PNG, atau WebP. Foto dipasang utuh di PDF (tidak dipotong); paling pas foto tegak 3x4. Disimpan di Google Drive (folder foto), bukan di server.
           <?= $hasPhoto ? 'Foto sudah tersimpan; pilih lagi hanya untuk menggantinya.' : 'Tanpa unggahan, PDF memakai foto profil Anda bila ada.' ?>
         </div>
         <?= $err('photo') ?>

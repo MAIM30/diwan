@@ -247,6 +247,11 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .check-text { flex: 1; min-width: 0; }
 .photo-field { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; }
 .photo-field .field { flex: 1; min-width: 0; margin-bottom: 0; }
+.photo-thumb {
+  display: block; flex: none; width: 104px; height: 139px; overflow: hidden;
+  border: 1px solid #c8dce2; border-radius: var(--radius-sm); background: #fff;
+}
+.photo-thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
 input[type=text], input[type=password], input[type=date], input[type=email], input[type=search],
 input[type=tel], input[type=number], select, textarea {
   width: 100%; padding: 9px 12px; border: 1px solid #c8dce2; border-radius: var(--radius-sm);

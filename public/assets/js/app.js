@@ -114,12 +114,14 @@
       var url = URL.createObjectURL(f);
       var img = new Image();
       img.onload = function () {
-        var av = box && box.querySelector('.av');
-        if (av) {
+        if (box) {
+          var th = document.createElement('span');
+          th.className = 'photo-thumb';
           var pv = document.createElement('img');
           pv.src = url; pv.alt = '';
-          av.textContent = '';
-          av.appendChild(pv);
+          th.appendChild(pv);
+          box.textContent = '';
+          box.appendChild(th);
         }
         var scale = Math.min(1, 1280 / Math.max(img.naturalWidth, img.naturalHeight));
         if (scale === 1 && f.size <= 1500000) return;

@@ -31,6 +31,9 @@ class BiodataPdf {
     const MUTED = [85, 116, 128];
     const LINE  = [219, 232, 236];
 
+    const PHOTO_MAX_W = 30;   // mm; kotak foto 3x4 di pojok kanan atas
+    const PHOTO_MAX_H = 40;
+
     // $photoBytes: JPEG foto yang baru diunggah, supaya tak perlu diunduh lagi dari Drive. Null = pakai foto
     // biodata yang tersimpan di Drive, dan bila tak ada, foto profil di server.
     public static function render(array $person, ?array $placement, array $biodata, ?string $photoBytes = null) {
@@ -45,9 +48,9 @@ class BiodataPdf {
         try {
             $pdf = new FPDF();
             $pdf->AliasNbPages();
-            $pdf->AddPage();
             $pdf->SetMargins(18, 16, 18);
             $pdf->SetAutoPageBreak(true, 18);
+            $pdf->AddPage();
 
             self::header($pdf, $person, $photoFile);
             self::sectionA($pdf, $person);
@@ -73,36 +76,54 @@ class BiodataPdf {
         return function_exists('iconv') ? (iconv('UTF-8', 'ISO-8859-1//TRANSLIT', $s) ?: $s) : $s;
     }
 
+    // Foto dimuat UTUH ke kotak PHOTO_MAX_W x PHOTO_MAX_H (mm) dengan proporsi aslinya -- tidak dipotong, tidak
+    // melar. Mengembalikan [lebar, tinggi] dalam mm, atau null bila berkasnya tak terbaca sebagai gambar.
+    private static function photoSize($file) {
+        $info = @getimagesize($file);
+        if (!$info || $info[0] < 1 || $info[1] < 1) return null;
+        $scale = min(self::PHOTO_MAX_W / $info[0], self::PHOTO_MAX_H / $info[1]);
+        return [$info[0] * $scale, $info[1] * $scale];
+    }
+
     private static function header($pdf, array $person, $photoFile) {
         $logo = ROOT_DIR . '/public/assets/img/logo-wahdah-png.png';
         $pageW = $pdf->GetPageWidth();
+        $top = $pdf->GetY();
 
         if (is_file($logo)) {
-            $pdf->Image($logo, $pageW / 2 - 9, $pdf->GetY(), 18, 18);
-            $pdf->SetY($pdf->GetY() + 20);
+            $pdf->Image($logo, $pageW / 2 - 9, $top, 18, 18);
+            $pdf->SetY($top + 20);
         }
 
-        $pdf->SetFont('Helvetica', 'B', 15);
+        $pdf->SetFont('Helvetica', 'B', 14);
         $pdf->SetTextColor(...self::TEXT);
         $pdf->Cell(0, 7, self::txt('BIODATA / PROFIL SINGKAT PENGURUS'), 0, 1, 'C');
         $pdf->SetFont('Helvetica', '', 10);
         $pdf->SetTextColor(...self::MUTED);
         $pdf->Cell(0, 6, self::txt('WAHDAH ISLAMIYAH'), 0, 1, 'C');
+        $bottom = $pdf->GetY();
 
-        // Foto, pojok kanan atas -- ditumpuk di atas judul yang baru ditulis (posisi absolut). Foto biodata
-        // dari Drive didahulukan; bila tak ada, foto profil di server. Keduanya JPEG persegi hasil Photo.
+        // Foto di pojok kanan atas, rata dengan tepi atas logo dan tepi kanan garis. Foto biodata dari Drive
+        // didahulukan; bila tak ada, foto profil di server.
         $file = $photoFile;
         if ($file === null && !empty($person['photo_path']) && is_file(ROOT_DIR . '/public/' . $person['photo_path'])) {
             $file = ROOT_DIR . '/public/' . $person['photo_path'];
         }
-        if ($file !== null) {
-            $pdf->Image($file, $pageW - 18 - 28, 16, 28, 28, 'JPG');
+        $size = $file !== null ? self::photoSize($file) : null;
+        if ($size) {
+            $x = $pageW - 18 - $size[0];
+            $pdf->Image($file, $x, $top, $size[0], $size[1], 'JPG');
+            $pdf->SetDrawColor(...self::LINE);
+            $pdf->SetLineWidth(0.2);
+            $pdf->Rect($x, $top, $size[0], $size[1]);
+            $bottom = max($bottom, $top + $size[1]);
         }
 
+        $pdf->SetY($bottom);
         $pdf->SetDrawColor(...self::GREEN);
         $pdf->SetLineWidth(0.6);
-        $pdf->Line(18, $pdf->GetY() + 2, $pageW - 18, $pdf->GetY() + 2);
-        $pdf->Ln(8);
+        $pdf->Line(18, $bottom + 3, $pageW - 18, $bottom + 3);
+        $pdf->Ln(9);
     }
 
     private static function sectionHeading($pdf, $text) {

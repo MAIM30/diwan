@@ -376,7 +376,7 @@ class PengurusController extends Controller {
                 return;
             }
             $tmp = tempnam(sys_get_temp_dir(), 'foto');
-            $err = Photo::fromUpload($photoFile, $tmp);
+            $err = Photo::fromUpload($photoFile, $tmp, false);
             $photoBytes = $err === null ? file_get_contents($tmp) : null;
             @unlink($tmp);
             if ($err !== null) {
