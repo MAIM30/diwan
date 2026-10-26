@@ -33,20 +33,40 @@ class BiodataPdf {
 
     // $person: baris people (+ full_name turunan). $placement: baris current placement (position_name,
     // structure label, unit_name) atau null. $biodata: baris biodata_submissions.
-    public static function render(array $person, ?array $placement, array $biodata) {
-        $pdf = new FPDF();
-        $pdf->AliasNbPages();
-        $pdf->AddPage();
-        $pdf->SetMargins(18, 16, 18);
-        $pdf->SetAutoPageBreak(true, 18);
+    // $photoBytes: JPEG foto yang baru diunggah (belum perlu diunduh dari Drive); null = ambil foto
+    // biodata dari Drive, dan bila tak ada, foto profil di server.
+    public static function render(array $person, ?array $placement, array $biodata, ?string $photoBytes = null) {
+        $photoBytes = $photoBytes ?? self::drivePhoto($biodata);
+        $photoFile = null;
+        if ($photoBytes !== null) {
+            // FPDF hanya membaca gambar dari berkas; ini sementara dan dibuang begitu PDF selesai.
+            $photoFile = tempnam(sys_get_temp_dir(), 'bio');
+            file_put_contents($photoFile, $photoBytes);
+        }
 
-        self::header($pdf, $person);
-        self::sectionA($pdf, $person);
-        self::sectionB($pdf, $placement, $biodata);
-        self::commitments($pdf, $biodata);
-        self::closing($pdf, $person, $biodata);
+        try {
+            $pdf = new FPDF();
+            $pdf->AliasNbPages();
+            $pdf->AddPage();
+            $pdf->SetMargins(18, 16, 18);
+            $pdf->SetAutoPageBreak(true, 18);
 
-        return $pdf->Output('S');
+            self::header($pdf, $person, $photoFile);
+            self::sectionA($pdf, $person);
+            self::sectionB($pdf, $placement, $biodata);
+            self::commitments($pdf, $biodata);
+            self::closing($pdf, $person, $biodata);
+
+            return $pdf->Output('S');
+        } finally {
+            if ($photoFile !== null) @unlink($photoFile);
+        }
+    }
+
+    private static function drivePhoto(array $biodata) {
+        $id = $biodata['photo_gdrive_file_id'] ?? '';
+        if ($id === '' || !GoogleDrive::isConfigured()) return null;
+        return GoogleDrive::download($id);
     }
 
     private static function txt($s) {
@@ -55,7 +75,7 @@ class BiodataPdf {
         return function_exists('iconv') ? (iconv('UTF-8', 'ISO-8859-1//TRANSLIT', $s) ?: $s) : $s;
     }
 
-    private static function header($pdf, array $person) {
+    private static function header($pdf, array $person, $photoFile) {
         $logo = ROOT_DIR . '/public/assets/img/logo-wahdah-png.png';
         $pageW = $pdf->GetPageWidth();
 
@@ -71,13 +91,14 @@ class BiodataPdf {
         $pdf->SetTextColor(...self::MUTED);
         $pdf->Cell(0, 6, self::txt('WAHDAH ISLAMIYAH'), 0, 1, 'C');
 
-        // Foto, pojok kanan atas -- ditumpuk di atas judul yang baru ditulis (posisi absolut).
-        $photo = $person['photo_path'] ?? null;
-        if ($photo) {
-            $file = ROOT_DIR . '/public/' . $photo;
-            if (is_file($file)) {
-                $pdf->Image($file, $pageW - 18 - 28, 16, 28, 28);
-            }
+        // Foto, pojok kanan atas -- ditumpuk di atas judul yang baru ditulis (posisi absolut). Foto biodata
+        // dari Drive didahulukan; bila tak ada, foto profil di server. Keduanya JPEG persegi hasil Photo.
+        $file = $photoFile;
+        if ($file === null && !empty($person['photo_path']) && is_file(ROOT_DIR . '/public/' . $person['photo_path'])) {
+            $file = ROOT_DIR . '/public/' . $person['photo_path'];
+        }
+        if ($file !== null) {
+            $pdf->Image($file, $pageW - 18 - 28, 16, 28, 28, 'JPG');
         }
 
         $pdf->SetDrawColor(...self::GREEN);

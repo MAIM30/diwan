@@ -3,7 +3,7 @@
 // Formulir "Biodata / Profil Singkat Pengurus". Variabel: $person, $placement (penempatan aktif
 // pertama, atau null), $existing (baris biodata_submissions, atau $_POST+commitments saat galat
 // validasi, atau null kalau belum pernah diisi), $commitmentTexts (BiodataPdf::COMMITMENTS),
-// $errors (opsional, kolom => pesan).
+// $errors (opsional, kolom => pesan), $driveReady (Google Drive terhubung: hanya saat itu foto bisa diunggah).
 //
 // Section A (Identitas Diri) SENGAJA read-only di sini -- datanya sama dengan /pengurus/ubah,
 // jangan diduplikasi supaya tidak ada dua sumber kebenaran yang bisa berbeda.
@@ -38,11 +38,18 @@ $nama = trim(($person['title_prefix'] ?? '') . ' ' . $person['name'] . ' ' . ($p
     <div class="card-head"><h2><?= Ui::icon('id-card', 19) ?> A. Identitas Diri</h2></div>
 
     <div class="photo-field">
-      <div data-photo-preview><?= Ui::avatar($person, 'xl') ?></div>
+      <div data-photo-preview><?= Ui::avatar(array_merge($person, ['photo_path' => null]), 'xl') ?></div>
       <div class="field">
-        <label for="photo">Foto</label>
-        <input type="file" id="photo" name="photo" accept="image/jpeg,image/png,image/webp" data-shrink-image>
-        <div class="help">JPG, PNG, atau WebP. Dipotong persegi dari tengah, dan menjadi foto profil Anda juga. Kosongkan bila tidak ingin mengganti.</div>
+        <label for="photo">Foto untuk biodata</label>
+        <?php if ($driveReady): ?>
+          <input type="file" id="photo" name="photo" accept="image/jpeg,image/png,image/webp" data-shrink-image>
+          <div class="help">
+            JPG, PNG, atau WebP, dipotong persegi dari tengah. Disimpan di Google Drive, bukan di server.
+            <?= !empty($existing['photo_gdrive_file_id']) ? 'Foto sudah tersimpan; pilih lagi hanya untuk menggantinya.' : 'Tanpa unggahan, PDF memakai foto profil Anda bila ada.' ?>
+          </div>
+        <?php else: ?>
+          <div class="help">Unggah foto belum tersedia. PDF memakai foto profil Anda bila ada.</div>
+        <?php endif; ?>
         <?= $err('photo') ?>
       </div>
     </div>

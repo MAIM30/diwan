@@ -339,6 +339,7 @@ class PengurusController extends Controller {
             'existing'  => $existing,
             'commitmentTexts' => BiodataPdf::COMMITMENTS,
             'errors'    => $errors,
+            'driveReady' => GoogleDrive::isConfigured(),
         ]);
     }
 
@@ -360,26 +361,45 @@ class PengurusController extends Controller {
             return;
         }
 
-        // Foto itu opsional. Yang diunggah menjadi foto profil Anda (people.photo_path), satu-satunya
-        // salinan di aplikasi ini -- PDF membacanya dari sana, jadi tidak ada foto kedua untuk biodata.
+        // Foto itu opsional dan disimpan di Google Drive, bukan di server -- di database hanya ID berkasnya.
+        // Diproses dan diunggah SEBELUM apa pun disimpan, supaya foto yang gagal tidak meninggalkan
+        // biodata setengah jadi. Foto profil (people.photo_path) tidak disentuh.
+        $previous = $model->findByPersonId($person['id']);
+        $photoBytes = null;
+        $photoDriveId = null;
         $photoFile = $_FILES['photo'] ?? null;
         if ($photoFile && $photoFile['error'] !== UPLOAD_ERR_NO_FILE) {
-            $rel = 'uploads/people/' . $person['uuid'] . '.jpg';
-            $err = Photo::fromUpload($photoFile, ROOT_DIR . '/public/' . $rel);
+            if (!GoogleDrive::isConfigured()) {
+                $this->biodataForm($members, $person, $retry, ['photo' => 'Unggah foto belum tersedia: Google Drive belum dihubungkan.']);
+                return;
+            }
+            $tmp = tempnam(sys_get_temp_dir(), 'foto');
+            $err = Photo::fromUpload($photoFile, $tmp);
+            $photoBytes = $err === null ? file_get_contents($tmp) : null;
+            @unlink($tmp);
             if ($err !== null) {
                 $this->biodataForm($members, $person, $retry, ['photo' => Photo::message($err)]);
                 return;
             }
-            $this->model('PersonModel')->setPhoto($person['id'], $rel);
-            $person['photo_path'] = $rel;
-            Audit::log('people', $person['id'], 'update', null, ['event' => 'portal_photo']);
+            $up = GoogleDrive::upload($photoBytes, 'Foto_' . $person['name'] . '_' . $person['uuid'] . '.jpg', 'image/jpeg');
+            if (!$up['ok']) {
+                $this->biodataForm($members, $person, $retry, ['photo' => 'Foto gagal disimpan ke Google Drive: ' . $up['error']]);
+                return;
+            }
+            $photoDriveId = $up['file_id'];
         }
 
         $row = $model->upsert($person['id'], $result['data']);
-        Audit::log('biodata_submissions', $row['id'], 'update', null, ['event' => 'portal_biodata', 'person_id' => $person['id']]);
+        if ($photoDriveId !== null) {
+            $model->setPhotoFile($row['id'], $photoDriveId);
+            $row['photo_gdrive_file_id'] = $photoDriveId;
+            if (!empty($previous['photo_gdrive_file_id'])) GoogleDrive::delete($previous['photo_gdrive_file_id']);
+        }
+        Audit::log('biodata_submissions', $row['id'], 'update', null,
+            ['event' => 'portal_biodata', 'person_id' => $person['id'], 'photo_replaced' => $photoDriveId !== null]);
 
         if (GoogleDrive::isConfigured()) {
-            $pdfBytes = BiodataPdf::render($person, $this->activePlacement($members, $person['id']), $row);
+            $pdfBytes = BiodataPdf::render($person, $this->activePlacement($members, $person['id']), $row, $photoBytes);
             $filename = 'Biodata_' . $person['name'] . '_' . $row['uuid'] . '.pdf';
             $up = GoogleDrive::upload($pdfBytes, $filename);
             if ($up['ok']) {

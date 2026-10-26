@@ -28,6 +28,7 @@ class GoogleDrive {
     ];
 
     public static $settings;
+    private static $tokenCache;
 
     private static function settings() {
         if (self::$settings === null) {
@@ -100,18 +101,23 @@ class GoogleDrive {
         ]);
     }
 
-    // Access token hanya berumur ~1 jam. Diambil ulang tiap panggilan -- alur ini jarang dipakai
-    // (sekali per pengiriman biodata), jadi tidak perlu cache lintas-permintaan.
+    // Access token berumur ~1 jam. Disimpan di memori hanya selama satu permintaan, supaya beberapa
+    // panggilan Drive berurutan (foto, hapus foto lama, PDF) memakai satu token.
     private static function accessToken() {
+        if (self::$tokenCache && self::$tokenCache['exp'] > time() + 60) {
+            return ['ok' => true, 'token' => self::$tokenCache['token']];
+        }
         $refresh = self::settings()['gdrive_refresh_token'] ?? '';
         if ($refresh === '') return ['ok' => false, 'error' => 'Google Drive belum dihubungkan.'];
 
         $r = self::tokenRequest(['grant_type' => 'refresh_token', 'refresh_token' => $refresh]);
         if (!$r['ok']) return $r;
-        return ['ok' => true, 'token' => $r['data']['access_token']];
+        self::$tokenCache = ['token' => $r['data']['access_token'], 'exp' => time() + (int) ($r['data']['expires_in'] ?? 3600)];
+        return ['ok' => true, 'token' => self::$tokenCache['token']];
     }
 
-    private static function apiJson($method, $url, $token, $payload = null) {
+    // Satu-satunya tempat cURL ke API Drive. Mengembalikan ['code' => HTTP, 'body' => string, 'error' => string|null].
+    private static function rawRequest($method, $url, $token, $payload = null) {
         $ch = curl_init();
         $headers = ['Authorization: Bearer ' . $token];
         $opts = [
@@ -127,17 +133,37 @@ class GoogleDrive {
         }
         $opts[CURLOPT_HTTPHEADER] = $headers;
         curl_setopt_array($ch, $opts);
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $error    = curl_error($ch);
+        $body = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
         curl_close($ch);
+        return ['code' => (int) $code, 'body' => (string) $body, 'error' => $error !== '' ? $error : null];
+    }
 
-        if ($error) return ['ok' => false, 'error' => 'Tidak bisa menghubungi Google Drive: ' . $error];
-        $decoded = json_decode($response, true);
-        if ($httpCode !== 200 || empty($decoded['id'])) {
-            return ['ok' => false, 'error' => $decoded['error']['message'] ?? ('HTTP ' . $httpCode)];
+    private static function apiJson($method, $url, $token, $payload = null) {
+        $r = self::rawRequest($method, $url, $token, $payload);
+        if ($r['error']) return ['ok' => false, 'error' => 'Tidak bisa menghubungi Google Drive: ' . $r['error']];
+        $decoded = json_decode($r['body'], true);
+        if ($r['code'] !== 200 || empty($decoded['id'])) {
+            return ['ok' => false, 'error' => $decoded['error']['message'] ?? ('HTTP ' . $r['code'])];
         }
         return ['ok' => true, 'data' => $decoded];
+    }
+
+    // Isi berkas buatan aplikasi ini (mentah), atau null bila tak terbaca -- mis. sudah dihapus di Drive.
+    public static function download($fileId) {
+        $tok = self::accessToken();
+        if (!$tok['ok']) return null;
+        $r = self::rawRequest('GET', self::FILES_URL . '/' . rawurlencode($fileId) . '?alt=media', $tok['token']);
+        return ($r['code'] === 200 && !$r['error']) ? $r['body'] : null;
+    }
+
+    // Hapus berkas buatan aplikasi ini. Sudah tidak ada (404) dianggap berhasil.
+    public static function delete($fileId) {
+        $tok = self::accessToken();
+        if (!$tok['ok']) return false;
+        $r = self::rawRequest('DELETE', self::FILES_URL . '/' . rawurlencode($fileId), $tok['token']);
+        return !$r['error'] && in_array($r['code'], [200, 204, 404], true);
     }
 
     // Membuat folder tujuan di Drive akun yang baru terhubung. $accessToken dari exchangeCode().
@@ -153,9 +179,9 @@ class GoogleDrive {
         return $r['ok'] && empty($r['data']['trashed']);
     }
 
-    // $pdfBytes: isi PDF mentah (string biner, dari BiodataPdf::render() -- TIDAK PERNAH dibaca dari
-    // berkas lokal, karena memang tidak pernah ditulis ke disk).
-    public static function upload($pdfBytes, $filename) {
+    // $bytes: isi berkas mentah (string biner) -- PDF dari BiodataPdf::render() atau JPEG foto yang sudah
+    // diproses Photo. Tidak pernah dibaca dari berkas simpanan di server, karena memang tidak disimpan di sana.
+    public static function upload($bytes, $filename, $mime = 'application/pdf') {
         if (!self::isConfigured()) return ['ok' => false, 'error' => 'Google Drive belum dikonfigurasi.'];
 
         $tok = self::accessToken();
@@ -169,8 +195,8 @@ class GoogleDrive {
               . "Content-Type: application/json; charset=UTF-8\r\n\r\n"
               . $metadata . "\r\n"
               . "--$boundary\r\n"
-              . "Content-Type: application/pdf\r\n\r\n"
-              . $pdfBytes . "\r\n"
+              . "Content-Type: $mime\r\n\r\n"
+              . $bytes . "\r\n"
               . "--$boundary--";
 
         $ch = curl_init();

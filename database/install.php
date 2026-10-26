@@ -96,6 +96,8 @@ require_once __DIR__ . '/008_whatsapp_kirimdev.php';
 migrate_008_whatsapp_kirimdev($pdo, 'say');
 require_once __DIR__ . '/010_biodata_submissions.php';
 migrate_010_biodata_submissions($pdo, 'say');
+require_once __DIR__ . '/011_biodata_foto_drive.php';
+migrate_011_biodata_foto_drive($pdo, 'say');
 
 // ---------- Struktur akar ----------
 // DPP dibuat sebagai akar, MWP sebagai anaknya. Inilah yang membuat lingkup "Nasional" (akar)
