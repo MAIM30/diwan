@@ -15,6 +15,7 @@ class Photo {
     const OUT_SIDE   = 512;
     const MAX_BYTES  = 3145728;    // 3 MB
     const FIT_SIDE   = 900;        // sisi terpanjang foto utuh (tanpa potong): cukup tajam untuk dicetak ~3x4 cm
+    const FULL_SIDE  = 2400;       // sisi terpanjang arsip Drive: kualitas tinggi tanpa membuang bandwidth/kuota
 
     // Dari entri $_FILES: periksa unggahannya, lalu process(). Kode galat process() ditambah:
     //   'none'    tidak ada berkas dipilih
@@ -42,12 +43,6 @@ class Photo {
 
     // $square true (foto profil): potong persegi dari tengah, 512x512. False (foto biodata): foto utuh,
     // proporsi asli dipertahankan, diperkecil hingga sisi terpanjangnya FIT_SIDE (tidak pernah diperbesar).
-    // Mengembalikan null bila berhasil menulis $destAbs, atau satu kode galat:
-    //   'type'   bukan JPG/PNG/WebP (atau isi tak cocok dengan jenisnya)
-    //   'small'  sisi terpendek < MIN_SIDE
-    //   'large'  terlalu banyak piksel
-    //   'decode' GD gagal membaca
-    //   'write'  tidak bisa menulis ke tujuan
     public static function process($srcPath, $destAbs, $square = true) {
         $mime = (new finfo(FILEINFO_MIME_TYPE))->file($srcPath);
         $info = @getimagesize($srcPath);
@@ -98,6 +93,52 @@ class Photo {
             return 'write';
         }
         $ok = imagejpeg($dst, $destAbs, 86);
+        imagedestroy($dst);
+        return $ok ? null : 'write';
+    }
+
+    // Versi arsip: sanitasi (decode+re-encode JPEG, buang EXIF) dengan batas FULL_SIDE. Hasilnya
+    // jauh lebih besar dari process(false) (FIT_SIDE 900px) tapi tetap wajar untuk Drive.
+    // Menerima tmp_name dari $_FILES yang sudah lolos fromUpload().
+    public static function sanitizeForArchive($srcPath, $destAbs) {
+        $mime = (new finfo(FILEINFO_MIME_TYPE))->file($srcPath);
+        $info = @getimagesize($srcPath);
+        if (!$info || !in_array($mime, ['image/jpeg', 'image/png', 'image/webp'], true) || $info['mime'] !== $mime) {
+            return 'type';
+        }
+        [$w, $h] = $info;
+        if ($w * $h > self::MAX_PIXELS) return 'large';
+
+        $src = null;
+        if ($mime === 'image/jpeg') $src = @imagecreatefromjpeg($srcPath);
+        elseif ($mime === 'image/png') $src = @imagecreatefrompng($srcPath);
+        elseif ($mime === 'image/webp' && function_exists('imagecreatefromwebp')) $src = @imagecreatefromwebp($srcPath);
+        if (!$src) return 'decode';
+
+        if ($mime === 'image/jpeg' && function_exists('exif_read_data')) {
+            $exif = @exif_read_data($srcPath);
+            $rot = [3 => 180, 6 => -90, 8 => 90][$exif['Orientation'] ?? 1] ?? 0;
+            if ($rot) {
+                $rotated = imagerotate($src, $rot, 0);
+                if ($rotated) { imagedestroy($src); $src = $rotated; }
+            }
+        }
+
+        $sw = imagesx($src); $sh = imagesy($src);
+        $scale = min(1, self::FULL_SIDE / max($sw, $sh));
+        $dw = max(1, (int) round($sw * $scale));
+        $dh = max(1, (int) round($sh * $scale));
+
+        if ($scale < 1) {
+            $dst = imagecreatetruecolor($dw, $dh);
+            imagefill($dst, 0, 0, imagecolorallocate($dst, 255, 255, 255));
+            imagecopyresampled($dst, $src, 0, 0, 0, 0, $dw, $dh, $sw, $sh);
+            imagedestroy($src);
+        } else {
+            $dst = $src;
+        }
+
+        $ok = imagejpeg($dst, $destAbs, 92);
         imagedestroy($dst);
         return $ok ? null : 'write';
     }

@@ -8,17 +8,18 @@ class Audit {
     public static function log($entity, $entityId, $action, $before = null, $after = null, $accountId = null) {
         try {
             $db = Database::getInstance()->getConnection();
+            $event = is_array($after) ? ($after['event'] ?? null) : null;
             $stmt = $db->prepare("
-                INSERT INTO audit_log (entity, entity_id, action, before_data, after_data, account_id, structure_id, ip)
-                VALUES (:entity, :entity_id, :action, :before_data, :after_data, :account_id, :structure_id, :ip)
+                INSERT INTO audit_log (entity, entity_id, action, event, before_data, after_data, account_id, structure_id, ip)
+                VALUES (:entity, :entity_id, :action, :event, :before_data, :after_data, :account_id, :structure_id, :ip)
             ");
             $stmt->execute([
                 ':entity'       => $entity,
                 ':entity_id'    => (int) $entityId,
                 ':action'       => $action,
+                ':event'        => $event,
                 ':before_data'  => $before === null ? null : json_encode(self::redact($before), JSON_UNESCAPED_UNICODE),
                 ':after_data'   => $after === null ? null : json_encode(self::redact($after), JSON_UNESCAPED_UNICODE),
-                // $accountId eksplisit dipakai untuk proses non-sesi (impor/migrasi via CLI).
                 ':account_id'   => $accountId !== null ? (int) $accountId : (class_exists('Auth') ? Auth::id() : null),
                 ':structure_id' => self::structureOf($entity, $entityId, $before, $after),
                 ':ip'           => Text::clientIp(),

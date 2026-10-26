@@ -82,7 +82,8 @@ class BiodataPdf {
         $info = @getimagesize($file);
         if (!$info || $info[0] < 1 || $info[1] < 1) return null;
         $scale = min(self::PHOTO_MAX_W / $info[0], self::PHOTO_MAX_H / $info[1]);
-        return [$info[0] * $scale, $info[1] * $scale];
+        $type = [IMAGETYPE_JPEG => 'JPG', IMAGETYPE_PNG => 'PNG', IMAGETYPE_GIF => 'GIF'][$info[2]] ?? '';
+        return [$info[0] * $scale, $info[1] * $scale, $type];
     }
 
     private static function header($pdf, array $person, $photoFile) {
@@ -112,7 +113,7 @@ class BiodataPdf {
         $size = $file !== null ? self::photoSize($file) : null;
         if ($size) {
             $x = $pageW - 18 - $size[0];
-            $pdf->Image($file, $x, $top, $size[0], $size[1], 'JPG');
+            $pdf->Image($file, $x, $top, $size[0], $size[1], $size[2] ?: 'JPG');
             $pdf->SetDrawColor(...self::LINE);
             $pdf->SetLineWidth(0.2);
             $pdf->Rect($x, $top, $size[0], $size[1]);

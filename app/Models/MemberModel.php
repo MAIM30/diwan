@@ -160,8 +160,7 @@ class MemberModel {
     public function loginHistory($personId, $limit = 6) {
         $stmt = $this->db->prepare("
             SELECT created_at, ip FROM audit_log
-            WHERE entity = 'people' AND entity_id = :id AND action = 'update'
-              AND JSON_UNQUOTE(JSON_EXTRACT(after_data, '\$.event')) = 'portal_login'
+            WHERE entity = 'people' AND entity_id = :id AND event = 'portal_login'
             ORDER BY id DESC LIMIT :lim
         ");
         $stmt->bindValue(':id', (int) $personId, PDO::PARAM_INT);
@@ -207,8 +206,7 @@ class MemberModel {
     public function selfEditCountSince($personId, $minutes = 60) {
         $stmt = $this->db->prepare("
             SELECT COUNT(*) FROM audit_log
-            WHERE entity = 'people' AND entity_id = :id AND action = 'update'
-              AND JSON_UNQUOTE(JSON_EXTRACT(after_data, '$.event')) = 'portal_edit'
+            WHERE entity = 'people' AND entity_id = :id AND event = 'portal_edit'
               AND created_at > (NOW(3) - INTERVAL :m MINUTE)
         ");
         $stmt->bindValue(':id', (int) $personId, PDO::PARAM_INT);
@@ -221,8 +219,7 @@ class MemberModel {
     public function recentSelfEdits($personId, $limit = 3) {
         $stmt = $this->db->prepare("
             SELECT created_at, after_data FROM audit_log
-            WHERE entity = 'people' AND entity_id = :id AND action = 'update'
-              AND JSON_UNQUOTE(JSON_EXTRACT(after_data, '$.event')) = 'portal_edit'
+            WHERE entity = 'people' AND entity_id = :id AND event = 'portal_edit'
             ORDER BY id DESC LIMIT :lim
         ");
         $stmt->bindValue(':id', (int) $personId, PDO::PARAM_INT);

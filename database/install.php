@@ -98,6 +98,8 @@ require_once __DIR__ . '/010_biodata_submissions.php';
 migrate_010_biodata_submissions($pdo, 'say');
 require_once __DIR__ . '/011_biodata_foto_drive.php';
 migrate_011_biodata_foto_drive($pdo, 'say');
+require_once __DIR__ . '/012_audit_event_column.php';
+migrate_012_audit_event_column($pdo, 'say');
 
 // ---------- Struktur akar ----------
 // DPP dibuat sebagai akar, MWP sebagai anaknya. Inilah yang membuat lingkup "Nasional" (akar)

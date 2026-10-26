@@ -209,11 +209,8 @@ class DashboardModel {
             : '(a.structure_id IS NOT NULL AND ' . AdminScope::sqlFilter('a.structure_id') . ')';
     }
 
-    private const NOISE = " AND (a.after_data IS NULL OR JSON_EXTRACT(a.after_data, '$.event') IS NULL)";
-    // Riwayat SATU orang tetap memperlihatkan perubahan yang dibuat pengurus itu sendiri lewat portal ('portal_edit'):
-    // admin perlu tahu siapa mengubah apa. Umpan dasbor tetap menyaringnya agar tak tenggelam.
-    private const NOISE_PERSON = " AND (a.after_data IS NULL OR JSON_EXTRACT(a.after_data, '$.event') IS NULL
-                                       OR JSON_UNQUOTE(JSON_EXTRACT(a.after_data, '$.event')) = 'portal_edit')";
+    private const NOISE = " AND a.event IS NULL";
+    private const NOISE_PERSON = " AND (a.event IS NULL OR a.event = 'portal_edit')";
 
     public function activity($limit = 8) {
         $stmt = $this->db->prepare("

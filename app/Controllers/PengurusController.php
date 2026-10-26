@@ -366,9 +366,11 @@ class PengurusController extends Controller {
             return;
         }
 
-        // Foto opsional, disimpan di folder foto di Google Drive (bukan di server); di database hanya ID
-        // berkasnya. Diproses dan diunggah SEBELUM apa pun disimpan, supaya foto yang gagal tidak
-        // meninggalkan biodata setengah jadi. Foto profil (people.photo_path) tidak disentuh.
+        // Foto opsional, disimpan di Google Drive dalam dua ukuran:
+        //   - Arsip (kualitas tinggi, maks 2400px): disimpan di Drive sebagai foto resmi.
+        //   - Kecil (maks 900px): dipakai PDF dan avatar di portal (ringan untuk HP).
+        // Di database hanya ID berkas arsip. Saat avatar dilayani (biodata_foto), foto arsip di-download
+        // dari Drive lalu dikecilkan on-the-fly dan di-cache peramban 24 jam.
         $photoBytes = null;
         $photoDriveId = null;
         $photoFile = $_FILES['photo'] ?? null;
@@ -377,15 +379,20 @@ class PengurusController extends Controller {
                 $this->biodataForm($members, $person, $retry, ['photo' => 'Unggah foto belum tersedia: Google Drive belum dihubungkan.']);
                 return;
             }
-            $tmp = tempnam(sys_get_temp_dir(), 'foto');
-            $err = Photo::fromUpload($photoFile, $tmp, false);
-            $photoBytes = $err === null ? file_get_contents($tmp) : null;
-            @unlink($tmp);
+            $err = Photo::fromUpload($photoFile, $tmpSmall = tempnam(sys_get_temp_dir(), 'fts'), false);
             if ($err !== null) {
+                @unlink($tmpSmall);
                 $this->biodataForm($members, $person, $retry, ['photo' => Photo::message($err)]);
                 return;
             }
-            $up = GoogleDrive::uploadPhoto($photoBytes, 'Foto_' . $person['name'] . '_' . $person['uuid'] . '.jpg');
+            $photoBytes = file_get_contents($tmpSmall);
+            @unlink($tmpSmall);
+
+            $errA = Photo::sanitizeForArchive($photoFile['tmp_name'], $tmpBig = tempnam(sys_get_temp_dir(), 'ftb'));
+            $archiveBytes = $errA === null ? file_get_contents($tmpBig) : $photoBytes;
+            @unlink($tmpBig);
+
+            $up = GoogleDrive::uploadPhoto($archiveBytes, 'Foto_' . $person['name'] . '_' . $person['uuid'] . '.jpg');
             if (!$up['ok']) {
                 $this->biodataForm($members, $person, $retry, ['photo' => 'Foto gagal disimpan ke Google Drive: ' . $up['error']]);
                 return;
