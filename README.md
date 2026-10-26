@@ -1,7 +1,7 @@
 # DIWAN Wahdah Islamiyah
 
 **DIWAN** = **D**ata **I**nduk **D**ewan Pimpinan **W**ahdah Islamiyah -- *Sistem Tata Kelola Data Kepengurusan Wahdah Islamiyah*.
-Berjalan di `pengurus.wahdah.or.id`.
+Berjalan di `diwan.wahdah.or.id`.
 
 Sumber data tunggal untuk data pengurus Wahdah Islamiyah. Menggantikan pengelolaan manual berbasis
 Google Form + Apps Script, dan menjadi sumber data yang dibaca aplikasi lain (syuro, dsb.) lewat API
@@ -579,9 +579,9 @@ menyalin aturan Pengurus Inti. Sejak migrasi 007 aturan itu bergantung pada tier
 ```bash
 TOKEN='pgr_xxxxxxxxxxxx_xxxx...'
 
-curl -H "Authorization: Bearer $TOKEN" https://pengurus.wahdah.or.id/api/v1/whoami
-curl -H "Authorization: Bearer $TOKEN" 'https://pengurus.wahdah.or.id/api/v1/placements?current=1&core=1'
-curl -H "Authorization: Bearer $TOKEN" 'https://pengurus.wahdah.or.id/api/v1/sync/changes?since=2026-10-01T00:00:00+08:00'
+curl -H "Authorization: Bearer $TOKEN" https://diwan.wahdah.or.id/api/v1/whoami
+curl -H "Authorization: Bearer $TOKEN" 'https://diwan.wahdah.or.id/api/v1/placements?current=1&core=1'
+curl -H "Authorization: Bearer $TOKEN" 'https://diwan.wahdah.or.id/api/v1/sync/changes?since=2026-10-01T00:00:00+08:00'
 ```
 
 Rate limit per klien, bawaan 60/menit. Response membawa `X-RateLimit-Limit` dan

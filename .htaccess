@@ -5,11 +5,11 @@ Options -Indexes
 
     # Paksa HTTPS khusus domain produksi (localhost tidak terpengaruh). Cek juga X-Forwarded-Proto
     # supaya tidak looping bila server berada di belakang proxy/CDN.
-    RewriteCond %{HTTP_HOST} ^pengurus\.wahdah\.or\.id$ [NC]
+    RewriteCond %{HTTP_HOST} ^diwan\.wahdah\.or\.id$ [NC]
     RewriteCond %{HTTPS} off
     RewriteCond %{HTTP:X-Forwarded-Proto} !https
     RewriteCond %{REQUEST_URI} !/\.well-known/(acme-challenge|pki-validation|cpanel-dcv)/
-    RewriteRule ^(.*)$ https://pengurus.wahdah.or.id/$1 [R=301,L]
+    RewriteRule ^(.*)$ https://diwan.wahdah.or.id/$1 [R=301,L]
 
     # Blokir akses langsung ke kode, konfigurasi, dan skrip utilitas database
     RewriteRule ^(app|config|database|storage)(/|$) - [F,L]

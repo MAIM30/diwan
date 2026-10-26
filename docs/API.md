@@ -6,16 +6,14 @@ papan informasi, dsb.) yang ingin membaca data kepengurusan Wahdah Islamiyah dar
 Anda tidak perlu tahu apa pun tentang bagian dalam DIWAN untuk memakai panduan ini. Yang dibutuhkan
 hanya satu token dan kemampuan mengirim permintaan HTTP GET.
 
-- **Basis URL produksi (setelah domain aktif):** `https://pengurus.wahdah.or.id/api/v1`
-- **Basis URL produksi (sementara, DNS belum diarahkan):** `http://103.193.177.46/api/v1`
+- **Basis URL produksi:** `https://diwan.wahdah.or.id/api/v1`
 - **Basis URL pengembangan:** `http://localhost/pengurus/api/v1`
 - **Metode:** hanya `GET`
 - **Format:** JSON (`application/json; charset=utf-8`)
 
-> Server saat ini hanya bisa diakses lewat IP (belum HTTPS, belum ada domain). Pakai basis URL IP
-> di atas untuk integrasi Syuro sekarang; pindahkan ke URL domain begitu DNS `pengurus.wahdah.or.id`
-> sudah diarahkan dan sertifikat HTTPS terpasang. Jangan kirim token lewat HTTP di jaringan publik
-> yang tidak Anda percaya — untuk sekarang, jalankan integrasi dari server/jaringan tepercaya saja.
+> Aplikasi sedang dipindah ke hosting baru (Hostinger, domain `diwan.wahdah.or.id` via Cloudflare).
+> Basis URL produksi di atas belum aktif sampai pemindahan ini selesai dan DNS diarahkan — jangan
+> mengintegrasikan Syuro ke URL ini sampai ada konfirmasi bahwa deploy sudah selesai.
 
 ---
 
@@ -46,7 +44,7 @@ Minta token ke Super Admin DIWAN, lalu pastikan dulu token itu hidup:
 TOKEN='pgr_645a22029d1b_ba691e6a...'   # nilai lengkap dari Super Admin
 
 curl -H "Authorization: Bearer $TOKEN" \
-     https://pengurus.wahdah.or.id/api/v1/whoami
+     https://diwan.wahdah.or.id/api/v1/whoami
 ```
 
 ```json
@@ -67,7 +65,7 @@ Kalau ini berhasil, integrasi Anda sudah bisa jalan. Pertanyaan paling umum —
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
-     'https://pengurus.wahdah.or.id/api/v1/placements?current=1&core=1&limit=1000'
+     'https://diwan.wahdah.or.id/api/v1/placements?current=1&core=1&limit=1000'
 ```
 
 ---
@@ -639,7 +637,7 @@ bila tidak perlu, jangan tulis ke log, jangan tampilkan tanpa alasan.
 
 ```php
 <?php
-const API  = 'https://pengurus.wahdah.or.id/api/v1';
+const API  = 'https://diwan.wahdah.or.id/api/v1';
 const TOKEN = '...';   // dari variabel lingkungan, bukan ditulis di sini
 
 function apiGet(string $path, array $query = []): array {
@@ -711,7 +709,7 @@ simpanToken($sinceBaru);
 ### Node.js — tarikan awal
 
 ```js
-const API = 'https://pengurus.wahdah.or.id/api/v1';
+const API = 'https://diwan.wahdah.or.id/api/v1';
 const TOKEN = process.env.DIWAN_TOKEN;
 
 async function apiGet(path, query = {}) {
@@ -759,7 +757,7 @@ async function tarikanAwal() {
 ```python
 import os, requests
 
-API = "https://pengurus.wahdah.or.id/api/v1"
+API = "https://diwan.wahdah.or.id/api/v1"
 SESSION = requests.Session()
 SESSION.headers["Authorization"] = f"Bearer {os.environ['DIWAN_TOKEN']}"
 
