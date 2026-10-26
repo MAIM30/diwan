@@ -3,7 +3,7 @@
 // Formulir "Biodata / Profil Singkat Pengurus". Variabel: $person, $placement (penempatan aktif
 // pertama, atau null), $existing (baris biodata_submissions, atau $_POST+commitments saat galat
 // validasi, atau null kalau belum pernah diisi), $commitmentTexts (BiodataPdf::COMMITMENTS),
-// $errors (opsional, kolom => pesan), $driveReady (Google Drive terhubung: hanya saat itu foto bisa diunggah).
+// $errors (opsional, kolom => pesan).
 //
 // Section A (Identitas Diri) SENGAJA read-only di sini -- datanya sama dengan /pengurus/ubah,
 // jangan diduplikasi supaya tidak ada dua sumber kebenaran yang bisa berbeda.
@@ -31,6 +31,13 @@ $nama = trim(($person['title_prefix'] ?? '') . ' ' . $person['name'] . ' ' . ($p
   <div class="alert error" role="alert">Ada isian yang perlu diperbaiki. Belum ada yang disimpan.</div>
 <?php endif; ?>
 
+<?php if (!$errors && is_array($existing) && !empty($existing['gdrive_uploaded_at'])): ?>
+  <div class="alert info" role="status">
+    Biodata Anda sudah terkirim ke Google Drive pada <?= Ui::date($existing['gdrive_uploaded_at']) ?>.
+    Mengirim ulang akan <strong>menggantikan</strong> dokumen sebelumnya.
+  </div>
+<?php endif; ?>
+
 <form method="post" action="<?= BASEURL ?>/pengurus/biodata_process" enctype="multipart/form-data" autocomplete="off">
   <?= Csrf::field() ?>
 
@@ -41,15 +48,8 @@ $nama = trim(($person['title_prefix'] ?? '') . ' ' . $person['name'] . ' ' . ($p
       <div data-photo-preview><?= Ui::avatar(array_merge($person, ['photo_path' => null]), 'xl') ?></div>
       <div class="field">
         <label for="photo">Foto untuk biodata</label>
-        <?php if ($driveReady): ?>
-          <input type="file" id="photo" name="photo" accept="image/jpeg,image/png,image/webp" data-shrink-image>
-          <div class="help">
-            JPG, PNG, atau WebP, dipotong persegi dari tengah. Disimpan di Google Drive, bukan di server.
-            <?= !empty($existing['photo_gdrive_file_id']) ? 'Foto sudah tersimpan; pilih lagi hanya untuk menggantinya.' : 'Tanpa unggahan, PDF memakai foto profil Anda bila ada.' ?>
-          </div>
-        <?php else: ?>
-          <div class="help">Unggah foto belum tersedia. PDF memakai foto profil Anda bila ada.</div>
-        <?php endif; ?>
+        <input type="file" id="photo" name="photo" accept="image/jpeg,image/png,image/webp" data-shrink-image>
+        <div class="help">JPG, PNG, atau WebP, dipotong persegi dari tengah. Tanpa unggahan, PDF memakai foto profil Anda bila ada.</div>
         <?= $err('photo') ?>
       </div>
     </div>

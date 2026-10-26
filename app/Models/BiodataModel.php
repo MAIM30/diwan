@@ -115,11 +115,6 @@ class BiodataModel {
         ")->execute([':fid' => $fileId, ':furl' => $fileUrl, ':id' => (int) $id]);
     }
 
-    public function setPhotoFile($id, $fileId) {
-        $this->db->prepare("UPDATE biodata_submissions SET photo_gdrive_file_id = :fid WHERE id = :id")
-                 ->execute([':fid' => $fileId, ':id' => (int) $id]);
-    }
-
     // Daftar untuk admin, dibatasi lingkup lewat struktur PENEMPATAN AKTIF orang itu (biodata_submissions
     // sendiri tidak punya structure_id -- satu orang bisa menjabat di beberapa struktur).
     public function listInScope() {

@@ -339,7 +339,6 @@ class PengurusController extends Controller {
             'existing'  => $existing,
             'commitmentTexts' => BiodataPdf::COMMITMENTS,
             'errors'    => $errors,
-            'driveReady' => GoogleDrive::isConfigured(),
         ]);
     }
 
@@ -361,18 +360,9 @@ class PengurusController extends Controller {
             return;
         }
 
-        // Foto itu opsional dan disimpan di Google Drive, bukan di server -- di database hanya ID berkasnya.
-        // Diproses dan diunggah SEBELUM apa pun disimpan, supaya foto yang gagal tidak meninggalkan
-        // biodata setengah jadi. Foto profil (people.photo_path) tidak disentuh.
-        $previous = $model->findByPersonId($person['id']);
         $photoBytes = null;
-        $photoDriveId = null;
         $photoFile = $_FILES['photo'] ?? null;
         if ($photoFile && $photoFile['error'] !== UPLOAD_ERR_NO_FILE) {
-            if (!GoogleDrive::isConfigured()) {
-                $this->biodataForm($members, $person, $retry, ['photo' => 'Unggah foto belum tersedia: Google Drive belum dihubungkan.']);
-                return;
-            }
             $tmp = tempnam(sys_get_temp_dir(), 'foto');
             $err = Photo::fromUpload($photoFile, $tmp);
             $photoBytes = $err === null ? file_get_contents($tmp) : null;
@@ -381,24 +371,17 @@ class PengurusController extends Controller {
                 $this->biodataForm($members, $person, $retry, ['photo' => Photo::message($err)]);
                 return;
             }
-            $up = GoogleDrive::upload($photoBytes, 'Foto_' . $person['name'] . '_' . $person['uuid'] . '.jpg', 'image/jpeg');
-            if (!$up['ok']) {
-                $this->biodataForm($members, $person, $retry, ['photo' => 'Foto gagal disimpan ke Google Drive: ' . $up['error']]);
-                return;
-            }
-            $photoDriveId = $up['file_id'];
         }
 
+        $previous = $model->findByPersonId($person['id']);
         $row = $model->upsert($person['id'], $result['data']);
-        if ($photoDriveId !== null) {
-            $model->setPhotoFile($row['id'], $photoDriveId);
-            $row['photo_gdrive_file_id'] = $photoDriveId;
-            if (!empty($previous['photo_gdrive_file_id'])) GoogleDrive::delete($previous['photo_gdrive_file_id']);
-        }
         Audit::log('biodata_submissions', $row['id'], 'update', null,
-            ['event' => 'portal_biodata', 'person_id' => $person['id'], 'photo_replaced' => $photoDriveId !== null]);
+            ['event' => 'portal_biodata', 'person_id' => $person['id']]);
 
         if (GoogleDrive::isConfigured()) {
+            if (!empty($previous['gdrive_file_id'])) {
+                GoogleDrive::delete($previous['gdrive_file_id']);
+            }
             $pdfBytes = BiodataPdf::render($person, $this->activePlacement($members, $person['id']), $row, $photoBytes);
             $filename = 'Biodata_' . $person['name'] . '_' . $row['uuid'] . '.pdf';
             $up = GoogleDrive::upload($pdfBytes, $filename);
@@ -406,7 +389,7 @@ class PengurusController extends Controller {
                 $model->markDriveUpload($row['id'], $up['file_id'], $up['url']);
                 Flash::set('success', 'Biodata disimpan dan terkirim ke Google Drive.');
             } else {
-                Flash::set('warn', 'Biodata disimpan, tapi gagal dikirim ke Google Drive: ' . $up['error'] . ' Anda tetap bisa mengunduh PDF-nya.');
+                Flash::set('warn', 'Biodata disimpan, tapi gagal dikirim ke Google Drive: ' . $up['error']);
             }
         } else {
             Flash::set('success', 'Biodata disimpan.');
@@ -415,13 +398,18 @@ class PengurusController extends Controller {
         $this->redirect('pengurus/biodata');
     }
 
-    // PDF dibangkitkan ULANG di sini, tidak pernah dibaca dari berkas tersimpan -- lihat BiodataPdf.php.
     public function biodata_pdf() {
         [$members, $person] = $this->guard();
         $row = $this->model('BiodataModel')->findByPersonId($person['id']);
         if (!$row) $this->notFound('Biodata belum diisi.');
 
-        $pdfBytes = BiodataPdf::render($person, $this->activePlacement($members, $person['id']), $row);
+        $pdfBytes = null;
+        if (!empty($row['gdrive_file_id']) && GoogleDrive::isConfigured()) {
+            $pdfBytes = GoogleDrive::download($row['gdrive_file_id']);
+        }
+        if ($pdfBytes === null) {
+            $pdfBytes = BiodataPdf::render($person, $this->activePlacement($members, $person['id']), $row);
+        }
 
         header('Content-Type: application/pdf');
         header('Content-Disposition: inline; filename="Biodata_' . preg_replace('/[^A-Za-z0-9_-]/', '_', $person['name']) . '.pdf"');
