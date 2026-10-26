@@ -119,6 +119,15 @@ class Ui {
             $v = is_file($file) ? '?v=' . filemtime($file) : '';
             return '<span class="av av-' . e($size) . '"><img src="' . BASEURL . '/' . e($photo) . $v . '" alt="" loading="lazy"></span>';
         }
+
+        // Tanpa foto profil: bila orang yang sedang masuk ke portal punya foto biodata (PengurusController::guard()
+        // mengisi biodata_photo_id), tampilkan itu. Inisial tetap digambar di bawahnya, jadi kalau fotonya gagal
+        // dimuat (Drive bermasalah) yang terlihat tetap inisial, bukan lingkaran kosong.
+        $bio = $p['biodata_photo_id'] ?? '';
+        if ($bio !== '' && $bio !== null) {
+            return '<span class="av av-' . e($size) . ' av-c' . $hue . ' av-fb" aria-hidden="true">' . e(Text::initials($name))
+                . '<img src="' . BASEURL . '/pengurus/biodata_foto?v=' . e($bio) . '" alt=""></span>';
+        }
         return '<span class="av av-' . e($size) . ' av-c' . $hue . '" aria-hidden="true">' . e(Text::initials($name)) . '</span>';
     }
 

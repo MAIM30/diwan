@@ -28,6 +28,14 @@ class BiodataModel {
         return $row ?: null;
     }
 
+    // ID berkas foto biodata di Drive (atau null) -- dipakai avatar portal sebagai cadangan foto profil.
+    public function photoFileId($personId) {
+        $stmt = $this->db->prepare("SELECT photo_gdrive_file_id FROM biodata_submissions WHERE person_id = :id");
+        $stmt->execute([':id' => (int) $personId]);
+        $id = $stmt->fetchColumn();
+        return ($id !== false && $id !== '') ? $id : null;
+    }
+
     public function findByUuid($uuid) {
         if (!Uuid::isValid($uuid)) return null;
         $stmt = $this->db->prepare("SELECT * FROM biodata_submissions WHERE uuid = :u");

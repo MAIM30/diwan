@@ -184,6 +184,8 @@ class PengurusController extends Controller {
             $this->redirect('pengurus/login');
         }
         Member::touch();
+        // Orang yang belum punya foto profil tampil dengan foto biodatanya (lihat Ui::avatar).
+        $person['biodata_photo_id'] = $this->model('BiodataModel')->photoFileId($person['id']);
         return [$members, $person];
     }
 

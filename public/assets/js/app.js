@@ -147,6 +147,13 @@
     });
   });
 
+  /* ---------- Avatar dari foto biodata: bila gagal dimuat (mis. Drive bermasalah), buang <img>-nya agar
+     inisial di bawahnya tampil bersih tanpa ikon gambar rusak ---------- */
+  $$('.av-fb img').forEach(function (img) {
+    var drop = function () { img.remove(); };
+    if (img.complete && img.naturalWidth === 0) drop(); else img.addEventListener('error', drop);
+  });
+
   /* ---------- Pratinjau nama lengkap di formulir (gelar depan + nama + gelar belakang) ---------- */
   $$('[data-name-form]').forEach(function (form) {
     var pre = $('[data-np="prefix"]', form), nm = $('[data-np="name"]', form), suf = $('[data-np="suffix"]', form);
