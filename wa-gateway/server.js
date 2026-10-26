@@ -3,10 +3,18 @@
 // Endpoint: POST /send, GET /status, GET /qr
 
 import express from 'express';
-import makeWASocket, { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } from '@whiskeysockets/baileys';
+import P from 'pino';
+import makeWASocket, {
+  useMultiFileAuthState,
+  makeCacheableSignalKeyStore,
+  DisconnectReason,
+  fetchLatestBaileysVersion,
+} from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import QRCode from 'qrcode';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, renameSync } from 'fs';
+
+const logger = P({ level: process.env.LOG_LEVEL || 'warn' });
 
 const PORT = process.env.PORT || 3001;
 const AUTH_DIR = './auth_state';
@@ -19,6 +27,10 @@ const DEFAULT_DELAY_MAX = 15;
 let sock = null;
 let qrCode = null;
 let connectionStatus = 'disconnected'; // disconnected | connecting | open
+
+// Cache pesan terkirim agar getMessage bisa mengembalikannya saat protokol WA minta ulang (retry/relay)
+const sentMessages = new Map();
+const SENT_CACHE_MAX = 100;
 
 // Rate limiter: antrian serial agar pesan tidak dikirim bersamaan
 let sendQueue = Promise.resolve();
@@ -36,10 +48,15 @@ async function startWhatsApp() {
 
   sock = makeWASocket({
     version,
-    auth: state,
-    browser: ['DIWAN WA Gateway', 'Chrome', '22.0'],
+    auth: {
+      creds: state.creds,
+      keys: makeCacheableSignalKeyStore(state.keys, logger),
+    },
+    browser: ['DIWAN WA Gateway', 'Chrome', '131.0'],
     generateHighQualityLinkPreview: false,
     defaultQueryTimeoutMs: 60000,
+    logger,
+    getMessage: async (key) => sentMessages.get(key.id),
   });
 
   sock.ev.on('creds.update', saveCreds);
@@ -229,6 +246,15 @@ async function doSend(phone, message, simulate = false) {
   }
 
   const result = await sock.sendMessage(jid, { text: message });
+
+  if (result?.key?.id) {
+    if (sentMessages.size >= SENT_CACHE_MAX) {
+      const oldest = sentMessages.keys().next().value;
+      sentMessages.delete(oldest);
+    }
+    sentMessages.set(result.key.id, { conversation: message });
+  }
+
   return result;
 }
 
@@ -283,6 +309,28 @@ app.post('/send-queued', authMiddleware, async (req, res) => {
     console.error('[WA] Gagal kirim (queued):', err.message);
     res.status(500).json({ ok: false, error: err.message });
   }
+});
+
+app.post('/reset', authMiddleware, async (req, res) => {
+  console.log('[WA] Reset: memindahkan auth_state ke cadangan dan memulai ulang koneksi...');
+  try {
+    if (sock) {
+      sock.ev.removeAllListeners();
+      await sock.logout().catch(() => {});
+      sock = null;
+    }
+  } catch (_) {}
+
+  connectionStatus = 'disconnected';
+  qrCode = null;
+  sentMessages.clear();
+
+  if (existsSync(AUTH_DIR)) {
+    renameSync(AUTH_DIR, `${AUTH_DIR}.lama.${Date.now()}`);
+  }
+
+  startWhatsApp();
+  res.json({ ok: true, message: 'auth_state dipindah ke cadangan. Buka /qr untuk scan ulang.' });
 });
 
 app.listen(PORT, () => {
