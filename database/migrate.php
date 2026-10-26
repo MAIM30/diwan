@@ -31,7 +31,8 @@ foreach ([['003_pisah_nama.php', 'migrate_003_pisah_nama'], ['004_portal_penguru
           ['005_data_diri.php', 'migrate_005_data_diri'], ['006_alamat_dan_sandi.php', 'migrate_006_alamat_dan_sandi'],
           ['007_inti_wakil_ketua.php', 'migrate_007_inti_wakil_ketua'],
           ['008_whatsapp_kirimdev.php', 'migrate_008_whatsapp_kirimdev'],
-          ['009_otp_ip_varbinary.php', 'migrate_009_otp_ip_varbinary']] as [$file, $fn]) {
+          ['009_otp_ip_varbinary.php', 'migrate_009_otp_ip_varbinary'],
+          ['010_biodata_submissions.php', 'migrate_010_biodata_submissions']] as [$file, $fn]) {
     require_once __DIR__ . '/' . $file;
     $fn($pdo, $say);
 }

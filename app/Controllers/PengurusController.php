@@ -212,6 +212,7 @@ class PengurusController extends Controller {
             'lives'   => $lives,
             'missing' => $members->missingFields($person),
             'logins'  => $members->loginHistory($person['id'], 6),
+            'biodata' => $this->model('BiodataModel')->findByPersonId($person['id']),
         ]);
     }
 
@@ -319,5 +320,84 @@ class PengurusController extends Controller {
             'person'  => $person,
             'members' => $members,
         ]);
+    }
+
+    // ---------- Biodata / Profil Singkat Pengurus ----------
+
+    // Penempatan aktif pertama orang ini (untuk prefill Jabatan/Bidang) -- orang yang rangkap jabatan
+    // cukup diwakili satu, sisanya bisa dikoreksi manual lewat jabatan_text/bidang_text.
+    private function activePlacement($members, $personId) {
+        $current = $members->currentOf($members->history($personId));
+        return $current[0] ?? null;
+    }
+
+    public function biodata() {
+        [$members, $person] = $this->guard();
+        $biodata = $this->model('BiodataModel');
+
+        $this->view('pengurus/biodata', [
+            'title'     => 'Biodata Pengurus',
+            'person'    => $person,
+            'placement' => $this->activePlacement($members, $person['id']),
+            'existing'  => $biodata->findByPersonId($person['id']),
+            'commitmentTexts' => BiodataPdf::COMMITMENTS,
+        ]);
+    }
+
+    public function biodata_process() {
+        [$members, $person] = $this->guard();
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') $this->redirect('pengurus/biodata');
+
+        $model = $this->model('BiodataModel');
+        $result = $model->validate($_POST);
+
+        if ($result['errors']) {
+            $this->view('pengurus/biodata', [
+                'title'     => 'Biodata Pengurus',
+                'person'    => $person,
+                'placement' => $this->activePlacement($members, $person['id']),
+                'existing'  => array_merge($_POST, ['commitments' => array_map('intval', $_POST['commitments'] ?? [])]),
+                'commitmentTexts' => BiodataPdf::COMMITMENTS,
+                'errors'    => $result['errors'],
+            ]);
+            return;
+        }
+
+        $row = $model->upsert($person['id'], $result['data']);
+        Audit::log('biodata_submissions', $row['id'], 'update', null, ['event' => 'portal_biodata', 'person_id' => $person['id']]);
+
+        if (GoogleDrive::isConfigured()) {
+            $pdfBytes = BiodataPdf::render($person, $this->activePlacement($members, $person['id']), $row);
+            $filename = 'Biodata_' . $person['name'] . '_' . $row['uuid'] . '.pdf';
+            $up = GoogleDrive::upload($pdfBytes, $filename);
+            if ($up['ok']) {
+                $model->markDriveUpload($row['id'], $up['file_id'], $up['url']);
+                Flash::set('success', 'Biodata disimpan dan terkirim ke Google Drive.');
+            } else {
+                Flash::set('warn', 'Biodata disimpan, tapi gagal dikirim ke Google Drive: ' . $up['error'] . ' Anda tetap bisa mengunduh PDF-nya.');
+            }
+        } else {
+            Flash::set('success', 'Biodata disimpan.');
+        }
+
+        $this->redirect('pengurus/biodata');
+    }
+
+    // PDF dibangkitkan ULANG di sini, tidak pernah dibaca dari berkas tersimpan -- lihat BiodataPdf.php.
+    public function biodata_pdf() {
+        [$members, $person] = $this->guard();
+        $row = $this->model('BiodataModel')->findByPersonId($person['id']);
+        if (!$row) $this->notFound('Biodata belum diisi.');
+
+        $pdfBytes = BiodataPdf::render($person, $this->activePlacement($members, $person['id']), $row);
+
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: inline; filename="Biodata_' . preg_replace('/[^A-Za-z0-9_-]/', '_', $person['name']) . '.pdf"');
+        header('X-Content-Type-Options: nosniff');
+        header('Content-Security-Policy: sandbox');
+        header('Cache-Control: private, no-store');
+        header('Content-Length: ' . strlen($pdfBytes));
+        echo $pdfBytes;
+        exit;
     }
 }
