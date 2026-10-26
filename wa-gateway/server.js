@@ -100,37 +100,114 @@ app.get('/status', authMiddleware, (req, res) => {
   });
 });
 
+// Kerangka halaman QR -- satu tampilan konsisten untuk ketiga kondisi (terhubung/menunggu/scan).
+function qrPage({ badge, badgeTone, title, body, reloadMs }) {
+  return `<!doctype html>
+<html lang="id"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DIWAN WA Gateway</title>
+<style>
+  :root {
+    --primer: #0f96b0; --primer-gelap: #07546a; --primer-terang: #2cbcd2;
+    --bg: #f4f9fb; --surface: #fff; --border: #dbe8ec; --text: #17323b; --muted: #557480;
+    --ok: #145c37; --ok-bg: #e5f4ec; --ok-line: #b4dcc5;
+    --warn: #7a5712; --warn-bg: #fdf4e3; --warn-line: #ecd9a4;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    padding: 24px; background: linear-gradient(155deg, #34c4d9 0%, var(--primer) 48%, var(--primer-gelap) 100%);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: var(--text);
+  }
+  .card {
+    width: 100%; max-width: 380px; background: var(--surface); border-radius: 18px;
+    padding: 28px 24px 24px; box-shadow: 0 20px 50px rgba(7, 84, 106, .35); text-align: center;
+  }
+  .wordmark { font-size: 13px; font-weight: 700; letter-spacing: .12em; color: var(--primer-gelap); text-transform: uppercase; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px; margin: 12px 0 4px; padding: 5px 12px;
+    border-radius: 999px; font-size: 12px; font-weight: 600;
+    background: var(--badge-bg); color: var(--badge-fg); border: 1px solid var(--badge-line);
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  h1 { font-size: 18px; margin: 10px 0 6px; color: var(--primer-gelap); }
+  p { font-size: 14px; line-height: 1.5; color: var(--muted); margin: 0 0 4px; }
+  .qr-wrap {
+    margin: 18px auto; padding: 14px; width: fit-content; background: #fff;
+    border: 1px solid var(--border); border-radius: 14px;
+  }
+  .qr-wrap img { display: block; width: 240px; height: 240px; }
+  ol { text-align: left; margin: 16px 0 4px; padding-left: 20px; font-size: 13.5px; color: var(--text); }
+  ol li { margin-bottom: 6px; }
+  ol li b { color: var(--primer-gelap); }
+  .spinner {
+    width: 36px; height: 36px; margin: 20px auto; border-radius: 50%;
+    border: 3px solid var(--border); border-top-color: var(--primer); animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .check {
+    width: 52px; height: 52px; margin: 16px auto 4px; border-radius: 50%; background: var(--ok-bg);
+    display: flex; align-items: center; justify-content: center; color: var(--ok); font-size: 26px;
+  }
+  .foot { margin-top: 16px; font-size: 12px; color: var(--muted); opacity: .8; }
+</style>
+</head><body>
+  <div class="card">
+    <div class="wordmark">DIWAN</div>
+    <span class="badge" style="--badge-bg:${badgeTone.bg}; --badge-fg:${badgeTone.fg}; --badge-line:${badgeTone.line}">
+      <span class="dot"></span>${badge}
+    </span>
+    <h1>${title}</h1>
+    ${body}
+  </div>
+  ${reloadMs ? `<script>setTimeout(function(){location.reload()},${reloadMs})</script>` : ''}
+</body></html>`;
+}
+
+const TONE_OK = { bg: '#e5f4ec', fg: '#145c37', line: '#b4dcc5' };
+const TONE_WAIT = { bg: '#fdf4e3', fg: '#7a5712', line: '#ecd9a4' };
+
 // QR code untuk scan (halaman HTML)
 app.get('/qr', (req, res) => {
   if (connectionStatus === 'open') {
-    return res.send(`
-      <html><body style="font-family:sans-serif;text-align:center;padding:40px">
-        <h2>WhatsApp Sudah Terhubung</h2>
-        <p>Tidak perlu scan QR lagi.</p>
-      </body></html>
-    `);
+    return res.send(qrPage({
+      badge: 'Terhubung', badgeTone: TONE_OK,
+      title: 'WhatsApp Sudah Tersambung',
+      body: `
+        <div class="check">✓</div>
+        <p>WA Gateway sudah terhubung dan siap mengirim pesan.<br>Tidak perlu scan QR lagi.</p>
+        <p class="foot">Halaman ini tidak akan diperbarui otomatis.</p>
+      `,
+    }));
   }
 
   if (!qrCode) {
-    return res.send(`
-      <html><body style="font-family:sans-serif;text-align:center;padding:40px">
-        <h2>Menunggu QR Code...</h2>
-        <p>Muat ulang halaman ini dalam beberapa detik.</p>
-        <script>setTimeout(function(){location.reload()},3000)</script>
-      </body></html>
-    `);
+    return res.send(qrPage({
+      badge: 'Menyiapkan', badgeTone: TONE_WAIT,
+      title: 'Menyiapkan Kode QR…',
+      body: `
+        <div class="spinner"></div>
+        <p>Mohon tunggu sebentar, kode QR sedang dibuat.</p>
+      `,
+      reloadMs: 3000,
+    }));
   }
 
-  QRCode.toDataURL(qrCode, { width: 300 }).then(dataUrl => {
-    res.send(`
-      <html><body style="font-family:sans-serif;text-align:center;padding:40px">
-        <h2>Scan QR dengan WhatsApp</h2>
-        <p>Buka WhatsApp di HP → Linked Devices → Link a Device</p>
-        <img src="${dataUrl}" style="margin:20px auto;display:block">
-        <p style="color:#888">QR otomatis diperbarui setiap 20 detik</p>
-        <script>setTimeout(function(){location.reload()},20000)</script>
-      </body></html>
-    `);
+  QRCode.toDataURL(qrCode, { width: 480, margin: 1 }).then(dataUrl => {
+    res.send(qrPage({
+      badge: 'Menunggu scan', badgeTone: TONE_WAIT,
+      title: 'Hubungkan WhatsApp',
+      body: `
+        <div class="qr-wrap"><img src="${dataUrl}" alt="Kode QR WhatsApp"></div>
+        <ol>
+          <li>Buka <b>WhatsApp</b> di HP yang jadi perangkat pengirim</li>
+          <li>Ketuk <b>Titik tiga (⋮) → Perangkat tertaut</b></li>
+          <li>Ketuk <b>Tautkan perangkat</b>, lalu arahkan kamera ke kode di atas</li>
+        </ol>
+        <p class="foot">Kode diperbarui otomatis setiap 20 detik</p>
+      `,
+      reloadMs: 20000,
+    }));
   });
 });
 
