@@ -70,6 +70,21 @@ class PersonModel {
         return $stmt->fetch() ?: null;
     }
 
+    // Lookup by nomor HP/WA. `phone` SENGAJA bukan kolom unik (lihat komentar di schema) -- nomor
+    // dipakai oleh lebih dari satu orang dianggap TIDAK ditemukan (ambigu), bukan mengembalikan salah
+    // satu secara sembarang. Pola yang sama dengan MemberModel::findEligibleByPhone().
+    public function findByPhone($phone) {
+        $phone = Text::normalizePhone($phone);
+        if ($phone === null) return null;
+
+        $stmt = $this->db->prepare("SELECT id FROM people WHERE phone = :p AND deleted_at IS NULL LIMIT 2");
+        $stmt->execute([':p' => $phone]);
+        $ids = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        if (count($ids) !== 1) return null;
+
+        return $this->findById((int) $ids[0]);
+    }
+
     // Lookup by NIK. SETIAP pemanggilan diaudit, termasuk yang tidak menemukan apa pun: upaya
     // menebak-nebak NIK adalah justru hal yang perlu terlihat di jejak audit, dan pencarian yang
     // gagal tidak boleh jadi cara menguji keberadaan seseorang tanpa meninggalkan bekas.

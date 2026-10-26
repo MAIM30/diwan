@@ -138,7 +138,7 @@ Token membawa daftar izin. Endpoint yang butuh izin yang tidak dimiliki menjawab
 | Izin | Membuka |
 |---|---|
 | `structures:read` | `/structures`, `/terms` |
-| `people:read` | `/people`, `/people/{uuid}` |
+| `people:read` | `/people`, `/people/{uuid}`, `/people/by-phone/{phone}` |
 | `placements:read` | `/placements` |
 | `people:nik` | `/people/by-nik/{nik}` |
 
@@ -274,6 +274,16 @@ Satu orang.
 
 Lookup berdasarkan NIK utuh 16 digit. Butuh izin `people:nik`. Lihat
 [bagian 11](#11-nik-aturan-khusus) untuk aturan lengkapnya.
+
+### `GET /people/by-phone/{phone}`
+
+Lookup berdasarkan nomor HP/WhatsApp. Izinnya `people:read` biasa (BUKAN `people:nik` — nomor HP
+sudah ikut terbuka apa adanya di `/people`).
+
+> **`phone` bukan kolom unik.** Nomor kadang dipakai bersama (mis. nomor suami tercatat juga di data
+> pengurus muslimah). Nomor yang dipakai lebih dari satu orang menjawab `404 not_found` — **ambigu
+> diperlakukan sama dengan tidak ditemukan**, bukan mengembalikan salah satu secara sembarang. Jangan
+> asumsikan nomor HP selalu mengidentifikasi tepat satu orang.
 
 ### `GET /placements`
 
@@ -628,6 +638,7 @@ bila tidak perlu, jangan tulis ke log, jangan tampilkan tanpa alasan.
 | Memasang token di JavaScript browser | Token bocor; API juga tidak mengirim CORS | Panggil dari backend |
 | Mengulang `4xx` apa adanya | Membuang kuota tanpa pernah berhasil | Hanya ulangi `429` (sesuai `Retry-After`) dan `5xx` |
 | Membandingkan tanggal untuk cari periode berjalan | Salah saat periode diperpanjang | Pakai `is_current` / `current=1` |
+| Mengasumsikan `/people/by-phone/{phone}` selalu menemukan satu orang | Nomor bersama (mis. suami-istri) menjawab `404`, padahal "ada" di data | `phone` bukan kolom unik; `404` dari endpoint ini juga berarti "ambigu", bukan cuma "tidak ada" |
 
 ---
 

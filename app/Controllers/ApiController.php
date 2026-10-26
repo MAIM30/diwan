@@ -96,11 +96,15 @@ class ApiController extends Controller {
     // GET /api/v1/people?since=&cursor=&limit=
     // GET /api/v1/people/{uuid}
     // GET /api/v1/people/by-nik/{nik}
+    // GET /api/v1/people/by-phone/{phone}
     private function people(array $segments) {
         // Jalur lookup NIK dipisah SEBELUM pemeriksaan scope people:read, karena izinnya berbeda:
         // token sinkronisasi biasa boleh membaca daftar orang tapi tidak boleh membuka NIK.
         if (($segments[0] ?? '') === 'by-nik') {
             $this->peopleByNik($segments[1] ?? '');
+        }
+        if (($segments[0] ?? '') === 'by-phone') {
+            $this->peopleByPhone($segments[1] ?? '');
         }
 
         $this->api->requireScope('people:read');
@@ -144,6 +148,38 @@ class ApiController extends Controller {
         $person = $sync->personByUuid($row['uuid']);
         if (!$person) {
             $this->api->fail(404, 'not_found', 'Tidak ada pengurus dengan NIK tersebut.');
+        }
+
+        $this->api->ok($person);
+    }
+
+    // Lookup berdasarkan nomor HP/WhatsApp. BEDA dengan by-nik dalam satu hal penting: `phone` di
+    // `people` SENGAJA bukan kolom unik (nomor kadang dipakai bersama, mis. nomor suami tercatat juga
+    // di data pengurus muslimah) -- jadi nomor yang dipakai LEBIH dari satu orang diperlakukan sebagai
+    // "tidak ditemukan", bukan mengembalikan salah satu secara sembarang. Pola yang sama dengan
+    // MemberModel::findEligibleByPhone() di Portal Pengurus. Scope-nya people:read BIASA (bukan
+    // people:nik yang terpisah): nomor HP memang sudah ikut terbuka apa adanya di /people.
+    private function peopleByPhone($phone) {
+        $this->api->requireScope('people:read');
+
+        $normalized = Text::normalizePhone($phone);
+        if ($normalized === null) {
+            $this->api->fail(400, 'bad_request', 'Nomor HP/WhatsApp tidak valid.');
+        }
+
+        require_once ROOT_DIR . '/app/Models/PersonModel.php';
+        $people = new PersonModel();
+        $row = $people->findByPhone($normalized);
+
+        if (!$row) {
+            $this->api->fail(404, 'not_found', 'Tidak ada tepat satu pengurus dengan nomor itu.');
+        }
+
+        // Lingkup subtree token tetap berlaku di jalur ini juga.
+        $sync = $this->newSync();
+        $person = $sync->personByUuid($row['uuid']);
+        if (!$person) {
+            $this->api->fail(404, 'not_found', 'Tidak ada tepat satu pengurus dengan nomor itu.');
         }
 
         $this->api->ok($person);
