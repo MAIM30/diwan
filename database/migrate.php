@@ -30,7 +30,7 @@ $say = function ($m) { echo $m . "\n"; };
 foreach ([['003_pisah_nama.php', 'migrate_003_pisah_nama'], ['004_portal_pengurus.php', 'migrate_004_portal_pengurus'],
           ['005_data_diri.php', 'migrate_005_data_diri'], ['006_alamat_dan_sandi.php', 'migrate_006_alamat_dan_sandi'],
           ['007_inti_wakil_ketua.php', 'migrate_007_inti_wakil_ketua'],
-          ['008_whatsapp_kirimdev.php', 'migrate_008_whatsapp_kirimdev'],
+          ['008_whatsapp_gateway.php', 'migrate_008_whatsapp_gateway'],
           ['009_otp_ip_varbinary.php', 'migrate_009_otp_ip_varbinary'],
           ['010_biodata_submissions.php', 'migrate_010_biodata_submissions'],
           ['011_biodata_foto_drive.php', 'migrate_011_biodata_foto_drive']] as [$file, $fn]) {

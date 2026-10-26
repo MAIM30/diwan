@@ -39,7 +39,7 @@ Pengurus atau admin langsung di server, menimpa database server dengan dump penu
 
 - Apakah perubahan data cukup kecil untuk ditulis sebagai migrasi terarah (skrip PHP yang
   UPDATE/INSERT baris tertentu saja, bukan dump penuh) — ini yang lebih aman dan jadi kebiasaan
-  kita sejauh ini (lihat `database/007_inti_wakil_ketua.php`, `008_whatsapp_kirimdev.php` sebagai
+  kita sejauh ini (lihat `database/007_inti_wakil_ketua.php`, `008_whatsapp_gateway.php` sebagai
   contoh pola migrasi terarah).
 - Kalau memang perlu dump penuh (mis. impor data massal baru), **koordinasikan dulu dengan Claude**
   sebelum menimpa — perlu dicek dulu apakah ada data baru di server yang akan hilang.

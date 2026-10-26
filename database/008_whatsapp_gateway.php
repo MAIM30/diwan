@@ -1,15 +1,16 @@
 <?php
-// PATH LOKASI FILE: database/008_whatsapp_kirimdev.php
-// Migrasi 008: tabel pendukung integrasi Kirimdev (WhatsApp API).
+// PATH LOKASI FILE: database/008_whatsapp_gateway.php
+// Migrasi 008: tabel pendukung integrasi WhatsApp (WA Gateway Baileys, lihat wa-gateway/).
+// (Nama berkasnya dulu "whatsapp_kirimdev", sebelum integrasi itu diganti gateway sendiri. Skemanya tidak berubah.)
 //
 // Dipanggil dari install.php dan migrate.php. IDEMPOTEN.
 //
-//   settings           — pengaturan runtime (API key, phone_number_id, dll.)
+//   settings           — pengaturan runtime (URL + kunci WA Gateway, jeda broadcast, kunci Google Drive, dll.)
 //   otp_codes          — kode OTP untuk login Portal Pengurus via WhatsApp
-//   whatsapp_log       — catatan setiap pesan WA yang dikirim lewat Kirimdev
+//   whatsapp_log       — catatan setiap pesan WA yang dikirim lewat gateway
 
-function migrate_008_whatsapp_kirimdev(PDO $pdo, callable $say) {
-    $say("Migrasi 008: tabel integrasi Kirimdev (WhatsApp API)...");
+function migrate_008_whatsapp_gateway(PDO $pdo, callable $say) {
+    $say("Migrasi 008: tabel integrasi WhatsApp (WA Gateway)...");
 
     // --- settings ---
     $has = (int) $pdo->query("SELECT COUNT(*) FROM information_schema.tables
