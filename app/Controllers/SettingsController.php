@@ -62,6 +62,52 @@ class SettingsController extends Controller {
         $this->redirect('settings/whatsapp');
     }
 
+    public function gdrive() {
+        $this->requireLogin('super_admin');
+        $settings = $this->model('SettingModel');
+
+        $this->view('admin/settings/gdrive', [
+            'title'    => 'Pengaturan Google Drive',
+            'settings' => $settings->getMany(GoogleDrive::SETTINGS_KEYS),
+        ]);
+    }
+
+    public function gdrive_save() {
+        $this->requireLogin('super_admin');
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') $this->redirect('settings/gdrive');
+
+        $json = trim($_POST['gdrive_service_account_json'] ?? '');
+        if ($json !== '' && json_decode($json) === null) {
+            Flash::set('error', 'Isian JSON kunci service account tidak sah (gagal diurai).');
+            $this->redirect('settings/gdrive');
+        }
+
+        $settings = $this->model('SettingModel');
+        $pairs = [
+            'gdrive_service_account_json' => $json,
+            'gdrive_folder_id'            => trim($_POST['gdrive_folder_id'] ?? ''),
+        ];
+        $settings->setMany($pairs, Auth::id());
+        GoogleDrive::$settings = null;
+
+        Audit::log('settings', 0, 'update', null, ['keys' => ['gdrive_service_account_json', 'gdrive_folder_id']]);
+        Flash::set('success', 'Pengaturan Google Drive disimpan.');
+        $this->redirect('settings/gdrive');
+    }
+
+    public function gdrive_test() {
+        $this->requireLogin('super_admin');
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') $this->redirect('settings/gdrive');
+
+        $result = GoogleDrive::testCredentials();
+        if ($result['ok']) {
+            Flash::set('success', 'Kredensial sah -- berhasil mendapatkan akses token dari Google.');
+        } else {
+            Flash::set('error', 'Gagal: ' . $result['error']);
+        }
+        $this->redirect('settings/gdrive');
+    }
+
     public function whatsapp_log() {
         $this->requireLogin('super_admin');
 

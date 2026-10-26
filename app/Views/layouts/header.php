@@ -11,6 +11,8 @@ $navKey = ['placements' => 'terms'][$current] ?? $current;
 if ($current === 'units' && strpos($_GET['url'] ?? '', 'units/term') === 0) $navKey = 'terms';
 // "units/grouping" punya menu sendiri; sisa "units" (katalog) menyorot Unit Organisasi di Master Data.
 if ($current === 'units' && strpos($_GET['url'] ?? '', 'units/grouping') === 0) $navKey = 'units-grouping';
+// "settings/gdrive" punya menu sendiri, terpisah dari "settings/whatsapp".
+if ($current === 'settings' && strpos($_GET['url'] ?? '', 'settings/gdrive') === 0) $navKey = 'settings-gdrive';
 
 $pendingCount = Auth::canVerify() ? $this->model('RegistrationModel')->countPending() : 0;
 
@@ -62,6 +64,7 @@ $nav = function ($key, $href, $icon, $label, $badge = 0) use ($navKey) {
 
       <div class="nav-label">Verifikasi</div>
       <?= $nav('registrations', 'registrations', 'inbox', 'Pendaftaran', $pendingCount) ?>
+      <?= $nav('biodata', 'biodata', 'file-text', 'Biodata Pengurus') ?>
 
       <?php if (Auth::hasAnyRole(['super_admin', 'admin_struktur'])): ?>
         <div class="nav-label">Pengaturan</div>
@@ -71,6 +74,7 @@ $nav = function ($key, $href, $icon, $label, $badge = 0) use ($navKey) {
         <?= $nav('tokens', 'tokens', 'plug', 'Token API') ?>
         <?= $nav('settings', 'settings/whatsapp', 'message-circle', 'WhatsApp') ?>
         <?= $nav('broadcast', 'broadcast', 'radio', 'Broadcast WA') ?>
+        <?= $nav('settings-gdrive', 'settings/gdrive', 'file-text', 'Google Drive') ?>
       <?php endif; ?>
     </nav>
 

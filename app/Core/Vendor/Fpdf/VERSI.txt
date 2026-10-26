@@ -1,0 +1,10 @@
+FPDF 1.9 (lisensi bebas, lihat LICENSE), http://www.fpdf.org/
+Diambil dari mirror resmi penulis di GitHub: https://github.com/Setasign/FPDF
+Berkas: fpdf.php (satu kelas, tanpa Composer -- dipasang lewat require_once biasa,
+konsisten dengan prinsip proyek ini) + folder font/ (14 berkas metrik JSON untuk
+14 font inti PDF -- versi ini memuatnya dari berkas eksternal, BUKAN dari array
+bawaan di dalam kelasnya seperti versi FPDF lama; folder ini WAJIB ikut, jangan
+hapus meski terlihat seperti "data", FPDF gagal total tanpanya).
+Disimpan di proyek sendiri, bukan dimuat dari CDN/luar saat berjalan.
+Dipakai oleh app/Core/BiodataPdf.php untuk membangkitkan PDF Biodata Pengurus di memori
+(tidak pernah ditulis ke disk server -- lihat catatan di BiodataPdf.php).
