@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0f96b0">
 <title><?= e($title) ?> &middot; <?= e(APP_NAME) ?></title>
-<link rel="stylesheet" href="<?= BASEURL ?>/assets/css/app.css">
+<link rel="stylesheet" href="<?= Ui::asset('css/app.css') ?>">
 </head>
 <body>
 <main style="max-width:760px; margin:0 auto; padding:24px 16px">

@@ -3,7 +3,8 @@
 // Kerangka Portal Pengurus. Dirancang ponsel-dulu: di layar lebar ada navigasi di bilah atas; di layar
 // ponsel navigasinya berpindah ke BILAH BAWAH (mudah dijangkau ibu jari), tab aktif membesar menjadi
 // pil putih berlabel. Sengaja TANPA sidebar admin -- portal ini hanya punya empat halaman.
-// Variabel: $title, $person, $active ('beranda' | 'susunan' | 'riwayat' | 'data').
+// Variabel: $title, $person, $active ('beranda' | 'susunan' | 'riwayat' | 'data'), $hero (opsional: true
+// hanya di Beranda -- bilah atas menjadi transparan di atas latar melengkung, lihat .m-home di app.css).
 [$pre, $mName, $suf] = Ui::nameParts($person);
 $mFirst = preg_split('/\s+/u', trim($mName), -1, PREG_SPLIT_NO_EMPTY)[0] ?? $mName;
 $mItems = [
@@ -20,9 +21,9 @@ $mItems = [
 <meta name="theme-color" content="#0f96b0">
 <meta name="robots" content="noindex">
 <title><?= isset($title) ? e($title) . ' &middot; ' : '' ?>Portal Pengurus &middot; <?= e(APP_NAME) ?></title>
-<link rel="stylesheet" href="<?= BASEURL ?>/assets/css/app.css">
+<link rel="stylesheet" href="<?= Ui::asset('css/app.css') ?>">
 </head>
-<body class="m-body">
+<body class="m-body<?= !empty($hero) ? ' m-home' : '' ?>">
 
 <header class="m-top">
   <div class="m-top-in">

@@ -56,6 +56,14 @@ class Ui {
         'radio'     => '<circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49M7.76 16.24a6 6 0 0 1 0-8.49"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 19.07a10 10 0 0 1 0-14.14"/>',
     ];
 
+    // URL berkas di public/assets dengan ?v=<waktu ubah berkas>. nginx menyajikan /assets sebagai "immutable"
+    // 30 hari (deploy/nginx-diwan.conf), jadi tanpa versi ini peramban dan Cloudflare terus memakai CSS/JS lama
+    // setelah deploy -- HTML baru tampil dengan gaya lama.
+    public static function asset($path) {
+        $file = ROOT_DIR . '/public/assets/' . $path;
+        return BASEURL . '/assets/' . $path . (is_file($file) ? '?v=' . filemtime($file) : '');
+    }
+
     public static function icon($name, $size = 18, $class = '') {
         $body = self::$icons[$name] ?? self::$icons['circle'];
         return '<svg class="ic' . ($class !== '' ? ' ' . e($class) : '') . '" width="' . (int) $size . '" height="' . (int) $size

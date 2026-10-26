@@ -1,32 +1,82 @@
 <?php
 // PATH LOKASI FILE: app/Views/pengurus/index.php
 // Beranda Portal Pengurus. NIK dan nomor WA ditampilkan utuh (milik sendiri). Susunan rekan ada di halaman Susunan.
-$this->view('layouts/member_header', ['title' => $title, 'person' => $person, 'active' => 'beranda']);
+// Susunan halaman: latar atas melengkung (bilah atas + kartu profil) -> kartu sambutan (jabatan, aksi Biodata,
+// cincin progres masa jabatan) -> angka ringkas -> kartu-kartu rincian.
+$this->view('layouts/member_header', ['title' => $title, 'person' => $person, 'active' => 'beranda', 'hero' => true]);
 
 [$pre, $nameOnly, $suf] = Ui::nameParts($person);
 $periods = count(array_unique(array_column($history, 'term_id')));
 $structs = count(array_unique(array_column($history, 'structure_id')));
+
+// Nama dua warna: semua kata kecuali yang terakhir gelap, kata terakhir berwarna (nama satu kata: gelap saja).
+$words = preg_split('/\s+/u', trim($nameOnly), -1, PREG_SPLIT_NO_EMPTY) ?: [(string) $nameOnly];
+$lastWord = count($words) > 1 ? array_pop($words) : '';
+$firstWords = implode(' ', $words);
+$firstName = $words[0];
+
+$main = $current[0] ?? null;
+$life = $lives[0] ?? null;
+$gelar = trim(($pre ?: '') . ($pre && $suf ? ' · ' : '') . ($suf ?: ''));
 ?>
 
-<section class="m-hero">
+<section class="home-id">
   <?= Ui::avatar($person, 'xl') ?>
-  <div class="m-hero-main">
-    <div class="eyebrow"><?= e(Ui::greeting()) ?></div>
-    <h1><?= e($nameOnly) ?></h1>
-    <div class="titles">
-      <?php if ($pre): ?><span class="t"><small>Gelar depan</small><b><?= e($pre) ?></b></span><?php endif; ?>
-      <?php if ($suf): ?><span class="t"><small>Gelar belakang</small><b><?= e($suf) ?></b></span><?php endif; ?>
+  <div class="home-id-card">
+    <h1 class="home-name"><?= e($firstWords) ?><?= $lastWord !== '' ? ' <b>' . e($lastWord) . '</b>' : '' ?></h1>
+    <div class="home-meta">
+      <?php if ($gelar !== ''): ?><span><?= e($gelar) ?></span><?php endif; ?>
+      <?php if (!empty($person['phone'])): ?><span><?= Ui::icon('phone', 13) ?> <span class="mono"><?= e($person['phone']) ?></span></span><?php endif; ?>
+      <?php if (!empty($person['nik'])): ?><span><?= Ui::icon('shield', 13) ?> <span class="mono"><?= e($person['nik']) ?></span></span><?php endif; ?>
     </div>
-    <div class="meta-chips">
-      <?php if (!empty($person['nik'])): ?>
-        <span class="meta-chip"><?= Ui::icon('shield', 14) ?> <span class="mono"><?= e($person['nik']) ?></span></span>
-      <?php endif; ?>
-      <?php if (!empty($person['phone'])): ?>
-        <span class="meta-chip"><?= Ui::icon('phone', 14) ?> <span class="mono"><?= e($person['phone']) ?></span></span>
-      <?php endif; ?>
-      <span class="meta-chip"><?= Ui::icon('briefcase', 14) ?>
-        <?= count($current) > 0 ? count($current) . ' jabatan aktif' : 'Tidak sedang menjabat' ?></span>
+    <div class="home-id-foot">
+      <span><?= Ui::icon('calendar', 14) ?> <?= e(Ui::dateLong()) ?></span>
+      <a href="<?= BASEURL ?>/pengurus/ubah">Ubah data <?= Ui::icon('edit', 13) ?></a>
     </div>
+  </div>
+</section>
+
+<section class="home-welcome">
+  <div class="hw-main">
+    <h2 class="hw-title"><?= e(Ui::greeting()) ?>, <b><?= e($firstName) ?></b></h2>
+    <?php if ($main): ?>
+      <div class="hw-role"><?= Ui::icon('briefcase', 16) ?> <?= e($main['position_name']) ?></div>
+      <p class="hw-note">
+        <?= e($main['level'] . ' ' . $main['structure_name']) ?>
+        <?= count($current) > 1 ? ' · +' . (count($current) - 1) . ' jabatan lain' : '' ?>
+        <?php if ($life): ?> · <?= $life['late'] ? 'lewat ' . e(Ui::span(abs($life['days_left']))) : 'sisa ' . e(Ui::span($life['days_left'])) ?><?php endif; ?>
+      </p>
+    <?php else: ?>
+      <div class="hw-role"><?= Ui::icon('briefcase', 16) ?> Tidak sedang menjabat</div>
+      <p class="hw-note">Anda tidak sedang menjabat di periode berjalan.</p>
+    <?php endif; ?>
+  </div>
+
+  <?php if ($life): $pct = max(0, min(100, (int) $life['pct'])); ?>
+    <div class="hw-ring<?= $life['late'] ? ' is-late' : '' ?>">
+      <span class="hw-ring-date"><?= Ui::icon('calendar', 13) ?> <?= e(Ui::date($life['end'])) ?></span>
+      <div class="hw-ring-box" role="img" aria-label="<?= $pct ?> persen masa jabatan telah berjalan">
+        <svg viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+          <circle class="trk" cx="50" cy="50" r="42"/>
+          <circle class="bar" cx="50" cy="50" r="42" stroke-dasharray="<?= round($pct * 2.639, 1) ?> 263.9"/>
+        </svg>
+        <div class="hw-ring-num"><b><?= $pct ?>%</b><small>berjalan</small></div>
+      </div>
+      <span class="hw-ring-date"><?= Ui::icon('calendar', 13) ?> <?= e(Ui::date($life['start'])) ?></span>
+    </div>
+  <?php endif; ?>
+
+  <div class="hw-actions">
+    <div class="hw-act">
+      <a class="btn hw-btn" href="<?= BASEURL ?>/pengurus/biodata"><?= Ui::icon('file-text', 15) ?> <?= $biodata ? 'Ubah Biodata' : 'Isi Biodata' ?></a>
+      <span class="hw-sub"><?= Ui::icon('calendar', 13) ?> <?= $biodata ? 'Diperbarui ' . e(Ui::date($biodata['updated_at'])) : 'Belum diisi' ?></span>
+    </div>
+    <?php if ($biodata): ?>
+      <div class="hw-act">
+        <a class="btn hw-btn orange" href="<?= BASEURL ?>/pengurus/biodata_pdf" target="_blank" rel="noopener"><?= Ui::icon('file-text', 15) ?> Unduh PDF</a>
+        <span class="hw-sub"><?= Ui::icon($biodata['gdrive_file_id'] ? 'check' : 'clock', 13) ?> <?= $biodata['gdrive_file_id'] ? 'Terkirim ke Drive' : 'Tersimpan' ?></span>
+      </div>
+    <?php endif; ?>
   </div>
 </section>
 
@@ -73,25 +123,6 @@ $structs = count(array_unique(array_column($history, 'structure_id')));
           <?php endforeach; ?>
         </div>
       <?php endif; ?>
-    </section>
-
-    <section class="card">
-      <div class="card-head"><h2><?= Ui::icon('file-text', 19) ?> Biodata Pengurus</h2>
-        <?php if ($biodata): ?><span class="badge <?= $biodata['gdrive_file_id'] ? 'ok' : '' ?>">
-          <?= $biodata['gdrive_file_id'] ? 'Terkirim' : 'Tersimpan' ?></span><?php endif; ?>
-      </div>
-      <?php if (!$biodata): ?>
-        <p class="small muted" style="margin:0 0 10px">Lengkapi profil singkat dan pernyataan kesiapan Anda sebagai pengurus.</p>
-      <?php else: ?>
-        <p class="small muted" style="margin:0 0 10px">
-          Terakhir diperbarui <?= e(Ui::date($biodata['updated_at'])) ?>.
-          <?= $biodata['gdrive_file_id'] ? 'Sudah tersimpan di Google Drive.' : '' ?>
-        </p>
-      <?php endif; ?>
-      <div class="btn-row" style="margin-top:0">
-        <a class="btn secondary" href="<?= BASEURL ?>/pengurus/biodata"><?= Ui::icon('edit', 15) ?> <?= $biodata ? 'Lihat / Ubah' : 'Isi Sekarang' ?></a>
-        <?php if ($biodata): ?><a class="btn secondary" href="<?= BASEURL ?>/pengurus/biodata_pdf" target="_blank" rel="noopener"><?= Ui::icon('file-text', 15) ?> Unduh PDF</a><?php endif; ?>
-      </div>
     </section>
 
   </div>
