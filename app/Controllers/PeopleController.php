@@ -9,7 +9,6 @@
 // hanya dengan mengganti id di URL.
 
 class PeopleController extends Controller {
-    const MAX_PHOTO_BYTES = 3145728;      // 3 MB
 
     private function loadVisible($id) {
         $people = $this->model('PersonModel');
@@ -355,32 +354,11 @@ class PeopleController extends Controller {
             $this->redirect($back);
         }
 
-        $f = $_FILES['photo'] ?? null;
-        if (!$f || $f['error'] === UPLOAD_ERR_NO_FILE) {
-            Flash::set('error', 'Pilih berkas foto terlebih dahulu.');
-            $this->redirect($back);
-        }
-        if ($f['error'] === UPLOAD_ERR_INI_SIZE || $f['error'] === UPLOAD_ERR_FORM_SIZE || $f['size'] > self::MAX_PHOTO_BYTES) {
-            Flash::set('error', 'Ukuran foto terlalu besar. Maksimal 3 MB.');
-            $this->redirect($back);
-        }
-        if ($f['error'] !== UPLOAD_ERR_OK || !is_uploaded_file($f['tmp_name'])) {
-            Flash::set('error', 'Unggahan gagal. Silakan coba lagi.');
-            $this->redirect($back);
-        }
-
-        // Seluruh sanitasi (jenis dari ISI, batas piksel, EXIF dibuang, JPEG 512x512) ada di Photo::process,
-        // supaya impor biodata memakai pipeline yang sama persis.
-        $err = Photo::process($f['tmp_name'], ROOT_DIR . '/public/' . $rel);
+        // Seluruh sanitasi (jenis dari ISI, batas piksel, EXIF dibuang, JPEG 512x512) ada di Photo,
+        // supaya impor biodata dan unggahan pengurus sendiri memakai pipeline yang sama persis.
+        $err = Photo::fromUpload($_FILES['photo'] ?? null, ROOT_DIR . '/public/' . $rel);
         if ($err !== null) {
-            $msg = [
-                'type'   => 'Berkas bukan gambar yang didukung. Gunakan JPG, PNG, atau WebP.',
-                'small'  => 'Gambar terlalu kecil. Minimal 64 x 64 piksel.',
-                'large'  => 'Dimensi gambar terlalu besar. Kecilkan hingga sekitar 4000 x 4000 piksel.',
-                'decode' => 'Gambar tidak bisa dibaca. Coba berkas lain.',
-                'write'  => 'Foto tidak bisa disimpan di server.',
-            ][$err] ?? 'Unggahan gagal. Silakan coba lagi.';
-            Flash::set('error', $msg);
+            Flash::set('error', Photo::message($err));
             $this->redirect($back);
         }
 

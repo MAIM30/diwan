@@ -31,11 +31,22 @@ $nama = trim(($person['title_prefix'] ?? '') . ' ' . $person['name'] . ' ' . ($p
   <div class="alert error" role="alert">Ada isian yang perlu diperbaiki. Belum ada yang disimpan.</div>
 <?php endif; ?>
 
-<form method="post" action="<?= BASEURL ?>/pengurus/biodata_process" autocomplete="off">
+<form method="post" action="<?= BASEURL ?>/pengurus/biodata_process" enctype="multipart/form-data" autocomplete="off">
   <?= Csrf::field() ?>
 
   <section class="card">
     <div class="card-head"><h2><?= Ui::icon('id-card', 19) ?> A. Identitas Diri</h2></div>
+
+    <div class="photo-field">
+      <div data-photo-preview><?= Ui::avatar($person, 'xl') ?></div>
+      <div class="field">
+        <label for="photo">Foto</label>
+        <input type="file" id="photo" name="photo" accept="image/jpeg,image/png,image/webp" data-shrink-image>
+        <div class="help">JPG, PNG, atau WebP. Dipotong persegi dari tengah, dan menjadi foto profil Anda juga. Kosongkan bila tidak ingin mengganti.</div>
+        <?= $err('photo') ?>
+      </div>
+    </div>
+
     <p class="small muted" style="margin:0 0 12px">
       Diambil dari data Anda. Keliru? Ubah dulu di <a href="<?= BASEURL ?>/pengurus/ubah">Ubah Data Saya</a>, lalu kembali ke sini.
     </p>
@@ -86,12 +97,15 @@ $nama = trim(($person['title_prefix'] ?? '') . ' ' . $person['name'] . ' ' . ($p
   <section class="card">
     <div class="card-head"><h2><?= Ui::icon('shield', 19) ?> Komitmen Kesiapan Menjadi Pengurus</h2></div>
     <p class="small muted" style="margin:0 0 12px">Tandai pernyataan yang Anda pilih:</p>
-    <?php foreach ($commitmentTexts as $n => $text): ?>
-      <label class="check-row">
-        <input type="checkbox" name="commitments[]" value="<?= (int) $n ?>" <?= in_array((int) $n, $checkedList, true) ? 'checked' : '' ?>>
-        <span><?= e($text) ?></span>
-      </label>
-    <?php endforeach; ?>
+    <div class="check-list">
+      <?php foreach ($commitmentTexts as $n => $text): ?>
+        <label class="check-row">
+          <input type="checkbox" name="commitments[]" value="<?= (int) $n ?>" <?= in_array((int) $n, $checkedList, true) ? 'checked' : '' ?>>
+          <span class="check-no"><?= (int) $n ?></span>
+          <span class="check-text"><?= e($text) ?></span>
+        </label>
+      <?php endforeach; ?>
+    </div>
   </section>
 
   <section class="card">

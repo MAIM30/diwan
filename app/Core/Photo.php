@@ -12,6 +12,31 @@ class Photo {
     const MAX_PIXELS = 16000000;   // 16 MP: dekode GD ~4 byte/piksel, jaga memori
     const MIN_SIDE   = 64;
     const OUT_SIDE   = 512;
+    const MAX_BYTES  = 3145728;    // 3 MB
+
+    // Dari entri $_FILES: periksa unggahannya, lalu process(). Kode galat process() ditambah:
+    //   'none'    tidak ada berkas dipilih
+    //   'size'    lebih dari MAX_BYTES (atau melampaui batas PHP)
+    //   'upload'  unggahan gagal / bukan hasil unggahan HTTP
+    public static function fromUpload($f, $destAbs) {
+        if (!$f || $f['error'] === UPLOAD_ERR_NO_FILE) return 'none';
+        if ($f['error'] === UPLOAD_ERR_INI_SIZE || $f['error'] === UPLOAD_ERR_FORM_SIZE || $f['size'] > self::MAX_BYTES) return 'size';
+        if ($f['error'] !== UPLOAD_ERR_OK || !is_uploaded_file($f['tmp_name'])) return 'upload';
+        return self::process($f['tmp_name'], $destAbs);
+    }
+
+    public static function message($code) {
+        return [
+            'none'   => 'Pilih berkas foto terlebih dahulu.',
+            'size'   => 'Ukuran foto terlalu besar. Maksimal 3 MB.',
+            'upload' => 'Unggahan gagal. Silakan coba lagi.',
+            'type'   => 'Berkas bukan gambar yang didukung. Gunakan JPG, PNG, atau WebP.',
+            'small'  => 'Gambar terlalu kecil. Minimal 64 x 64 piksel.',
+            'large'  => 'Dimensi gambar terlalu besar. Kecilkan hingga sekitar 4000 x 4000 piksel.',
+            'decode' => 'Gambar tidak bisa dibaca. Coba berkas lain.',
+            'write'  => 'Foto tidak bisa disimpan di server.',
+        ][$code] ?? 'Unggahan gagal. Silakan coba lagi.';
+    }
 
     // Mengembalikan null bila berhasil menulis $destAbs, atau satu kode galat:
     //   'type'   bukan JPG/PNG/WebP (atau isi tak cocok dengan jenisnya)

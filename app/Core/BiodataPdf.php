@@ -76,7 +76,7 @@ class BiodataPdf {
         if ($photo) {
             $file = ROOT_DIR . '/public/' . $photo;
             if (is_file($file)) {
-                $pdf->Image($file, $pageW - 18 - 28, 16, 28, 32);
+                $pdf->Image($file, $pageW - 18 - 28, 16, 28, 28);
             }
         }
 
@@ -107,7 +107,7 @@ class BiodataPdf {
         $pdf->SetFont('Helvetica', '', 10);
         $pdf->Cell(4, 6, ':', 0, 0);
 
-        $pdf->MultiCell(0, 6, self::txt($value !== '' && $value !== null ? $value : '-'));
+        $pdf->MultiCell(0, 6, self::txt($value !== '' && $value !== null ? $value : '-'), 0, 'L');
         $yAfter = $pdf->GetY();
 
         $pdf->SetDrawColor(...self::LINE);
@@ -146,8 +146,36 @@ class BiodataPdf {
         $pdf->Ln(4);
     }
 
+    // Jumlah baris yang akan dipakai MultiCell untuk $text pada lebar $width, supaya satu pernyataan tidak
+    // terpotong di pergantian halaman (kotaknya di halaman lama, teksnya di halaman baru). Font harus
+    // sudah dipilih. 2 mm = dua kali cMargin bawaan FPDF.
+    private static function lineCount($pdf, $text, $width) {
+        $max = $width - 2.0;
+        $space = $pdf->GetStringWidth(' ');
+        $lines = 1;
+        $cur = 0;
+        foreach (explode(' ', self::txt($text)) as $word) {
+            $w = $pdf->GetStringWidth($word);
+            if ($cur > 0 && $cur + $space + $w > $max) { $lines++; $cur = $w; }
+            else $cur += ($cur > 0 ? $space : 0) + $w;
+        }
+        return $lines;
+    }
+
+    // Satu baris per pernyataan: kotak di kiri, teks di kolom tersendiri di kanannya. Baris lanjutan teks
+    // menjorok sejajar dengan baris pertamanya, tidak kembali ke bawah kotak.
     private static function commitments($pdf, array $biodata) {
         $checked = is_array($biodata['commitments'] ?? null) ? $biodata['commitments'] : [];
+        $left = 18; $box = 4; $gap = 3.5; $lineH = 5;
+        $textX = $left + $box + $gap;
+        $textW = $pdf->GetPageWidth() - 18 - $textX;
+        $bottom = $pdf->GetPageHeight() - 18;
+
+        // Delapan pernyataan dijaga satu halaman: kalau sisa halaman tak cukup untuk semuanya, mulai di halaman baru.
+        $pdf->SetFont('Helvetica', '', 9.5);
+        $blockH = 15;
+        foreach (self::COMMITMENTS as $text) $blockH += self::lineCount($pdf, $text, $textW) * $lineH + 2.5;
+        if ($pdf->GetY() + $blockH > $bottom) $pdf->AddPage();
 
         $pdf->SetFont('Helvetica', 'B', 11);
         $pdf->SetTextColor(...self::GREEN);
@@ -155,29 +183,29 @@ class BiodataPdf {
 
         $pdf->SetFont('Helvetica', 'I', 9);
         $pdf->SetTextColor(...self::MUTED);
-        $pdf->Cell(0, 6, self::txt('Tanda pada pernyataan yang dipilih:'), 0, 1);
-        $pdf->Ln(1);
+        $pdf->Cell(0, 6, self::txt('Kotak yang bertanda centang adalah pernyataan yang dipilih.'), 0, 1);
+        $pdf->Ln(2);
 
         $pdf->SetFont('Helvetica', '', 9.5);
         $pdf->SetTextColor(...self::TEXT);
         foreach (self::COMMITMENTS as $n => $text) {
             $isChecked = in_array($n, $checked, false) || in_array((string) $n, $checked, true);
             $y = $pdf->GetY();
-            $boxSize = 3.6;
 
             $pdf->SetDrawColor(...self::TEXT);
-            $pdf->SetLineWidth(0.25);
-            $pdf->Rect($pdf->GetX(), $y + 0.8, $boxSize, $boxSize);
+            $pdf->SetLineWidth(0.3);
+            $pdf->Rect($left, $y + 0.5, $box, $box);
             if ($isChecked) {
-                $pdf->SetLineWidth(0.4);
-                $x = $pdf->GetX();
-                $pdf->Line($x + 0.5, $y + 2.6, $x + 1.5, $y + 3.6);
-                $pdf->Line($x + 1.5, $y + 3.6, $x + 3.2, $y + 1.2);
+                $pdf->SetLineWidth(0.5);
+                $pdf->Line($left + 0.8, $y + 2.7, $left + 1.7, $y + 3.8);
+                $pdf->Line($left + 1.7, $y + 3.8, $left + 3.3, $y + 1.3);
             }
 
-            $pdf->SetX($pdf->GetX() + $boxSize + 2.5);
-            $pdf->MultiCell(0, 5, self::txt($text));
-            $pdf->Ln(1.5);
+            $pdf->SetLeftMargin($textX);
+            $pdf->SetX($textX);
+            $pdf->MultiCell(0, $lineH, self::txt($text), 0, 'L');
+            $pdf->SetLeftMargin($left);
+            $pdf->Ln(2.5);
         }
         $pdf->Ln(2);
     }
@@ -189,7 +217,7 @@ class BiodataPdf {
 
         $pdf->SetFont('Helvetica', 'I', 9.5);
         $pdf->SetTextColor(...self::TEXT);
-        $pdf->MultiCell(0, 5, self::txt(self::PERNYATAAN_AKHIR));
+        $pdf->MultiCell(0, 5, self::txt(self::PERNYATAAN_AKHIR), 0, 'L');
         $pdf->Ln(6);
 
         $pdf->SetFont('Helvetica', '', 10);

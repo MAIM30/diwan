@@ -331,17 +331,20 @@ class PengurusController extends Controller {
         return $current[0] ?? null;
     }
 
-    public function biodata() {
-        [$members, $person] = $this->guard();
-        $biodata = $this->model('BiodataModel');
-
+    private function biodataForm($members, $person, $existing, array $errors = []) {
         $this->view('pengurus/biodata', [
             'title'     => 'Biodata Pengurus',
             'person'    => $person,
             'placement' => $this->activePlacement($members, $person['id']),
-            'existing'  => $biodata->findByPersonId($person['id']),
+            'existing'  => $existing,
             'commitmentTexts' => BiodataPdf::COMMITMENTS,
+            'errors'    => $errors,
         ]);
+    }
+
+    public function biodata() {
+        [$members, $person] = $this->guard();
+        $this->biodataForm($members, $person, $this->model('BiodataModel')->findByPersonId($person['id']));
     }
 
     public function biodata_process() {
@@ -350,17 +353,26 @@ class PengurusController extends Controller {
 
         $model = $this->model('BiodataModel');
         $result = $model->validate($_POST);
+        $retry = array_merge($_POST, ['commitments' => array_map('intval', $_POST['commitments'] ?? [])]);
 
         if ($result['errors']) {
-            $this->view('pengurus/biodata', [
-                'title'     => 'Biodata Pengurus',
-                'person'    => $person,
-                'placement' => $this->activePlacement($members, $person['id']),
-                'existing'  => array_merge($_POST, ['commitments' => array_map('intval', $_POST['commitments'] ?? [])]),
-                'commitmentTexts' => BiodataPdf::COMMITMENTS,
-                'errors'    => $result['errors'],
-            ]);
+            $this->biodataForm($members, $person, $retry, $result['errors']);
             return;
+        }
+
+        // Foto itu opsional. Yang diunggah menjadi foto profil Anda (people.photo_path), satu-satunya
+        // salinan di aplikasi ini -- PDF membacanya dari sana, jadi tidak ada foto kedua untuk biodata.
+        $photoFile = $_FILES['photo'] ?? null;
+        if ($photoFile && $photoFile['error'] !== UPLOAD_ERR_NO_FILE) {
+            $rel = 'uploads/people/' . $person['uuid'] . '.jpg';
+            $err = Photo::fromUpload($photoFile, ROOT_DIR . '/public/' . $rel);
+            if ($err !== null) {
+                $this->biodataForm($members, $person, $retry, ['photo' => Photo::message($err)]);
+                return;
+            }
+            $this->model('PersonModel')->setPhoto($person['id'], $rel);
+            $person['photo_path'] = $rel;
+            Audit::log('people', $person['id'], 'update', null, ['event' => 'portal_photo']);
         }
 
         $row = $model->upsert($person['id'], $result['data']);

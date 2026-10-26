@@ -103,6 +103,48 @@
     inp.addEventListener('change', function () { if (inp.files && inp.files.length) inp.form.submit(); });
   });
 
+  /* ---------- Foto di formulir biodata: pratinjau + perkecil di peramban sebelum dikirim ----------
+     Foto ponsel 3-8 MB sering melampaui batas unggah server, jadi sisi terpanjang dikecilkan ke 1280 px (JPEG) lebih dulu.
+     Gagal di langkah mana pun = berkas asli dikirim apa adanya; server tetap memeriksa ulang semuanya. */
+  $$('input[type="file"][data-shrink-image]').forEach(function (inp) {
+    var box = inp.form ? $('[data-photo-preview]', inp.form) : null;
+    inp.addEventListener('change', function () {
+      var f = inp.files && inp.files[0];
+      if (!f || !/^image\/(jpeg|png|webp)$/.test(f.type)) return;
+      var url = URL.createObjectURL(f);
+      var img = new Image();
+      img.onload = function () {
+        var av = box && box.querySelector('.av');
+        if (av) {
+          var pv = document.createElement('img');
+          pv.src = url; pv.alt = '';
+          av.textContent = '';
+          av.appendChild(pv);
+        }
+        var scale = Math.min(1, 1280 / Math.max(img.naturalWidth, img.naturalHeight));
+        if (scale === 1 && f.size <= 1500000) return;
+        try {
+          var c = document.createElement('canvas');
+          c.width = Math.round(img.naturalWidth * scale);
+          c.height = Math.round(img.naturalHeight * scale);
+          var ctx = c.getContext('2d');
+          ctx.fillStyle = '#fff';
+          ctx.fillRect(0, 0, c.width, c.height);
+          ctx.drawImage(img, 0, 0, c.width, c.height);
+          c.toBlob(function (blob) {
+            if (!blob || blob.size >= f.size) return;
+            try {
+              var dt = new DataTransfer();
+              dt.items.add(new File([blob], 'foto.jpg', { type: 'image/jpeg' }));
+              inp.files = dt.files;
+            } catch (err) { /* peramban lama: kirim berkas asli */ }
+          }, 'image/jpeg', 0.88);
+        } catch (err) { /* kanvas tak tersedia: kirim berkas asli */ }
+      };
+      img.src = url;
+    });
+  });
+
   /* ---------- Pratinjau nama lengkap di formulir (gelar depan + nama + gelar belakang) ---------- */
   $$('[data-name-form]').forEach(function (form) {
     var pre = $('[data-np="prefix"]', form), nm = $('[data-np="name"]', form), suf = $('[data-np="suffix"]', form);
