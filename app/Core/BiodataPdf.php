@@ -31,7 +31,10 @@ class BiodataPdf {
     const MUTED = [85, 116, 128];
     const LINE  = [219, 232, 236];
 
+    // $photoBytes: JPEG foto yang baru diunggah, supaya tak perlu diunduh lagi dari Drive. Null = pakai foto
+    // biodata yang tersimpan di Drive, dan bila tak ada, foto profil di server.
     public static function render(array $person, ?array $placement, array $biodata, ?string $photoBytes = null) {
+        $photoBytes = $photoBytes ?? self::drivePhoto($biodata);
         $photoFile = null;
         if ($photoBytes !== null) {
             // FPDF hanya membaca gambar dari berkas; ini sementara dan dibuang begitu PDF selesai.
@@ -56,6 +59,12 @@ class BiodataPdf {
         } finally {
             if ($photoFile !== null) @unlink($photoFile);
         }
+    }
+
+    private static function drivePhoto(array $biodata) {
+        $id = $biodata['photo_gdrive_file_id'] ?? '';
+        if ($id === '' || !GoogleDrive::isConfigured()) return null;
+        return GoogleDrive::download($id);
     }
 
     private static function txt($s) {

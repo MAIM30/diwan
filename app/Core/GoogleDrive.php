@@ -19,12 +19,14 @@ class GoogleDrive {
     const SCOPE       = 'https://www.googleapis.com/auth/drive.file';
     const TIMEOUT     = 30;
     const FOLDER_NAME = 'Biodata Pengurus DIWAN';
+    const PHOTO_FOLDER_NAME = 'Foto Biodata Pengurus DIWAN';
 
     const SETTINGS_KEYS = [
         'gdrive_client_id',
         'gdrive_client_secret',
         'gdrive_refresh_token',
         'gdrive_folder_id',
+        'gdrive_photo_folder_id',
     ];
 
     public static $settings;
@@ -166,12 +168,30 @@ class GoogleDrive {
         return !$r['error'] && in_array($r['code'], [200, 204, 404], true);
     }
 
-    // Membuat folder tujuan di Drive akun yang baru terhubung. $accessToken dari exchangeCode().
-    public static function createFolder($accessToken) {
+    // Membuat folder di Drive akun yang terhubung. $accessToken dari exchangeCode() atau accessToken().
+    public static function createFolder($accessToken, $name = self::FOLDER_NAME) {
         return self::apiJson('POST', self::FILES_URL . '?fields=id', $accessToken, [
-            'name'     => self::FOLDER_NAME,
+            'name'     => $name,
             'mimeType' => 'application/vnd.google-apps.folder',
         ]);
+    }
+
+    // Foto biodata ditaruh di folder tersendiri, terpisah dari PDF. Folder itu dibuat saat foto pertama
+    // diunggah (bukan saat "Hubungkan"), jadi koneksi yang sudah berjalan tidak perlu dihubungkan ulang.
+    public static function uploadPhoto($bytes, $filename) {
+        if (!self::isConfigured()) return ['ok' => false, 'error' => 'Google Drive belum dikonfigurasi.'];
+
+        $folderId = (string) (self::settings()['gdrive_photo_folder_id'] ?? '');
+        if ($folderId === '') {
+            $tok = self::accessToken();
+            if (!$tok['ok']) return ['ok' => false, 'error' => $tok['error']];
+            $folder = self::createFolder($tok['token'], self::PHOTO_FOLDER_NAME);
+            if (!$folder['ok']) return ['ok' => false, 'error' => 'Gagal membuat folder foto di Drive: ' . $folder['error']];
+            $folderId = $folder['data']['id'];
+            (new SettingModel())->set('gdrive_photo_folder_id', $folderId);
+            self::$settings['gdrive_photo_folder_id'] = $folderId;
+        }
+        return self::upload($bytes, $filename, 'image/jpeg', $folderId);
     }
 
     public static function folderExists($accessToken, $folderId) {
@@ -181,13 +201,14 @@ class GoogleDrive {
 
     // $bytes: isi berkas mentah (string biner) -- PDF dari BiodataPdf::render() atau JPEG foto yang sudah
     // diproses Photo. Tidak pernah dibaca dari berkas simpanan di server, karena memang tidak disimpan di sana.
-    public static function upload($bytes, $filename, $mime = 'application/pdf') {
+    // $folderId: folder tujuan; bila kosong, folder PDF utama.
+    public static function upload($bytes, $filename, $mime = 'application/pdf', $folderId = null) {
         if (!self::isConfigured()) return ['ok' => false, 'error' => 'Google Drive belum dikonfigurasi.'];
 
         $tok = self::accessToken();
         if (!$tok['ok']) return ['ok' => false, 'error' => $tok['error']];
 
-        $folderId = self::settings()['gdrive_folder_id'];
+        $folderId = $folderId ?? self::settings()['gdrive_folder_id'];
         $boundary = 'diwan-' . bin2hex(random_bytes(12));
         $metadata = json_encode(['name' => $filename, 'parents' => [$folderId]], JSON_UNESCAPED_UNICODE);
 

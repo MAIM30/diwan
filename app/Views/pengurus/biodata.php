@@ -20,6 +20,7 @@ $jabatanDefault = $existing['jabatan_text'] ?? ($placement['position_name'] ?? '
 $bidangDefault = $existing['bidang_text'] ?? ($placement ? ($placement['unit_name'] ?? trim(($placement['level'] ?? '') . ' ' . ($placement['structure_name'] ?? ''))) : '');
 $checkedList = is_array($existing['commitments'] ?? null) ? array_map('intval', $existing['commitments']) : array_keys($commitmentTexts);
 $nama = trim(($person['title_prefix'] ?? '') . ' ' . $person['name'] . ' ' . ($person['title_suffix'] ?? ''));
+$hasPhoto = !empty($existing['photo_gdrive_file_id']);
 ?>
 
 <div class="page-head">
@@ -45,11 +46,20 @@ $nama = trim(($person['title_prefix'] ?? '') . ' ' . $person['name'] . ' ' . ($p
     <div class="card-head"><h2><?= Ui::icon('id-card', 19) ?> A. Identitas Diri</h2></div>
 
     <div class="photo-field">
-      <div data-photo-preview><?= Ui::avatar(array_merge($person, ['photo_path' => null]), 'xl') ?></div>
+      <div data-photo-preview>
+        <?php if ($hasPhoto): ?>
+          <span class="av av-xl"><img src="<?= BASEURL ?>/pengurus/biodata_foto?v=<?= e($existing['photo_gdrive_file_id']) ?>" alt="Foto biodata"></span>
+        <?php else: ?>
+          <?= Ui::avatar(array_merge($person, ['photo_path' => null]), 'xl') ?>
+        <?php endif; ?>
+      </div>
       <div class="field">
         <label for="photo">Foto untuk biodata</label>
         <input type="file" id="photo" name="photo" accept="image/jpeg,image/png,image/webp" data-shrink-image>
-        <div class="help">JPG, PNG, atau WebP, dipotong persegi dari tengah. Tanpa unggahan, PDF memakai foto profil Anda bila ada.</div>
+        <div class="help">
+          JPG, PNG, atau WebP, dipotong persegi dari tengah. Disimpan di Google Drive (folder foto), bukan di server.
+          <?= $hasPhoto ? 'Foto sudah tersimpan; pilih lagi hanya untuk menggantinya.' : 'Tanpa unggahan, PDF memakai foto profil Anda bila ada.' ?>
+        </div>
         <?= $err('photo') ?>
       </div>
     </div>
