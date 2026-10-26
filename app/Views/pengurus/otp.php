@@ -18,7 +18,7 @@
     <div class="auth-card">
       <span class="role-pill is-member"><?= Ui::icon('shield', 14) ?> Verifikasi</span>
       <h1>Masukkan Kode OTP</h1>
-      <p class="lead">Kode 6 digit telah dikirim ke WhatsApp <strong><?= e($maskedPhone) ?></strong>. Berlaku 5 menit.</p>
+      <p class="lead">Kode 4 digit telah dikirim ke WhatsApp <strong><?= e($maskedPhone) ?></strong>. Berlaku 5 menit.</p>
 
       <?php $this->view('layouts/flash'); ?>
 
@@ -29,9 +29,9 @@
           <label for="code">Kode OTP</label>
           <div class="input-icon">
             <?= Ui::icon('lock', 18) ?>
-            <input type="text" id="code" name="code" inputmode="numeric" pattern="[0-9]{6}"
-                   maxlength="6" autocomplete="one-time-code" required
-                   placeholder="000000" autofocus
+            <input type="text" id="code" name="code" inputmode="numeric" pattern="[0-9]{4}"
+                   maxlength="4" autocomplete="one-time-code" required
+                   placeholder="0000" autofocus
                    style="letter-spacing:.3em; font-size:1.3rem; font-weight:700; text-align:center">
           </div>
         </div>
