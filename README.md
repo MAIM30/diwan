@@ -263,17 +263,18 @@ Halaman **Data Saya > Ubah data saya** (`pengurus/ubah`). Karena sesi portal han
 
 | | Bidang | Perilaku |
 |---|---|---|
+| **Nama** | gelar depan, nama asli, gelar belakang | tampil terisi; nama asli wajib; gelar yang terlanjur diketik di kolom nama dipindah otomatis (`MemberModel::NAME_FIELDS`) |
 | **Kasar** | kelurahan/desa, kecamatan, kota/kabupaten, provinsi, tempat lahir, pekerjaan | tampil terisi; boleh diubah atau dikosongkan |
 | **Sensitif (tulis-saja)** | jalan/BTN/lorong, tanggal lahir, email, HP keluarga | **tidak ditampilkan ulang** (hanya lencana "sudah terisi"); kosong = jangan ubah; terganti hanya bila diketik yang baru |
-| **Tak bisa diubah** | nomor WhatsApp, NIK, nama & gelar, jenis kelamin | lewat admin |
+| **Tak bisa diubah** | nomor WhatsApp, NIK, jenis kelamin | lewat admin |
 
 Nomor WA dan NIK sengaja tak bisa diubah dari portal: kalau bisa, siapa pun yang tahu nomor seseorang bisa memindahkannya ke nomornya sendiri dan mengunci pemilik aslinya.
 Daftar putih kolom ada di `MemberModel::SELF_FIELDS` (kiriman lain, termasuk `id`/`person_id`/`phone`/`nik`, diabaikan); validasi **semua-atau-tidak-sama-sekali**;
 maks 10 perubahan per jam; setiap perubahan tercatat (`event: portal_edit`, nilai lama + baru) dan tampil di riwayat aktivitas profil admin
 ("Diubah sendiri oleh pengurus: ..."), tetapi disaring dari umpan dasbor. Alamat disimpan bertingkat: Jalan/BTN/Lorong (`address_text`), Kelurahan (`village`),
 Kecamatan (`district`), Kota/Kabupaten (`city`), Provinsi (`province`); keempat yang terakhir dipilih bertingkat dari data wilayah resmi (bagian berikut).
-**Perubahan merambat ke konsumen API**: email, tanggal lahir, kota, dan provinsi ada di kontrak API, jadi perubahan pengurus langsung terbaca syuro (kelurahan,
-kecamatan, jalan, HP keluarga, pekerjaan tidak).
+**Perubahan merambat ke konsumen API**: nama (gelar depan, nama asli, gelar belakang), email, tanggal lahir, kota, dan provinsi ada di kontrak API, jadi perubahan
+pengurus langsung terbaca syuro (kelurahan, kecamatan, jalan, HP keluarga, pekerjaan tidak).
 
 ### Data wilayah (domisili bertingkat)
 

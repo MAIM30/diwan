@@ -178,7 +178,8 @@ class MemberModel {
     // ---------- Ubah data sendiri ----------
     //
     // DAFTAR PUTIH kolom yang boleh diubah pengurus dari portal. Yang TIDAK ada di sini tak bisa disentuh,
-    // betapapun kiriman formulirnya (nama, gelar, jenis kelamin, status, saklar portal, id orang, ...).
+    // betapapun kiriman formulirnya (jenis kelamin, status, saklar portal, id orang, ...). Nama dan gelar
+    // punya aturan sendiri (NAME_FIELDS, diproses bersama sebagai satu kesatuan), bukan bagian dari daftar ini.
     // Khusus NOMOR WA dan NIK -- kredensial masuk -- sengaja tidak ada: sesi portal hanya bermodal nomor WA yang
     // bukan rahasia, jadi bila nomor bisa diganti dari dalam, siapa pun yang tahu nomor seseorang bisa
     // memindahkannya ke nomornya sendiri dan mengunci pemilik aslinya. Perubahan keduanya lewat admin.
@@ -196,6 +197,8 @@ class MemberModel {
         'occupation'   => ['text', 150, false],
         'family_phone' => ['phone', 20, true],
     ];
+    // Nama: gelar depan, nama asli, gelar belakang -> panjang maksimal kolomnya di people.
+    const NAME_FIELDS = ['title_prefix' => 60, 'name' => 200, 'title_suffix' => 120];
     const SELF_EDITS_PER_HOUR = 10;
 
     private static function cleanText($s) {
@@ -265,10 +268,33 @@ class MemberModel {
             }
             if ((string) $new !== (string) ($person[$col] ?? '')) $set[$col] = $new;
         }
+
+        // Nama hanya diproses bila ketiga isiannya dikirim (formulir selalu mengirim semuanya).
+        if (isset($post['title_prefix'], $post['name'], $post['title_suffix'])) {
+            foreach (self::NAME_FIELDS as $col => $max) {
+                if (!is_string($post[$col])) $errors[$col] = Ui::PROFILE_LABELS[$col] . ' tidak valid.';
+            }
+            if (!array_intersect_key(self::NAME_FIELDS, $errors)) {
+                // Gelar yang terlanjur diketik di kolom nama dipindahkan ke kolom gelarnya, sama seperti di formulir admin.
+                [$pre, $nm, $suf] = Text::normalizeNameParts(
+                    self::cleanText($post['title_prefix']), self::cleanText($post['name']), self::cleanText($post['title_suffix'])
+                );
+                if ($nm === '') $errors['name'] = 'Nama asli wajib diisi.';
+                foreach (['title_prefix' => $pre, 'name' => $nm, 'title_suffix' => $suf] as $col => $new) {
+                    if ($new !== null && mb_strlen($new) > self::NAME_FIELDS[$col]) {
+                        $errors[$col] = Ui::PROFILE_LABELS[$col] . ' terlalu panjang (maksimal ' . self::NAME_FIELDS[$col] . ' karakter).';
+                    } elseif ((string) $new !== (string) ($person[$col] ?? '')) {
+                        $set[$col] = $new;
+                    }
+                }
+            }
+        }
         if ($errors || !$set) return ['changed' => [], 'errors' => $errors];
 
         $cols = []; $vals = []; $before = [];
         foreach ($set as $c => $v) { $cols[] = "$c = ?"; $vals[] = $v; $before[$c] = $person[$c] ?? null; }
+        // name_normalized (dasar pencarian dan deteksi data ganda) harus ikut dihitung ulang dari nama asli yang baru.
+        if (isset($set['name'])) { $cols[] = 'name_normalized = ?'; $vals[] = Text::normalizeBase($set['name']); }
         $vals[] = (int) $person['id'];
         $this->db->prepare('UPDATE people SET ' . implode(', ', $cols) . ' WHERE id = ?')->execute($vals);
         // home_structure_id ikut dicatat supaya umpan aktivitas admin wilayah bisa menyaring menurut lingkupnya.

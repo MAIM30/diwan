@@ -5,12 +5,20 @@
 //
 // Sengaja TIDAK ada peringkat/penilaian ("best employee"): aplikasi ini tidak punya data kinerja, dan
 // meranking pengurus bukan fungsi sebuah registri kepengurusan.
+//
+// Kartu "Pucuk Pimpinan" (penempatan tanpa unit) disembunyikan selama pengurus juga menjabat di departemen/lembaga:
+// yang ditampilkan adalah susunan unit-unitnya. Pengurus yang HANYA di pucuk tetap melihat kartu itu, supaya halamannya tak kosong.
 $this->view('layouts/member_header', ['title' => $title, 'person' => $person, 'active' => 'susunan']);
+
+$hasUnit = false;
+foreach ($current as $c) { if (!empty($c['unit_name'])) { $hasUnit = true; break; } }
+$visible = [];
+foreach ($current as $i => $c) { if (!$hasUnit || !empty($c['unit_name'])) $visible[] = $i; }
 ?>
 
 <div class="page-head">
   <h1>Susunan</h1>
-  <span class="badge"><?= count($current) ?> tempat menjabat</span>
+  <span class="badge"><?= count($visible) ?> tempat menjabat</span>
 </div>
 
 <?php if (empty($current)): ?>
@@ -20,6 +28,7 @@ $this->view('layouts/member_header', ['title' => $title, 'person' => $person, 'a
 <?php endif; ?>
 
 <?php foreach ($current as $i => $c):
+  if (!in_array($i, $visible, true)) continue;
   $roster = $rosters[$i] ?? [];
   // Pimpinan = sampai 3 orang pertama berjabatan inti (Ketua/Sekretaris/Bendahara), urut protokoler.
   $leaders = array_slice(array_values(array_filter($roster, function ($r) { return !empty($r['is_core']); })), 0, 3);

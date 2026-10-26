@@ -203,6 +203,7 @@ class Ui {
 
     // Label kolom data diri yang boleh diubah pengurus sendiri (Portal) -- dipakai form, riwayat, dan umpan admin.
     const PROFILE_LABELS = [
+        'title_prefix' => 'Gelar depan', 'name' => 'Nama asli', 'title_suffix' => 'Gelar belakang',
         'address_text' => 'Jalan/BTN/Lorong', 'village' => 'Kelurahan/Desa', 'district' => 'Kecamatan', 'city' => 'Kota/Kabupaten',
         'province' => 'Provinsi', 'birth_place' => 'Tempat lahir', 'birth_date' => 'Tanggal lahir', 'email' => 'Email',
         'occupation' => 'Pekerjaan', 'family_phone' => 'HP keluarga',

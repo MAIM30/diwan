@@ -1,11 +1,11 @@
 <?php
 // PATH LOKASI FILE: app/Views/pengurus/index.php
 // Beranda Portal Pengurus. NIK dan nomor WA ditampilkan utuh (milik sendiri). Susunan rekan ada di halaman Susunan.
-// Susunan halaman: latar atas melengkung (bilah atas + kartu profil) -> kartu sambutan (jabatan, aksi Biodata,
-// cincin progres masa jabatan) -> angka ringkas -> kartu-kartu rincian.
+// Susunan halaman: latar atas melengkung (bilah atas + kartu identitas: salam, nama, gelar, kontak) -> kartu sambutan
+// (jabatan, aksi Biodata, cincin progres masa jabatan) -> angka ringkas -> kartu-kartu rincian.
 $this->view('layouts/member_header', ['title' => $title, 'person' => $person, 'active' => 'beranda', 'hero' => true]);
 
-[$pre, $nameOnly, $suf] = Ui::nameParts($person);
+[, $nameOnly] = Ui::nameParts($person);
 $periods = count(array_unique(array_column($history, 'term_id')));
 $structs = count(array_unique(array_column($history, 'structure_id')));
 
@@ -13,19 +13,23 @@ $structs = count(array_unique(array_column($history, 'structure_id')));
 $words = preg_split('/\s+/u', trim($nameOnly), -1, PREG_SPLIT_NO_EMPTY) ?: [(string) $nameOnly];
 $lastWord = count($words) > 1 ? array_pop($words) : '';
 $firstWords = implode(' ', $words);
-$firstName = $words[0];
+
+// Nama selalu tampil utuh; yang panjang dikecilkan hurufnya supaya tetap muat di kartu (batas panjang -> kelas ukuran).
+$nameLen = mb_strlen(trim($nameOnly));
+$nameSize = $nameLen > 34 ? ' is-xs' : ($nameLen > 24 ? ' is-s' : ($nameLen > 16 ? ' is-m' : ''));
+$gelar = Ui::titlesLine($person);
 
 $main = $current[0] ?? null;
 $life = $lives[0] ?? null;
-$gelar = trim(($pre ?: '') . ($pre && $suf ? ' · ' : '') . ($suf ?: ''));
 ?>
 
 <section class="home-id">
   <?= Ui::avatar($person, 'xl') ?>
   <div class="home-id-card">
-    <h1 class="home-name"><?= e($firstWords) ?><?= $lastWord !== '' ? ' <b>' . e($lastWord) . '</b>' : '' ?></h1>
+    <div class="home-greet"><?= e(Ui::greeting()) ?></div>
+    <h1 class="home-name<?= $nameSize ?>"><?= e($firstWords) ?><?= $lastWord !== '' ? ' <b>' . e($lastWord) . '</b>' : '' ?></h1>
+    <?php if ($gelar !== ''): ?><div class="home-titles"><?= e($gelar) ?></div><?php endif; ?>
     <div class="home-meta">
-      <?php if ($gelar !== ''): ?><span><?= e($gelar) ?></span><?php endif; ?>
       <?php if (!empty($person['phone'])): ?><span><?= Ui::icon('phone', 13) ?> <span class="mono"><?= e($person['phone']) ?></span></span><?php endif; ?>
       <?php if (!empty($person['nik'])): ?><span><?= Ui::icon('shield', 13) ?> <span class="mono"><?= e($person['nik']) ?></span></span><?php endif; ?>
     </div>
@@ -38,7 +42,6 @@ $gelar = trim(($pre ?: '') . ($pre && $suf ? ' · ' : '') . ($suf ?: ''));
 
 <section class="home-welcome">
   <div class="hw-main">
-    <h2 class="hw-title"><?= e(Ui::greeting()) ?>, <b><?= e($firstName) ?></b></h2>
     <?php if ($main): ?>
       <div class="hw-role"><?= Ui::icon('briefcase', 16) ?> <?= e($main['position_name']) ?></div>
       <p class="hw-note">
@@ -102,7 +105,7 @@ $gelar = trim(($pre ?: '') . ($pre && $suf ? ' · ' : '') . ($suf ?: ''));
               <div class="t-pos"><?= e($c['position_name']) ?>
                 <?php if ($c['is_core'] && !$c['unit_name']): ?><span class="badge core">inti</span><?php endif; ?></div>
               <div class="t-struct"><?= e($c['level'] . ' ' . $c['structure_name']) ?></div>
-              <div class="t-meta"><?= $c['unit_name'] ? e($c['unit_name']) : 'Pucuk pimpinan' ?> · Periode <?= e($c['term_name']) ?></div>
+              <div class="t-meta"><?= $c['unit_name'] ? e($c['unit_name']) . ' · ' : '' ?>Periode <?= e($c['term_name']) ?></div>
 
               <?php if ($life): $late = $life['late']; ?>
                 <?php // Progres masa jabatan: angka besar = sisa waktu; bar satu hue (tanpa gradasi merah-hijau,

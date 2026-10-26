@@ -2,7 +2,8 @@
 // PATH LOKASI FILE: app/Views/pengurus/ubah.php
 // Pengurus memperbarui data pribadinya sendiri. Variabel: $person, $errors (kolom => pesan), $old ($_POST saat galat).
 //
-// PENTING (lihat MemberModel::SELF_FIELDS): sesi portal hanya bermodal nomor WA yang bukan rahasia, jadi
+// PENTING (lihat MemberModel::SELF_FIELDS dan NAME_FIELDS): sesi portal hanya bermodal nomor WA yang bukan rahasia, jadi
+//   * NAMA (gelar depan, nama asli, gelar belakang) tampil terisi; nama asli wajib ada, gelar boleh dikosongkan;
 //   * bidang KASAR (provinsi, kota, kecamatan, kelurahan, tempat lahir, pekerjaan) tampil terisi dan bisa dikosongkan; empat yang pertama
 //     dipilih bertingkat dari data wilayah resmi (app.js, data-lokasi), dan tetap bisa diketik bila daftarnya tak bisa dimuat;
 //   * bidang SENSITIF (jalan, tanggal lahir, email, HP keluarga) TIDAK ditampilkan -- hanya diberi lencana "sudah terisi";
@@ -21,8 +22,33 @@ $mark = function ($col) use ($person) { return empty($person[$col]) ? '' : '<div
   <div class="alert error" role="alert">Ada isian yang perlu diperbaiki. Belum ada yang disimpan.</div>
 <?php endif; ?>
 
-<form method="post" action="<?= BASEURL ?>/pengurus/ubah_process" autocomplete="off" data-lokasi="<?= BASEURL ?>/lokasi">
+<form method="post" action="<?= BASEURL ?>/pengurus/ubah_process" autocomplete="off" data-lokasi="<?= BASEURL ?>/lokasi" data-name-form>
   <?= Csrf::field() ?>
+
+  <section class="card">
+    <div class="card-head"><h2><?= Ui::icon('user', 19) ?> Nama</h2></div>
+
+    <div class="name-grid">
+      <div class="field">
+        <label for="title_prefix">Gelar depan</label>
+        <input type="text" id="title_prefix" name="title_prefix" data-np="prefix" maxlength="60" value="<?= e($val('title_prefix')) ?>" placeholder="Dr. H.">
+        <?= $err('title_prefix') ?>
+      </div>
+      <div class="field">
+        <label for="name">Nama asli <span style="color:var(--danger)">*</span></label>
+        <input type="text" id="name" name="name" data-np="name" required maxlength="200" value="<?= e($val('name')) ?>">
+        <?= $err('name') ?>
+      </div>
+      <div class="field">
+        <label for="title_suffix">Gelar belakang</label>
+        <input type="text" id="title_suffix" name="title_suffix" data-np="suffix" maxlength="120" value="<?= e($val('title_suffix')) ?>" placeholder="Lc., M.A.">
+        <?= $err('title_suffix') ?>
+      </div>
+    </div>
+    <div class="name-preview" style="margin-bottom:0">
+      <span class="k">Nama lengkap</span><span class="v" data-name-preview>—</span>
+    </div>
+  </section>
 
   <section class="card">
     <div class="card-head"><h2><?= Ui::icon('map-pin', 19) ?> Domisili</h2></div>
@@ -104,7 +130,7 @@ $mark = function ($col) use ($person) { return empty($person[$col]) ? '' : '<div
   <section class="card">
     <div class="card-head"><h2><?= Ui::icon('lock', 19) ?> Yang tidak bisa diubah di sini</h2></div>
     <p class="small muted" style="margin:0">
-      Nama &amp; gelar, jenis kelamin, <strong>nomor WhatsApp</strong>, dan <strong>NIK</strong> diubah lewat admin struktur Anda.
+      Jenis kelamin, <strong>nomor WhatsApp</strong>, dan <strong>NIK</strong> diubah lewat admin struktur Anda.
     </p>
   </section>
 
