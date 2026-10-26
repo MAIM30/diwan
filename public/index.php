@@ -28,8 +28,6 @@ require_once ROOT_DIR . '/app/Core/AdminScope.php';
 require_once ROOT_DIR . '/app/Core/Audit.php';
 require_once ROOT_DIR . '/app/Core/Whatsapp.php';
 require_once ROOT_DIR . '/app/Core/WaNotify.php';
-require_once ROOT_DIR . '/app/Core/BiodataPdf.php';
-require_once ROOT_DIR . '/app/Core/GoogleDrive.php';
 require_once ROOT_DIR . '/app/Core/App.php';
 
 // Sesi: cookie dikeraskan sebisanya tanpa menuntut HTTPS di localhost.

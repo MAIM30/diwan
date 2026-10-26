@@ -75,25 +75,6 @@ $structs = count(array_unique(array_column($history, 'structure_id')));
       <?php endif; ?>
     </section>
 
-    <section class="card">
-      <div class="card-head"><h2><?= Ui::icon('file-text', 19) ?> Biodata Pengurus</h2>
-        <?php if ($biodata): ?><span class="badge <?= $biodata['gdrive_file_id'] ? 'ok' : '' ?>">
-          <?= $biodata['gdrive_file_id'] ? 'Terkirim' : 'Tersimpan' ?></span><?php endif; ?>
-      </div>
-      <?php if (!$biodata): ?>
-        <p class="small muted" style="margin:0 0 10px">Lengkapi profil singkat dan pernyataan kesiapan Anda sebagai pengurus.</p>
-      <?php else: ?>
-        <p class="small muted" style="margin:0 0 10px">
-          Terakhir diperbarui <?= e(Ui::date($biodata['updated_at'])) ?>.
-          <?= $biodata['gdrive_file_id'] ? 'Sudah tersimpan di Google Drive.' : '' ?>
-        </p>
-      <?php endif; ?>
-      <div class="btn-row" style="margin-top:0">
-        <a class="btn secondary" href="<?= BASEURL ?>/pengurus/biodata"><?= Ui::icon('edit', 15) ?> <?= $biodata ? 'Lihat / Ubah' : 'Isi Sekarang' ?></a>
-        <?php if ($biodata): ?><a class="btn secondary" href="<?= BASEURL ?>/pengurus/biodata_pdf" target="_blank" rel="noopener"><?= Ui::icon('file-text', 15) ?> Unduh PDF</a><?php endif; ?>
-      </div>
-    </section>
-
   </div>
 
   <div class="m-col">
