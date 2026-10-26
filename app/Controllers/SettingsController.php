@@ -76,22 +76,79 @@ class SettingsController extends Controller {
         $this->requireLogin('super_admin');
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') $this->redirect('settings/gdrive');
 
-        $json = trim($_POST['gdrive_service_account_json'] ?? '');
-        if ($json !== '' && json_decode($json) === null) {
-            Flash::set('error', 'Isian JSON kunci service account tidak sah (gagal diurai).');
+        $settings = $this->model('SettingModel');
+        $pairs = ['gdrive_client_id' => trim($_POST['gdrive_client_id'] ?? '')];
+        // Rahasia klien tidak pernah ditampilkan ulang di form; kolom kosong = pertahankan yang lama.
+        $secret = trim($_POST['gdrive_client_secret'] ?? '');
+        if ($secret !== '') $pairs['gdrive_client_secret'] = $secret;
+        $settings->setMany($pairs, Auth::id());
+        GoogleDrive::$settings = null;
+
+        Audit::log('settings', 0, 'update', null, ['keys' => array_keys($pairs)]);
+        Flash::set('success', 'Client ID Google disimpan. Lanjut tekan "Hubungkan Google Drive".');
+        $this->redirect('settings/gdrive');
+    }
+
+    public function gdrive_connect() {
+        $this->requireLogin('super_admin');
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') $this->redirect('settings/gdrive');
+
+        if (!GoogleDrive::hasClient()) {
+            Flash::set('error', 'Isi dan simpan Client ID + Client Secret dulu.');
+            $this->redirect('settings/gdrive');
+        }
+
+        $_SESSION['gdrive_oauth_state'] = bin2hex(random_bytes(16));
+        header('Location: ' . GoogleDrive::authUrl($_SESSION['gdrive_oauth_state']));
+        exit;
+    }
+
+    public function gdrive_callback() {
+        $this->requireLogin('super_admin');
+
+        $state = $_SESSION['gdrive_oauth_state'] ?? '';
+        unset($_SESSION['gdrive_oauth_state']);
+        if ($state === '' || !hash_equals($state, (string) ($_GET['state'] ?? ''))) {
+            Flash::set('error', 'Permintaan tidak sah atau kedaluwarsa. Ulangi dari tombol "Hubungkan Google Drive".');
+            $this->redirect('settings/gdrive');
+        }
+        if (!empty($_GET['error']) || empty($_GET['code'])) {
+            Flash::set('error', 'Persetujuan Google dibatalkan atau gagal (' . ($_GET['error'] ?? 'tanpa kode') . ').');
+            $this->redirect('settings/gdrive');
+        }
+
+        $exchange = GoogleDrive::exchangeCode($_GET['code']);
+        if (!$exchange['ok']) {
+            Flash::set('error', 'Gagal menukar kode dari Google: ' . $exchange['error']);
+            $this->redirect('settings/gdrive');
+        }
+        $refresh = $exchange['data']['refresh_token'] ?? '';
+        if ($refresh === '') {
+            Flash::set('error', 'Google tidak mengirim refresh token. Cabut akses DIWAN di myaccount.google.com/permissions lalu ulangi.');
             $this->redirect('settings/gdrive');
         }
 
         $settings = $this->model('SettingModel');
-        $pairs = [
-            'gdrive_service_account_json' => $json,
-            'gdrive_folder_id'            => trim($_POST['gdrive_folder_id'] ?? ''),
-        ];
-        $settings->setMany($pairs, Auth::id());
+        $access   = $exchange['data']['access_token'];
+        $folderId = (string) $settings->get('gdrive_folder_id', '');
+
+        // Hubungkan ulang (mis. akses sempat dicabut): pakai lagi folder lama selama masih ada, agar
+        // berkas yang sudah terkumpul tidak tercecer di dua folder.
+        if ($folderId === '' || !GoogleDrive::folderExists($access, $folderId)) {
+            $folder = GoogleDrive::createFolder($access);
+            if (!$folder['ok']) {
+                Flash::set('error', 'Terhubung, tapi gagal membuat folder di Drive: ' . $folder['error']);
+                $this->redirect('settings/gdrive');
+            }
+            $folderId = $folder['data']['id'];
+        }
+
+        $settings->setMany(['gdrive_refresh_token' => $refresh, 'gdrive_folder_id' => $folderId], Auth::id());
+        $settings->delete('gdrive_service_account_json');
         GoogleDrive::$settings = null;
 
-        Audit::log('settings', 0, 'update', null, ['keys' => ['gdrive_service_account_json', 'gdrive_folder_id']]);
-        Flash::set('success', 'Pengaturan Google Drive disimpan.');
+        Audit::log('settings', 0, 'update', null, ['event' => 'gdrive_connected']);
+        Flash::set('success', 'Google Drive terhubung. Folder "' . GoogleDrive::FOLDER_NAME . '" siap menerima PDF biodata.');
         $this->redirect('settings/gdrive');
     }
 
@@ -99,9 +156,9 @@ class SettingsController extends Controller {
         $this->requireLogin('super_admin');
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') $this->redirect('settings/gdrive');
 
-        $result = GoogleDrive::testCredentials();
+        $result = GoogleDrive::testConnection();
         if ($result['ok']) {
-            Flash::set('success', 'Kredensial sah -- berhasil mendapatkan akses token dari Google.');
+            Flash::set('success', 'Terhubung -- akses ke Google dan folder tujuan berfungsi.');
         } else {
             Flash::set('error', 'Gagal: ' . $result['error']);
         }
