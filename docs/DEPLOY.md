@@ -13,8 +13,11 @@ read-only (`~/.ssh/diwan_deploy` di server, Host alias `github-diwan`).
 2. Buka terminal di jendela VS Code Remote-SSH yang tersambung ke server.
 3. Jalankan:
    ```bash
-   cd /var/www/diwan && git pull
+   cd /var/www/diwan && git fetch origin && git merge --ff-only origin/main
    ```
+   (Dua langkah ini sengaja dipakai alih-alih `git pull`: di server ini `git pull --ff-only` pernah gagal dengan
+   "Cannot fast-forward to multiple branches" padahal konfigurasinya normal; `fetch` + `merge --ff-only` selalu
+   jelas tujuannya dan menolak bila riwayat server menyimpang.)
 4. Tidak perlu restart apa pun untuk perubahan PHP/view biasa — PHP-FPM membaca ulang file
    setiap request.
 5. Verifikasi cepat:
