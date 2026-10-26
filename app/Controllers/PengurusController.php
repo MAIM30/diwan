@@ -1,0 +1,323 @@
+<?php
+// PATH LOKASI FILE: app/Controllers/PengurusController.php
+// Portal Pengurus: pengurus melihat data kepengurusannya sendiri.
+//
+// Alur masuk: nomor WA → (bila WA Gateway aktif) OTP via WhatsApp → verifikasi → sesi.
+// Bila gateway belum dikonfigurasi, masuk langsung seperti sebelumnya (tanpa OTP).
+
+class PengurusController extends Controller {
+
+    private function noStore() {
+        header('Cache-Control: no-store, max-age=0');
+        header('Pragma: no-cache');
+    }
+
+    // ---------- Masuk / keluar ----------
+
+    public function login() {
+        $this->noStore();
+        if (Member::check()) {
+            $this->redirect('pengurus');
+        }
+        $this->view('pengurus/login', ['title' => 'Masuk Pengurus', 'otpEnabled' => Whatsapp::isConfigured()]);
+    }
+
+    public function login_process() {
+        $this->noStore();
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            $this->redirect('pengurus/login');
+        }
+
+        if (!PORTAL_ENABLED) {
+            Flash::set('error', 'Portal Pengurus sedang tidak tersedia. Silakan coba lagi nanti.');
+            $this->redirect('pengurus/login');
+        }
+
+        $throttle = new MemberThrottle();
+        if ($throttle->isLocked()) {
+            Flash::set('error', 'Terlalu banyak percobaan gagal. Silakan coba lagi nanti.');
+            $this->redirect('pengurus/login');
+        }
+
+        $raw = trim((string) ($_POST['wa'] ?? ''));
+        $digits = preg_replace('/\D+/', '', $raw);
+        $members = $this->model('MemberModel');
+        if (strlen($digits) === 16) {
+            $person = $members->findEligibleByNik($digits);
+        } else {
+            if (Text::normalizePhone($raw) === null) {
+                Flash::set('error', 'Nomor WhatsApp tidak valid. Tulis seperti 08123456789.');
+                $this->redirect('pengurus/login');
+            }
+            $person = $members->findEligibleByPhone($raw);
+        }
+
+        if (!$person) {
+            $throttle->recordFailure();
+            $_SESSION['daftar_phone'] = $raw;
+            Flash::set('info', 'Nomor ini belum tercatat sebagai pengurus. Silakan daftarkan diri Anda terlebih dahulu.');
+            $this->redirect('daftar');
+        }
+
+        // Bila WA Gateway aktif, kirim OTP dan alihkan ke halaman verifikasi.
+        if (Whatsapp::isConfigured()) {
+            $phone = $person['phone'];
+            $code  = Whatsapp::sendOtp($person['id'], $phone);
+            if ($code === false) {
+                Flash::set('error', 'Gagal mengirim kode OTP. Silakan coba lagi.');
+                $this->redirect('pengurus/login');
+            }
+            $_SESSION['otp_pending'] = [
+                'person_id' => (int) $person['id'],
+                'phone'     => $phone,
+                'sent_at'   => time(),
+            ];
+            $this->redirect('pengurus/otp');
+            return;
+        }
+
+        // Fallback: tanpa WA Gateway, masuk langsung.
+        Member::login($person);
+        $members->recordLogin($person['id']);
+        $this->redirect('pengurus');
+    }
+
+    public function otp() {
+        $this->noStore();
+        if (Member::check()) $this->redirect('pengurus');
+        if (empty($_SESSION['otp_pending'])) $this->redirect('pengurus/login');
+
+        $phone = $_SESSION['otp_pending']['phone'] ?? '';
+        $masked = Text::maskPhone($phone);
+        $this->view('pengurus/otp', ['title' => 'Verifikasi OTP', 'maskedPhone' => $masked]);
+    }
+
+    public function otp_verify() {
+        $this->noStore();
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') $this->redirect('pengurus/login');
+        if (empty($_SESSION['otp_pending'])) $this->redirect('pengurus/login');
+
+        $throttle = new MemberThrottle();
+        if ($throttle->isLocked()) {
+            unset($_SESSION['otp_pending']);
+            Flash::set('error', 'Terlalu banyak percobaan gagal. Silakan coba lagi nanti.');
+            $this->redirect('pengurus/login');
+        }
+
+        $pending = $_SESSION['otp_pending'];
+        $code    = trim((string) ($_POST['code'] ?? ''));
+
+        // OTP berlaku 5 menit sejak dikirim.
+        if (time() - (int) $pending['sent_at'] > 300) {
+            unset($_SESSION['otp_pending']);
+            Flash::set('error', 'Kode OTP sudah kedaluwarsa. Silakan masuk ulang.');
+            $this->redirect('pengurus/login');
+        }
+
+        $personId = Whatsapp::verifyOtp($pending['phone'], $code);
+        if ($personId === false || $personId !== (int) $pending['person_id']) {
+            $throttle->recordFailure();
+            Flash::set('error', 'Kode OTP tidak valid. Periksa kembali kode yang dikirim ke WhatsApp Anda.');
+            $this->redirect('pengurus/otp');
+        }
+
+        unset($_SESSION['otp_pending']);
+        $members = $this->model('MemberModel');
+        $person  = $members->findEligibleById($personId);
+        if (!$person) {
+            Flash::set('error', 'Akses tidak lagi tersedia.');
+            $this->redirect('pengurus/login');
+        }
+
+        Member::login($person);
+        $members->recordLogin($person['id']);
+        $this->redirect('pengurus');
+    }
+
+    public function otp_resend() {
+        $this->noStore();
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') $this->redirect('pengurus/login');
+        if (empty($_SESSION['otp_pending'])) $this->redirect('pengurus/login');
+
+        $pending = $_SESSION['otp_pending'];
+
+        // Batas kirim ulang: minimal 60 detik sejak OTP sebelumnya.
+        if (time() - (int) $pending['sent_at'] < 60) {
+            Flash::set('info', 'Tunggu sebentar sebelum mengirim ulang kode.');
+            $this->redirect('pengurus/otp');
+        }
+
+        $code = Whatsapp::sendOtp($pending['person_id'], $pending['phone']);
+        if ($code === false) {
+            Flash::set('error', 'Gagal mengirim ulang kode OTP.');
+            $this->redirect('pengurus/otp');
+        }
+
+        $_SESSION['otp_pending']['sent_at'] = time();
+        Flash::set('success', 'Kode OTP baru telah dikirim ke WhatsApp Anda.');
+        $this->redirect('pengurus/otp');
+    }
+
+    // POST + CSRF (diverifikasi App): keluar lewat GET bisa dipicu orang lain lewat <img src>.
+    public function logout() {
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            $this->redirect('pengurus');
+        }
+        Member::logout(); // sesi sudah diganti ID-nya: pesan di bawah dibawa oleh sesi baru itu
+        Flash::set('success', 'Anda sudah keluar.');
+        $this->redirect('pengurus/login');
+    }
+
+    // ---------- Halaman (semuanya bertumpu pada sesi) ----------
+
+    // Pintu masuk setiap halaman. Memeriksa ULANG kelayakan di basis data pada setiap permintaan:
+    // bila admin mencabut akses, menonaktifkan, atau menghapus orang ini, sesi yang masih hidup
+    // pun ikut mati saat itu juga -- bukan baru setelah kedaluwarsa.
+    private function guard() {
+        $this->requireMember();
+        $members = $this->model('MemberModel');
+        $person = $members->findEligibleById(Member::id());
+
+        if (!$person) {
+            Member::logout();
+            Flash::set('error', 'Akses Anda ke Portal Pengurus tidak lagi tersedia. Hubungi admin struktur Anda.');
+            $this->redirect('pengurus/login');
+        }
+        Member::touch();
+        return [$members, $person];
+    }
+
+    public function index() {
+        [$members, $person] = $this->guard();
+
+        $history = $members->history($person['id']);
+        $current = $members->currentOf($history);
+
+        // Rantai struktur di-cache per struktur supaya orang yang rangkap di struktur sama tidak
+        // mengulang query. Progres masa jabatan dihitung per jabatan aktif.
+        $chains = [];
+        $lives = [];
+        foreach ($current as $i => $c) {
+            $sid = (int) $c['structure_id'];
+            if (!isset($chains[$sid])) $chains[$sid] = $members->structureChain($sid);
+            $lives[$i] = MemberModel::life($c);
+        }
+
+        $this->view('pengurus/index', [
+            'title'   => 'Beranda',
+            'person'  => $person,
+            'history' => $history,
+            'current' => $current,
+            'chains'  => $chains,
+            'lives'   => $lives,
+            'missing' => $members->missingFields($person),
+            'logins'  => $members->loginHistory($person['id'], 6),
+        ]);
+    }
+
+    // Susunan tempat saya menjabat: pimpinan (kluster) + rekan lainnya. Hanya nama + jabatan.
+    public function susunan() {
+        [$members, $person] = $this->guard();
+
+        $history = $members->history($person['id']);
+        $current = $members->currentOf($history);
+
+        $rosters = [];
+        foreach ($current as $c) {
+            $rosters[] = $members->colleagues($c, $person['id']);
+        }
+
+        $this->view('pengurus/susunan', [
+            'title'   => 'Susunan',
+            'person'  => $person,
+            'current' => $current,
+            'rosters' => $rosters,
+        ]);
+    }
+
+    // Riwayat jabatan: linimasa (Gantt) + daftar. Penyaring lewat parameter ?f= (bukan JavaScript),
+    // jadi halaman tetap berfungsi tanpa JS dan tautannya bisa dibagikan.
+    public function riwayat() {
+        [$members, $person] = $this->guard();
+        $history = $members->history($person['id']);
+        $today = date('Y-m-d');
+
+        // Berjalan = periode berjalan DAN belum berakhir -- definisi yang sama dengan beranda.
+        $isNow = function ($h) use ($today) {
+            return !empty($h['is_current']) && (empty($h['end_date']) || $h['end_date'] >= $today);
+        };
+        $counts = ['semua' => count($history), 'berjalan' => 0, 'arsip' => 0];
+        foreach ($history as $h) $counts[$isNow($h) ? 'berjalan' : 'arsip']++;
+
+        $f = $_GET['f'] ?? 'semua';
+        if (!isset($counts[$f])) $f = 'semua';
+        $shown = array_values(array_filter($history, function ($h) use ($f, $isNow) {
+            return $f === 'semua' || ($f === 'berjalan') === $isNow($h);
+        }));
+
+        // Baris linimasa: tanggal akhir kosong dianggap "sampai hari ini" supaya batangnya tetap tergambar.
+        $rows = [];
+        foreach ($shown as $h) {
+            [$start, $end] = MemberModel::range($h);
+            if (!$start) continue;
+            $rows[] = [
+                'label'   => $h['position_name'] . ' · ' . $h['level'],   // ringkas di grafik; tingkat membedakan baris
+                'title'   => $h['position_name'],                          // penuh di tooltip & tabel
+                'sub'     => trim($h['level'] . ' ' . $h['structure_name'] . ($h['unit_name'] ? ' · ' . $h['unit_name'] : '')),
+                'start'   => $start,
+                'end'     => $end && $end >= $start ? $end : max($start, $today),
+                'current' => $isNow($h),
+            ];
+        }
+
+        $this->view('pengurus/riwayat', [
+            'title'    => 'Riwayat Jabatan',
+            'person'   => $person,
+            'history'  => $shown,
+            'counts'   => $counts,
+            'filter'   => $f,
+            'gantt'    => Chart::gantt($rows, 'Linimasa jabatan: ' . count($rows) . ' penempatan'),
+        ]);
+    }
+
+    // ---------- Ubah data sendiri ----------
+
+    public function ubah() {
+        [, $person] = $this->guard();
+        $this->view('pengurus/ubah', ['title' => 'Ubah Data Saya', 'person' => $person, 'errors' => [], 'old' => []]);
+    }
+
+    public function ubah_process() {
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') $this->redirect('pengurus/ubah');
+        [$members, $person] = $this->guard();
+
+        // Batas kewajaran: kiriman beruntun hampir pasti otomatis atau iseng, bukan orang yang merapikan datanya.
+        if ($members->selfEditCountSince($person['id'], 60) >= MemberModel::SELF_EDITS_PER_HOUR) {
+            Flash::set('error', 'Terlalu banyak perubahan dalam satu jam terakhir. Coba lagi nanti.');
+            $this->redirect('pengurus/ubah');
+        }
+
+        $result = $members->updateOwnProfile($person, $_POST);
+        if ($result['errors']) {
+            // Ditampilkan ulang di halaman yang sama dengan isian yang baru diketik (yang kosong tetap kosong).
+            $this->view('pengurus/ubah', ['title' => 'Ubah Data Saya', 'person' => $person, 'errors' => $result['errors'], 'old' => $_POST]);
+            return;
+        }
+        if (!$result['changed']) {
+            Flash::set('info', 'Tidak ada yang berubah.');
+            $this->redirect('pengurus/ubah');
+        }
+        Flash::set('success', 'Data diperbarui: ' . implode(', ', array_map('mb_strtolower', array_intersect_key(Ui::PROFILE_LABELS, array_flip($result['changed'])))) . '.');
+        $this->redirect('pengurus/data');
+    }
+
+    public function data() {
+        [$members, $person] = $this->guard();
+
+        $this->view('pengurus/data', [
+            'title'   => 'Data Saya',
+            'person'  => $person,
+            'members' => $members,
+        ]);
+    }
+}

@@ -1,0 +1,4 @@
+SweetAlert2 11.26.25 (MIT), https://sweetalert2.github.io/
+Diambil dari paket npm sweetalert2@11.26.25 (rilis 2026-05-23); integritas tarball diverifikasi terhadap registry: sha512-+hunCOJdJ6FLj04T9YSLvvZXRjsvIkTeTKP2e4VF8CaBias961BTnWiSFAy7F/CM5eq3QK2Rraoc5Gzftslvkg==
+Berkas: dist/sweetalert2.all.min.js (JS + CSS dalam satu berkas).
+Disimpan di proyek sendiri, bukan dimuat dari CDN saat berjalan.

@@ -1,0 +1,16 @@
+# Folder unggahan: hanya melayani gambar. Berkas di sini TIDAK PERNAH boleh dieksekusi sebagai
+# kode -- foto profil sudah ditulis ulang sebagai JPEG oleh PeopleController::photo(), dan aturan ini
+# menjadi lapis kedua bila suatu saat ada berkas lain yang masuk lewat jalur berbeda.
+Options -Indexes -ExecCGI
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php7.c>
+    php_flag engine off
+</IfModule>
+<FilesMatch "\.(php|phtml|phar|php[0-9]|pl|py|cgi|sh)$">
+    Require all denied
+</FilesMatch>
+<FilesMatch "\.(jpe?g|png|webp)$">
+    Header set X-Content-Type-Options "nosniff"
+</FilesMatch>

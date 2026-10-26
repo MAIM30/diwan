@@ -1,0 +1,34 @@
+# WA Gateway
+wa-gateway/node_modules/
+wa-gateway/auth_state/
+
+# Environment / server-only secrets
+.env
+config/config.local.php
+
+# Data pribadi pengurus (dokumen SK, foto, hasil analisis ad-hoc) -- jangan pernah ikut repo
+storage/sk/
+public/uploads/people/
+deploy/dump/
+
+# Dump basis data mentah di root (data produksi/legacy, besar & sensitif)
+/db_fruwit.sql
+/wahdah_muktamar.sql
+*.sql.gz
+
+# Cache lokal (dibangun ulang otomatis)
+storage/cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Logs
+*.log

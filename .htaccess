@@ -1,0 +1,34 @@
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Paksa HTTPS khusus domain produksi (localhost tidak terpengaruh). Cek juga X-Forwarded-Proto
+    # supaya tidak looping bila server berada di belakang proxy/CDN.
+    RewriteCond %{HTTP_HOST} ^pengurus\.wahdah\.or\.id$ [NC]
+    RewriteCond %{HTTPS} off
+    RewriteCond %{HTTP:X-Forwarded-Proto} !https
+    RewriteCond %{REQUEST_URI} !/\.well-known/(acme-challenge|pki-validation|cpanel-dcv)/
+    RewriteRule ^(.*)$ https://pengurus.wahdah.or.id/$1 [R=301,L]
+
+    # Blokir akses langsung ke kode, konfigurasi, dan skrip utilitas database
+    RewriteRule ^(app|config|database|storage)(/|$) - [F,L]
+    RewriteRule \.(md|me|ps1|sql|log)$ - [F,L]
+    RewriteRule (^|/)\.(?!well-known) - [F,L]
+
+    # Berkas statis di dalam public/ tetap bisa diakses tanpa awalan /public
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^(assets/.*|uploads/.*|\.well-known/.*|favicon\.ico)$ public/$1 [L]
+
+    # Selain itu (rute aplikasi), teruskan ke front controller di public/ beserta URL aslinya
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^(.*)$ public/index.php?url=$1 [QSA,L]
+</IfModule>
+
+# Header Authorization perlu diteruskan ke PHP untuk autentikasi token API pada mode CGI/FastCGI,
+# yang pada sebagian hosting tidak meneruskannya secara bawaan.
+<IfModule mod_setenvif.c>
+    SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
+</IfModule>
