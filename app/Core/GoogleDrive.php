@@ -178,19 +178,25 @@ class GoogleDrive {
 
     // Foto biodata ditaruh di folder tersendiri, terpisah dari PDF. Folder itu dibuat saat foto pertama
     // diunggah (bukan saat "Hubungkan"), jadi koneksi yang sudah berjalan tidak perlu dihubungkan ulang.
+    // ID folder tersimpan bisa usang (folder terhapus/masuk sampah, atau Drive dihubungkan ke akun lain):
+    // bila unggahan gagal DAN folder itu memang sudah tak ada, dibuat folder baru lalu dicoba sekali lagi.
     public static function uploadPhoto($bytes, $filename) {
         if (!self::isConfigured()) return ['ok' => false, 'error' => 'Google Drive belum dikonfigurasi.'];
 
+        $tok = self::accessToken();
+        if (!$tok['ok']) return ['ok' => false, 'error' => $tok['error']];
+
         $folderId = (string) (self::settings()['gdrive_photo_folder_id'] ?? '');
-        if ($folderId === '') {
-            $tok = self::accessToken();
-            if (!$tok['ok']) return ['ok' => false, 'error' => $tok['error']];
-            $folder = self::createFolder($tok['token'], self::PHOTO_FOLDER_NAME);
-            if (!$folder['ok']) return ['ok' => false, 'error' => 'Gagal membuat folder foto di Drive: ' . $folder['error']];
-            $folderId = $folder['data']['id'];
-            (new SettingModel())->set('gdrive_photo_folder_id', $folderId);
-            self::$settings['gdrive_photo_folder_id'] = $folderId;
+        if ($folderId !== '') {
+            $up = self::upload($bytes, $filename, 'image/jpeg', $folderId);
+            if ($up['ok'] || self::folderExists($tok['token'], $folderId)) return $up;
         }
+
+        $folder = self::createFolder($tok['token'], self::PHOTO_FOLDER_NAME);
+        if (!$folder['ok']) return ['ok' => false, 'error' => 'Gagal membuat folder foto di Drive: ' . $folder['error']];
+        $folderId = $folder['data']['id'];
+        (new SettingModel())->set('gdrive_photo_folder_id', $folderId);
+        self::$settings['gdrive_photo_folder_id'] = $folderId;
         return self::upload($bytes, $filename, 'image/jpeg', $folderId);
     }
 

@@ -35,7 +35,8 @@ $this->view('layouts/header', ['title' => $title]);
           <td class="nowrap">
             <a class="btn small secondary" href="<?= BASEURL ?>/biodata/pdf/<?= e($r['uuid']) ?>" target="_blank" rel="noopener">Unduh</a>
             <?php if (!$r['gdrive_file_id']): ?>
-              <form method="post" action="<?= BASEURL ?>/biodata/resend" style="display:inline">
+              <form method="post" action="<?= BASEURL ?>/biodata/resend" style="display:inline"
+                    data-loading="Mengirim ke Google Drive..." data-loading-text="Mohon tunggu sebentar.">
                 <?= Csrf::field() ?>
                 <input type="hidden" name="uuid" value="<?= e($r['uuid']) ?>">
                 <button type="submit" class="btn small secondary">Kirim ke Drive</button>

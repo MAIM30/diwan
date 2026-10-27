@@ -40,7 +40,7 @@
       </form>
 
       <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px">
-        <form method="post" action="<?= BASEURL ?>/pengurus/otp_resend">
+        <form method="post" action="<?= BASEURL ?>/pengurus/otp_resend" data-loading="Mengirim ulang kode..." data-loading-text="Kode dikirim lewat WhatsApp Anda.">
           <?= Csrf::field() ?>
           <button type="submit" class="btn-link small">Kirim ulang kode</button>
         </form>

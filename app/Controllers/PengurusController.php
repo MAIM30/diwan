@@ -410,14 +410,13 @@ class PengurusController extends Controller {
             ['event' => 'portal_biodata', 'person_id' => $person['id'], 'photo_replaced' => $photoDriveId !== null]);
 
         if (GoogleDrive::isConfigured()) {
-            if (!empty($previous['gdrive_file_id'])) {
-                GoogleDrive::delete($previous['gdrive_file_id']);
-            }
             $pdfBytes = BiodataPdf::render($person, $this->activePlacement($members, $person['id']), $row, $photoBytes);
             $filename = 'Biodata_' . $person['name'] . '_' . $row['uuid'] . '.pdf';
             $up = GoogleDrive::upload($pdfBytes, $filename);
             if ($up['ok']) {
                 $model->markDriveUpload($row['id'], $up['file_id'], $up['url']);
+                // PDF lama dihapus hanya setelah yang baru berhasil: bila unggahan gagal, berkas lama tetap ada dan statusnya tetap benar.
+                if (!empty($previous['gdrive_file_id'])) GoogleDrive::delete($previous['gdrive_file_id']);
                 Flash::set('success', 'Biodata disimpan dan terkirim ke Google Drive.');
             } else {
                 Flash::set('warn', 'Biodata disimpan, tapi gagal dikirim ke Google Drive: ' . $up['error']);

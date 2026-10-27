@@ -39,7 +39,8 @@ $hasPhoto = !empty($existing['photo_gdrive_file_id']);
   </div>
 <?php endif; ?>
 
-<form method="post" action="<?= BASEURL ?>/pengurus/biodata_process" enctype="multipart/form-data" autocomplete="off">
+<form method="post" action="<?= BASEURL ?>/pengurus/biodata_process" enctype="multipart/form-data" autocomplete="off"
+      data-loading="Menyimpan biodata..." data-loading-text="Sedang mengirim ke Google Drive. Mohon tunggu, jangan tutup halaman.">
   <?= Csrf::field() ?>
 
   <section class="card">

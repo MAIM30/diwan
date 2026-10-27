@@ -24,7 +24,7 @@
 
       <?php $this->view('layouts/flash'); ?>
 
-      <form method="post" action="<?= BASEURL ?>/pengurus/login_process">
+      <form method="post" action="<?= BASEURL ?>/pengurus/login_process"<?= !empty($otpEnabled) ? ' data-loading="Mengirim kode OTP..." data-loading-text="Kode dikirim lewat WhatsApp Anda."' : '' ?>>
         <?= Csrf::field() ?>
 
         <div class="field">

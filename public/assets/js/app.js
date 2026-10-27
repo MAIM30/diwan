@@ -213,18 +213,21 @@
       });
     });
 
-    // Formulir yang memanggil WA Gateway dan bisa butuh beberapa detik:
-    // <form data-loading="Pesan..."> menampilkan jendela loading supaya tidak terlihat macet.
-    // Tidak dipakai bersamaan dengan data-confirm pada form yang sama.
+    // Formulir yang memanggil layanan luar (WA Gateway, Google Drive) dan bisa butuh beberapa detik:
+    // <form data-loading="Judul..." data-loading-text="Keterangan (opsional)"> menampilkan jendela loading
+    // supaya tidak terlihat macet. Tidak dipakai bersamaan dengan data-confirm pada form yang sama.
     $$('form[data-loading]').forEach(function (form) {
       form.addEventListener('submit', function () {
         swal.fire({
           title: form.getAttribute('data-loading'),
+          text: form.getAttribute('data-loading-text') || undefined,
           allowOutsideClick: false, allowEscapeKey: false, showConfirmButton: false,
           didOpen: function () { swal.showLoading(); }
         });
       });
     });
+    // Tombol Kembali memulihkan halaman dari cache dengan jendela loading masih terbuka: tutup, agar tidak tampak macet.
+    window.addEventListener('pageshow', function (e) { if (e.persisted && swal.isVisible()) swal.close(); });
   }
 
   /* ---------- Domisili bertingkat: provinsi -> kota/kabupaten -> kecamatan -> kelurahan/desa ----------
