@@ -10,6 +10,7 @@ class Whatsapp {
         'wa_gateway_key',
         'wa_broadcast_delay_min',
         'wa_broadcast_delay_max',
+        'wa_qr_display_minutes',
     ];
 
     public static $settings;
@@ -158,6 +159,12 @@ class Whatsapp {
 
     public static function testConnection() {
         return self::request('GET', 'status');
+    }
+
+    public static function requestPairingCode($phone) {
+        $phone = Text::normalizePhone($phone);
+        if ($phone === null) return ['ok' => false, 'error' => 'Nomor WhatsApp tidak valid.', 'data' => null];
+        return self::request('POST', 'pairing-code', ['phone' => $phone], 30);
     }
 
     public static function formatPhone($phone) {

@@ -12,10 +12,19 @@ class SettingsController extends Controller {
     public function whatsapp() {
         $this->requireLogin('super_admin');
         $settings = $this->model('SettingModel');
+        $pairingCode = null;
+        $pairingPhone = null;
+        if (!empty($_SESSION['wa_pairing_code']) && (int) ($_SESSION['wa_pairing_expires'] ?? 0) > time()) {
+            $pairingCode = $_SESSION['wa_pairing_code'];
+            $pairingPhone = $_SESSION['wa_pairing_phone'] ?? null;
+        }
+        unset($_SESSION['wa_pairing_code'], $_SESSION['wa_pairing_phone'], $_SESSION['wa_pairing_expires']);
 
         $this->view('admin/settings/whatsapp', [
             'title'    => 'Pengaturan WhatsApp',
             'settings' => $settings->getMany(Whatsapp::SETTINGS_KEYS),
+            'pairingCode' => $pairingCode,
+            'pairingPhone' => $pairingPhone,
         ]);
     }
 
@@ -32,6 +41,7 @@ class SettingsController extends Controller {
             'wa_gateway_key'          => trim($_POST['wa_gateway_key'] ?? ''),
             'wa_broadcast_delay_min'  => (string) $delayMin,
             'wa_broadcast_delay_max'  => (string) $delayMax,
+            'wa_qr_display_minutes'   => (string) min(10, max(1, (int) ($_POST['wa_qr_display_minutes'] ?? 5))),
         ];
 
         $settings->setMany($pairs, Auth::id());
@@ -39,6 +49,30 @@ class SettingsController extends Controller {
 
         Audit::log('settings', 0, 'update', null, ['keys' => array_keys($pairs)]);
         Flash::set('success', 'Pengaturan WhatsApp disimpan.');
+        $this->redirect('settings/whatsapp');
+    }
+
+    public function whatsapp_pair() {
+        $this->requireLogin('super_admin');
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') $this->redirect('settings/whatsapp');
+        if (!Whatsapp::isConfigured()) {
+            Flash::set('error', 'URL Gateway dan API Key harus diisi dulu.');
+            $this->redirect('settings/whatsapp');
+        }
+        $phone = Text::normalizePhone($_POST['pair_phone'] ?? '');
+        if ($phone === null) {
+            Flash::set('error', 'Masukkan nomor WhatsApp dengan kode negara, misalnya 62812xxxxxxx.');
+            $this->redirect('settings/whatsapp');
+        }
+        $result = Whatsapp::requestPairingCode($phone);
+        if (empty($result['ok']) || empty($result['data']['code'])) {
+            Flash::set('error', 'Kode pasangan tidak bisa dibuat: ' . ($result['error'] ?? 'Gateway tidak memberikan kode.'));
+            $this->redirect('settings/whatsapp');
+        }
+        $_SESSION['wa_pairing_code'] = (string) $result['data']['code'];
+        $_SESSION['wa_pairing_phone'] = $phone;
+        $_SESSION['wa_pairing_expires'] = time() + 180;
+        Flash::set('success', 'Kode pasangan berhasil dibuat. Masukkan kode ini di WhatsApp pada ponsel yang nomornya dipilih.');
         $this->redirect('settings/whatsapp');
     }
 

@@ -66,6 +66,36 @@ class RegistrationModel {
         )->fetchColumn();
     }
 
+    // Untuk saran di formulir publik: hanya kembalikan identitas minimum dari orang tanpa nomor WA.
+    public function peopleWithoutPhoneByName($query, $offset = 0) {
+        $needle = Text::normalizeBase($query);
+        if (mb_strlen($needle) < 3) return ['items' => [], 'has_more' => false];
+        $words = preg_split('/\s+/u', $needle, -1, PREG_SPLIT_NO_EMPTY);
+        if (!$words) return ['items' => [], 'has_more' => false];
+        $conditions = [];
+        $params = [':exact' => $needle, ':prefix' => $needle . '%'];
+        foreach ($words as $i => $word) {
+            $key = ':word' . $i;
+            $conditions[] = "p.name_normalized LIKE $key";
+            $params[$key] = '%' . addcslashes($word, '%_\\') . '%';
+        }
+        $stmt = $this->db->prepare("
+            SELECT p.id, p.title_prefix, p.name, p.title_suffix, p.full_name, p.gender,
+                   s.level AS origin_level, s.name AS origin_name
+            FROM people p
+            LEFT JOIN structures s ON s.id = p.home_structure_id
+            WHERE p.deleted_at IS NULL AND (p.phone IS NULL OR p.phone = '')
+              AND " . implode(' AND ', $conditions) . "
+            ORDER BY (p.name_normalized = :exact) DESC,
+                     (p.name_normalized LIKE :prefix) DESC, p.full_name
+            LIMIT 51 OFFSET " . max(0, (int) $offset) . "
+        ");
+        $stmt->execute($params);
+        $items = $stmt->fetchAll();
+        $hasMore = count($items) > 50;
+        return ['items' => array_slice($items, 0, 50), 'has_more' => $hasMore];
+    }
+
     // Menyimpan pengajuan dari formulir publik. Pencocokan duplikat dijalankan DI SINI supaya
     // verifikator sudah melihat calon duplikatnya sejak pengajuan masuk, bukan baru saat menyetujui.
     public function submit(array $data) {
@@ -87,6 +117,31 @@ class RegistrationModel {
 
         $match = $people->matchCandidates($fullName, $nik);
         $matchedId = count($match['candidates']) === 1 ? (int) $match['candidates'][0]['id'] : null;
+        $selectedPersonId = (int) ($data['selected_person_id'] ?? 0);
+        $extraData = !empty($data['notes']) ? ['catatan' => $data['notes']] : [];
+        if ($selectedPersonId > 0) {
+            $selected = $this->db->prepare("SELECT id, name_normalized, gender, phone FROM people WHERE id = :id AND deleted_at IS NULL");
+            $selected->execute([':id' => $selectedPersonId]);
+            $person = $selected->fetch();
+            if (!$person || !empty($person['phone'])
+                || $person['name_normalized'] !== Text::normalizeBase($fullName)
+                || $person['gender'] !== ($data['gender'] ?? '')) {
+                throw new RuntimeException('Nama pilihan tidak cocok atau sudah memiliki nomor WA. Cari dan pilih kembali nama yang benar.');
+            }
+            $matchedId = $selectedPersonId;
+            $match['confidence'] = 'exact';
+            $extraData['registrant_selected_person_id'] = $selectedPersonId;
+        }
+
+        // Cegah pengiriman ulang pengajuan yang sama. Nomor WA yang sama tetap boleh dipakai
+        // oleh orang berbeda; yang dibandingkan di sini adalah nomor DAN nama dasar.
+        $samePhone = $this->db->prepare("SELECT full_name FROM registration_requests WHERE phone = :phone AND status IN ('submitted','verified','activated')");
+        $samePhone->execute([':phone' => $phone]);
+        foreach ($samePhone->fetchAll(PDO::FETCH_COLUMN) as $existingName) {
+            if (Text::normalizeBase($existingName) === Text::normalizeBase($fullName)) {
+                throw new RuntimeException('Pengajuan dengan nama dan nomor WhatsApp ini sudah pernah dikirim. Silakan hubungi admin struktur tujuan.');
+            }
+        }
 
         // full_name adalah kolom turunan (gabungan tiga bagian), jadi tidak ikut di INSERT.
         $stmt = $this->db->prepare("
@@ -108,7 +163,7 @@ class RegistrationModel {
             ':email'      => !empty($data['email']) ? trim($data['email']) : null,
             ':birth'      => !empty($data['birth_date']) ? $data['birth_date'] : null,
             ':nik'        => $nik,
-            ':extra'      => !empty($data['notes']) ? json_encode(['catatan' => $data['notes']], JSON_UNESCAPED_UNICODE) : null,
+            ':extra'      => $extraData ? json_encode($extraData, JSON_UNESCAPED_UNICODE) : null,
             ':structure'  => (int) $data['target_structure_id'],
             ':term'       => !empty($data['target_term_id']) ? (int) $data['target_term_id'] : null,
             ':unit'       => !empty($data['target_unit_id']) ? (int) $data['target_unit_id'] : null,
@@ -174,6 +229,7 @@ class RegistrationModel {
         require_once ROOT_DIR . '/app/Models/PlacementModel.php';
         $people = new PersonModel();
         $placements = new PlacementModel();
+        $extra = !empty($reg['extra_data']) ? (json_decode($reg['extra_data'], true) ?: []) : [];
 
         $this->db->beginTransaction();
         try {
@@ -181,10 +237,22 @@ class RegistrationModel {
                 // Dipakaikan ke orang yang sudah ada. Biodata yang sudah tercatat TIDAK ditimpa
                 // oleh isian formulir -- data master biasanya lebih lengkap dan sudah terverifikasi.
                 $finalPersonId = (int) $personId;
+                if ((int) ($extra['registrant_selected_person_id'] ?? 0) === $finalPersonId) {
+                    // Pada tautan yang dipilih pendaftar, nomor WA melengkapi kolom kosong saja.
+                    // Bila data berubah sejak pengajuan, jangan menimpa nomor yang sudah diperbarui.
+                    $fillPhone = $this->db->prepare("UPDATE people SET phone = :phone WHERE id = :id AND deleted_at IS NULL AND (phone IS NULL OR phone = '')");
+                    $fillPhone->execute([':phone' => $reg['phone'], ':id' => $finalPersonId]);
+                    if ($fillPhone->rowCount() === 0) {
+                        $checkPhone = $this->db->prepare("SELECT phone FROM people WHERE id = :id AND deleted_at IS NULL");
+                        $checkPhone->execute([':id' => $finalPersonId]);
+                        if ($checkPhone->fetchColumn() !== $reg['phone']) {
+                            throw new RuntimeException('Nomor WA orang yang dipilih sudah berubah sejak pengajuan. Periksa data orang sebelum mengaktifkan.');
+                        }
+                    }
+                }
             } else {
                 // Biodata tambahan yang dibawa pengajuan (mis. dari impor formulir biodata) ikut menjadi
                 // data orang baru. Hanya kunci yang dikenal yang disalin; sisanya tetap di extra_data.
-                $extra = !empty($reg['extra_data']) ? (json_decode($reg['extra_data'], true) ?: []) : [];
                 $profil = is_array($extra['profil'] ?? null) ? $extra['profil'] : [];
                 $carry = [];
                 foreach (['birth_place', 'city', 'address_text', 'occupation', 'family_phone'] as $k) {

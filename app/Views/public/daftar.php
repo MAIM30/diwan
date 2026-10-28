@@ -34,6 +34,15 @@ if (!empty($_SESSION['daftar_phone'])) {
     <form method="post" action="<?= BASEURL ?>/daftar/submit" data-name-form>
       <?= Csrf::field() ?>
 
+      <div class="field">
+        <label for="person_search">Cari nama yang sudah terdaftar</label>
+        <input type="hidden" id="existing_person_id" name="existing_person_id" value="">
+        <input type="search" id="person_search" autocomplete="off" placeholder="Ketik minimal 3 huruf nama pengurus...">
+        <div id="person-results" class="autocomplete-list"></div>
+        <div class="help">Cari dengan sebagian nama; kata-katanya tidak harus berurutan. Daftar hanya menampilkan pengurus yang belum memiliki nomor WA dan dapat dimuat bertahap. Jika nama ditemukan, pilih agar pengajuan tertaut ke data yang sudah ada. Jika tidak ditemukan, isi nama seperti biasa di bawah.</div>
+        <div id="person-selected" class="help" style="display:none;color:var(--success)"></div>
+      </div>
+
       <div class="name-grid">
         <div class="field">
           <label for="title_prefix">Gelar depan</label>
@@ -84,6 +93,108 @@ if (!empty($_SESSION['daftar_phone'])) {
 
 <script>
 (function () {
+  var personSearch = document.getElementById('person_search');
+  var personId = document.getElementById('existing_person_id');
+  var personResults = document.getElementById('person-results');
+  var personSelected = document.getElementById('person-selected');
+  var searchTimer = null;
+  var searchRequest = null;
+  var choosingPerson = false;
+  var loadingMorePeople = false;
+
+  function addPersonOption(person) {
+    var item = document.createElement('div');
+    item.className = 'autocomplete-item';
+    var strong = document.createElement('strong');
+    strong.textContent = person.full_name;
+    var gender = document.createElement('span');
+    gender.className = 'muted small';
+    gender.textContent = person.gender === 'P' ? ' · Perempuan' : ' · Laki-laki';
+    item.appendChild(strong);
+    item.appendChild(gender);
+    var origin = document.createElement('div');
+    origin.className = 'muted small';
+    origin.textContent = person.origin_name ? ((person.origin_level || '') + ' ' + person.origin_name).trim() : 'Struktur asal belum dicatat';
+    item.appendChild(origin);
+    item.addEventListener('mousedown', function (e) {
+      e.preventDefault();
+      choosingPerson = true;
+      personId.value = person.id;
+      document.getElementById('title_prefix').value = person.title_prefix || '';
+      document.getElementById('name').value = person.name || '';
+      document.getElementById('title_suffix').value = person.title_suffix || '';
+      document.getElementById('gender').value = person.gender;
+      document.getElementById('name').dispatchEvent(new Event('input', { bubbles: true }));
+      personSearch.value = person.full_name;
+      personSelected.textContent = 'Nama terhubung ke data pengurus yang sudah ada.';
+      personSelected.style.display = 'block';
+      personResults.style.display = 'none';
+      choosingPerson = false;
+    });
+    personResults.appendChild(item);
+  }
+
+  function searchPeople(q, offset) {
+    if (searchRequest) searchRequest.abort();
+    searchRequest = new AbortController();
+    loadingMorePeople = offset > 0;
+    fetch('<?= BASEURL ?>/daftar/cariNama?q=' + encodeURIComponent(q) + '&offset=' + offset, { signal: searchRequest.signal })
+      .then(function (response) { return response.json(); })
+      .then(function (data) {
+        if (offset === 0) personResults.innerHTML = '';
+        var items = data.items || [];
+        if (offset === 0 && !items.length) {
+          var empty = document.createElement('div');
+          empty.className = 'autocomplete-item muted';
+          empty.textContent = 'Tidak ada nama tanpa nomor WA yang cocok.';
+          personResults.appendChild(empty);
+        } else {
+          items.forEach(addPersonOption);
+        }
+        if (data.has_more) {
+          var more = document.createElement('button');
+          more.type = 'button';
+          more.className = 'autocomplete-item';
+          more.textContent = 'Muat 50 nama berikutnya';
+          more.addEventListener('mousedown', function (e) { e.preventDefault(); });
+          more.addEventListener('click', function () {
+            if (!loadingMorePeople) searchPeople(q, offset + items.length);
+          });
+          personResults.appendChild(more);
+        }
+        loadingMorePeople = false;
+        personResults.style.display = 'block';
+      })
+      .catch(function (error) { loadingMorePeople = false; if (error.name !== 'AbortError') personResults.style.display = 'none'; });
+  }
+
+  personSearch.addEventListener('input', function () {
+    personId.value = '';
+    personSelected.style.display = 'none';
+    var q = personSearch.value.trim();
+    clearTimeout(searchTimer);
+    if (searchRequest) searchRequest.abort();
+    if (q.length < 3) { personResults.style.display = 'none'; return; }
+    searchTimer = setTimeout(function () { searchPeople(q, 0); }, 250);
+  });
+
+  personSearch.addEventListener('blur', function () {
+    setTimeout(function () { personResults.style.display = 'none'; }, 150);
+  });
+
+  ['title_prefix', 'name', 'title_suffix', 'gender'].forEach(function (id) {
+    document.getElementById(id).addEventListener('input', function () {
+      if (choosingPerson || !personId.value) return;
+      personId.value = '';
+      personSelected.textContent = 'Nama berubah. Cari dan pilih kembali agar tertaut ke data yang benar.';
+    });
+    document.getElementById(id).addEventListener('change', function () {
+      if (choosingPerson || !personId.value) return;
+      personId.value = '';
+      personSelected.textContent = 'Data berubah. Cari dan pilih kembali agar tertaut ke data yang benar.';
+    });
+  });
+
   var structures = <?php
     $list = [];
     foreach ($structures as $s) {

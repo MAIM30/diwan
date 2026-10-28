@@ -24,6 +24,9 @@ $this->view('layouts/header', ['title' => $title]);
     <tr><th>Jenis Kelamin</th><td><?= $reg['gender'] === 'P' ? 'Perempuan' : 'Laki-laki' ?>
       <?php if (!empty($extra['gender_dugaan'])): ?><span class="badge core">diduga dari nama &mdash; konfirmasi saat mengaktifkan</span><?php endif; ?></td></tr>
     <tr><th>Nomor WA</th><td class="mono"><?= e($reg['phone']) ?></td></tr>
+    <?php if (!empty($extra['registrant_selected_person_id'])): ?>
+      <tr><th>Tautan nama</th><td>Pengaju memilih data pengurus yang sudah ada. Pastikan kecocokannya sebelum mengaktifkan.</td></tr>
+    <?php endif; ?>
     <tr><th>Email</th><td><?= e($reg['email'] ?: '—') ?></td></tr>
     <tr><th>Tanggal Lahir</th><td><?= e($reg['birth_date'] ?: '—') ?></td></tr>
     <tr>
@@ -145,18 +148,19 @@ $this->view('layouts/header', ['title' => $title]);
         <div class="field">
           <label>Identitas orang</label>
           <label class="check">
-            <input type="radio" name="person_mode" value="new" checked>
+            <input type="radio" name="person_mode" value="new" <?= empty($extra['registrant_selected_person_id']) ? 'checked' : '' ?>>
             <span>Daftarkan sebagai <strong>orang baru</strong></span>
           </label>
           <?php foreach ($match['candidates'] as $c): ?>
             <label class="check">
               <input type="radio" name="person_mode" value="existing"
+                     <?= (int) ($extra['registrant_selected_person_id'] ?? 0) === (int) $c['id'] ? 'checked' : '' ?>
                      onclick="document.getElementById('existing_person_id').value='<?= (int) $c['id'] ?>'">
               <span>Ini orang yang <strong>sudah ada</strong>: <?= Ui::nameHtml($c) ?>
                 <span class="muted">(biodata yang sudah tercatat tidak akan ditimpa)</span></span>
             </label>
           <?php endforeach; ?>
-          <input type="hidden" id="existing_person_id" name="existing_person_id" value="">
+          <input type="hidden" id="existing_person_id" name="existing_person_id" value="<?= (int) ($extra['registrant_selected_person_id'] ?? 0) ?>">
         </div>
 
         <?php if (!empty($extra['gender_dugaan'])): ?>

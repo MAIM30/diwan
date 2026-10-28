@@ -27,6 +27,8 @@ const DEFAULT_DELAY_MAX = 15;
 let sock = null;
 let qrCode = null;
 let connectionStatus = 'disconnected'; // disconnected | connecting | open
+let pairingRequested = false;
+let pairingTimeout = null;
 
 // Cache pesan terkirim agar getMessage bisa mengembalikannya saat protokol WA minta ulang (retry/relay)
 const sentMessages = new Map();
@@ -64,7 +66,7 @@ async function startWhatsApp() {
   sock.ev.on('connection.update', (update) => {
     const { connection, lastDisconnect, qr } = update;
 
-    if (qr) {
+    if (qr && !pairingRequested) {
       qrCode = qr;
       connectionStatus = 'connecting';
       console.log('[WA] QR code diperbarui — buka http://localhost:' + PORT + '/qr untuk scan');
@@ -73,6 +75,9 @@ async function startWhatsApp() {
     if (connection === 'close') {
       connectionStatus = 'disconnected';
       qrCode = null;
+      pairingRequested = false;
+      if (pairingTimeout) clearTimeout(pairingTimeout);
+      pairingTimeout = null;
 
       const statusCode = (lastDisconnect?.error)?.output?.statusCode;
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
@@ -89,6 +94,9 @@ async function startWhatsApp() {
     if (connection === 'open') {
       connectionStatus = 'open';
       qrCode = null;
+      pairingRequested = false;
+      if (pairingTimeout) clearTimeout(pairingTimeout);
+      pairingTimeout = null;
       console.log('[WA] Terhubung!');
     }
   });
@@ -117,8 +125,43 @@ app.get('/status', authMiddleware, (req, res) => {
   });
 });
 
+// Kode pasangan alternatif untuk menghubungkan perangkat tanpa memindai QR.
+// Hanya boleh diminta saat socket baru menunggu proses tautan, bukan saat sesi sudah terdaftar.
+app.post('/pairing-code', authMiddleware, async (req, res) => {
+  const phone = String(req.body.phone || '').replace(/\D/g, '');
+  if (!/^\d{10,15}$/.test(phone) || !phone.startsWith('62')) {
+    return res.status(400).json({ ok: false, error: 'Nomor harus memakai kode negara, misalnya 62812xxxxxxx.' });
+  }
+  if (!sock || connectionStatus !== 'connecting' || !qrCode || sock.authState?.creds?.registered) {
+    return res.status(409).json({ ok: false, error: 'Gateway belum siap untuk ditautkan. Pastikan koneksi sedang menunggu QR atau kode pasangan.' });
+  }
+  if (pairingRequested) {
+    return res.status(409).json({ ok: false, error: 'Permintaan kode pasangan sedang diproses. Tunggu hasilnya atau mulai ulang gateway.' });
+  }
+
+  pairingRequested = true;
+  qrCode = null;
+  try {
+    const code = await sock.requestPairingCode(phone);
+    pairingTimeout = setTimeout(() => {
+      if (pairingRequested && connectionStatus !== 'open') {
+        pairingRequested = false;
+        console.log('[WA] Sesi kode pasangan berakhir; menunggu QR terbaru.');
+      }
+      pairingTimeout = null;
+    }, 120000);
+    res.json({ ok: true, code });
+  } catch (err) {
+    pairingRequested = false;
+    if (pairingTimeout) clearTimeout(pairingTimeout);
+    pairingTimeout = null;
+    console.error('[WA] Gagal membuat kode pasangan:', err.message);
+    res.status(500).json({ ok: false, error: 'WhatsApp gagal membuat kode pasangan. Tunggu QR baru lalu coba lagi.' });
+  }
+});
+
 // Kerangka halaman QR -- satu tampilan konsisten untuk ketiga kondisi (terhubung/menunggu/scan).
-function qrPage({ badge, badgeTone, title, body, reloadMs }) {
+function qrPage({ badge, badgeTone, title, body, reloadMs, displayMinutes = 0 }) {
   return `<!doctype html>
 <html lang="id"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -177,7 +220,27 @@ function qrPage({ badge, badgeTone, title, body, reloadMs }) {
     <h1>${title}</h1>
     ${body}
   </div>
-  ${reloadMs ? `<script>setTimeout(function(){location.reload()},${reloadMs})</script>` : ''}
+  ${reloadMs ? `<script>
+    (function () {
+      var interval = ${reloadMs};
+      var duration = ${Math.max(0, displayMinutes) * 60000};
+      if (!duration) { setTimeout(function () { location.reload(); }, interval); return; }
+      var key = 'diwan-wa-qr-display-start';
+      var started = Number(sessionStorage.getItem(key) || 0);
+      if (!started) { started = Date.now(); sessionStorage.setItem(key, String(started)); }
+      var remaining = duration - (Date.now() - started);
+      if (remaining <= 0) {
+        var qr = document.querySelector('.qr-wrap');
+        if (qr) qr.style.display = 'none';
+        var instructions = document.querySelector('.qr-instructions');
+        if (instructions) instructions.style.display = 'none';
+        var expired = document.querySelector('.qr-expired');
+        if (expired) expired.style.display = 'block';
+        return;
+      }
+      setTimeout(function () { location.reload(); }, Math.min(interval, remaining));
+    })();
+  </script>` : ''}
 </body></html>`;
 }
 
@@ -210,20 +273,26 @@ app.get('/qr', (req, res) => {
     }));
   }
 
+  const displayMinutes = Math.min(10, Math.max(1, parseInt(req.query.minutes, 10) || 5));
   QRCode.toDataURL(qrCode, { width: 480, margin: 1 }).then(dataUrl => {
     res.send(qrPage({
       badge: 'Menunggu scan', badgeTone: TONE_WAIT,
       title: 'Hubungkan WhatsApp',
       body: `
         <div class="qr-wrap"><img src="${dataUrl}" alt="Kode QR WhatsApp"></div>
-        <ol>
+        <ol class="qr-instructions">
           <li>Buka <b>WhatsApp</b> di HP yang jadi perangkat pengirim</li>
           <li>Ketuk <b>Titik tiga (⋮) → Perangkat tertaut</b></li>
           <li>Ketuk <b>Tautkan perangkat</b>, lalu arahkan kamera ke kode di atas</li>
         </ol>
-        <p class="foot">Kode diperbarui otomatis setiap 20 detik</p>
+        <p class="foot">QR berubah otomatis setiap sekitar 20 detik. Halaman pemindaian tersedia ${displayMinutes} menit.</p>
+        <div class="qr-expired" style="display:none;margin-top:14px;padding:12px;border-radius:10px;background:var(--warn-bg);color:var(--warn)">
+          Waktu pemindaian ${displayMinutes} menit selesai. Tekan tombol untuk memulai sesi tampilan baru dengan QR terbaru.
+          <button type="button" onclick="sessionStorage.removeItem('diwan-wa-qr-display-start');location.reload()" style="display:block;margin:12px auto 0;padding:9px 14px;border:0;border-radius:8px;background:#0f96b0;color:#fff;font-weight:700">Mulai lagi</button>
+        </div>
       `,
       reloadMs: 20000,
+      displayMinutes,
     }));
   });
 });
@@ -323,6 +392,9 @@ app.post('/reset', authMiddleware, async (req, res) => {
 
   connectionStatus = 'disconnected';
   qrCode = null;
+  pairingRequested = false;
+  if (pairingTimeout) clearTimeout(pairingTimeout);
+  pairingTimeout = null;
   sentMessages.clear();
 
   if (existsSync(AUTH_DIR)) {
