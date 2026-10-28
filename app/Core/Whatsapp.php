@@ -116,7 +116,15 @@ class Whatsapp {
         $db->prepare("INSERT INTO otp_codes (person_id, phone, code, expires_at, ip) VALUES (:pid, :ph, :code, :exp, :ip)")
            ->execute([':pid' => (int) $personId, ':ph' => $phone, ':code' => $code, ':exp' => $expiry, ':ip' => Text::clientIp()]);
 
-        $text = '*' . $code . '* adalah kode verifikasi DIWAN Anda. Berlaku 5 menit. Jangan berikan kode ini kepada siapa pun.';
+        $stmt = $db->prepare("SELECT name, gender FROM people WHERE id = :id LIMIT 1");
+        $stmt->execute([':id' => (int) $personId]);
+        $person = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        $name = trim($person['name'] ?? '') ?: 'Pengurus';
+        $honorific = ($person['gender'] ?? 'L') === 'P' ? 'Ustazah' : 'Ustaz';
+        $text = "Assalamu 'alaykum {$honorific} {$name},\n\n"
+              . "Kode OTP antum adalah *{$code}*.\n"
+              . "Kode berlaku 5 menit. Jangan berikan kode ini kepada siapa pun.\n\n"
+              . "Barokallohu Fikum.";
         $body = [
             'target'  => $phone,
             'message' => $text,

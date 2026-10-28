@@ -156,7 +156,7 @@ class TermModel {
     // halaman daftar langsung berguna ("periode mana yang sudah terisi, mana yang masih kosong").
     public function allInScope() {
         return $this->db->query("
-            SELECT t.*, s.level, s.name AS structure_name,
+            SELECT t.*, s.level, s.wing, s.name AS structure_name,
                    s.path AS structure_path, s.tier AS structure_tier,
                    gp.id AS governance_period_id, gp.name AS shared_period_name,
                    (SELECT COUNT(*) FROM placements pl

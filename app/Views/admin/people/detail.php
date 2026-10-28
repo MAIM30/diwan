@@ -49,6 +49,9 @@ $dash = '<span class="muted">—</span>';
     <?php if (Auth::canEdit()): ?>
       <div class="actions" style="display:flex;gap:8px;flex-wrap:wrap">
         <a class="btn secondary" href="<?= BASEURL ?>/people/form/<?= (int) $person['id'] ?>"><?= Ui::icon('edit', 16) ?> Ubah Data</a>
+        <?php if (!empty($availableTerms)): ?>
+          <button class="btn" type="button" data-placement-modal-open><?= Ui::icon('briefcase', 16) ?> Tambah Jabatan</button>
+        <?php endif; ?>
         <?php if ($person['photo_path']): ?>
           <form class="inline" method="post" action="<?= BASEURL ?>/people/photo" data-confirm="Hapus foto profil ini?" onsubmit="return confirm(this.dataset.confirm)">
             <?= Csrf::field() ?>
@@ -74,6 +77,131 @@ $dash = '<span class="muted">—</span>';
     <?php endif; ?>
   </div>
 </div>
+
+<?php if (Auth::canEdit() && !empty($availableTerms)): ?>
+<dialog class="biodata-roster-modal placement-modal" id="placement-modal" aria-labelledby="placement-modal-title">
+  <div class="page-head">
+    <h2 id="placement-modal-title">Tambah Jabatan untuk <?= e(Ui::fullName($person)) ?></h2>
+    <button type="button" class="btn small secondary" data-placement-modal-close>Tutup</button>
+  </div>
+  <form method="post" action="<?= BASEURL ?>/placements/save" id="placement-modal-form">
+    <?= Csrf::field() ?>
+    <input type="hidden" name="id" value="0">
+    <input type="hidden" name="person_id" value="<?= (int) $person['id'] ?>">
+    <input type="hidden" name="gender" value="<?= e($person['gender']) ?>">
+    <input type="hidden" name="base_term_id" id="placement-modal-base-term" value="">
+    <input type="hidden" name="target_term_id" id="placement-modal-target-term" value="">
+    <input type="hidden" name="return_to_person_detail" value="1">
+
+    <div class="field">
+      <label for="placement-modal-structure">Struktur dan Periode</label>
+      <select id="placement-modal-structure" required>
+        <option value="">— pilih struktur —</option>
+        <?php foreach ($availableTerms as $availableTerm): ?>
+          <option value="<?= (int) $availableTerm['id'] ?>">
+            <?= e($availableTerm['level'] . ' · ' . $availableTerm['structure_name'] . ' · ' . $availableTerm['shared_period_name'] . (!empty($availableTerm['is_current']) ? ' (berjalan)' : ' (periode lain)')) ?>
+          </option>
+        <?php endforeach; ?>
+      </select>
+      <div class="help">Daftar mencakup seluruh struktur dalam lingkup akses Anda. Periode berjalan ditampilkan lebih dahulu.</div>
+    </div>
+
+    <div class="grid-2">
+      <div class="field">
+        <label for="placement-modal-unit">Unit Organisasi (SKUO)</label>
+        <select id="placement-modal-unit" name="structure_unit_id" disabled>
+          <option value="">PENGURUS INTI (tingkat struktur, tanpa unit)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="placement-modal-position">Jabatan</label>
+        <select id="placement-modal-position" name="position_id" required disabled>
+          <option value="">— pilih jabatan —</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="check"><input type="checkbox" name="is_primary" value="1"><span>Jadikan penempatan utama di periode ini</span></label>
+    </div>
+    <div class="grid-2">
+      <div class="field"><label for="placement-modal-start">Mulai Menjabat</label><input type="date" id="placement-modal-start" name="start_date"></div>
+      <div class="field"><label for="placement-modal-sk">Rujukan SK</label><input type="text" id="placement-modal-sk" name="sk_reference" maxlength="190"></div>
+    </div>
+    <div class="field"><label for="placement-modal-notes">Catatan</label><textarea id="placement-modal-notes" name="notes" rows="2"></textarea></div>
+    <div class="actions"><button class="btn" type="submit" id="placement-modal-submit" disabled>Simpan Jabatan</button><button class="btn secondary" type="button" data-placement-modal-close>Batal</button></div>
+  </form>
+</dialog>
+<script>
+(function () {
+  var dialog = document.getElementById('placement-modal');
+  var structure = document.getElementById('placement-modal-structure');
+  var unit = document.getElementById('placement-modal-unit');
+  var position = document.getElementById('placement-modal-position');
+  var baseTerm = document.getElementById('placement-modal-base-term');
+  var targetTerm = document.getElementById('placement-modal-target-term');
+  var submit = document.getElementById('placement-modal-submit');
+  if (!dialog || !structure || !unit || !position) return;
+
+  document.addEventListener('click', function (event) {
+    if (event.target.closest('[data-placement-modal-open]')) dialog.showModal();
+    if (event.target.closest('[data-placement-modal-close]')) dialog.close();
+  });
+  dialog.addEventListener('click', function (event) { if (event.target === dialog) dialog.close(); });
+
+  function refreshPositions() {
+    var context = unit.value ? 'unit' : 'structure';
+    Array.prototype.forEach.call(position.options, function (option) {
+      if (!option.value) return;
+      var appliesTo = option.getAttribute('data-applies-to');
+      option.hidden = appliesTo !== 'both' && appliesTo !== context;
+      option.disabled = option.hidden;
+    });
+    if (position.selectedOptions[0] && position.selectedOptions[0].disabled) position.value = '';
+    submit.disabled = !structure.value || !position.value;
+  }
+
+  structure.addEventListener('change', function () {
+    var termId = structure.value;
+    baseTerm.value = targetTerm.value = termId;
+    unit.disabled = position.disabled = true;
+    unit.innerHTML = '<option value="">Memuat SKUO...</option>';
+    position.innerHTML = '<option value="">Memuat jabatan...</option>';
+    submit.disabled = true;
+    if (!termId) return;
+    fetch(<?= json_encode(BASEURL . '/placements/options/') ?> + encodeURIComponent(termId) + '/' + encodeURIComponent(termId), {
+      credentials: 'same-origin', headers: { Accept: 'application/json' }
+    }).then(function (response) {
+      if (!response.ok) throw new Error('Pilihan struktur gagal dimuat.');
+      return response.json();
+    }).then(function (data) {
+      unit.innerHTML = '<option value="">PENGURUS INTI (tingkat struktur, tanpa unit)</option>';
+      data.units.forEach(function (item) {
+        var option = document.createElement('option');
+        option.value = item.id;
+        option.textContent = (item.group_name ? item.group_name + ' — ' : '') + (item.display_name || item.catalog_name);
+        unit.appendChild(option);
+      });
+      position.innerHTML = '<option value="">— pilih jabatan —</option>';
+      data.positions.forEach(function (item) {
+        var option = document.createElement('option');
+        option.value = item.id;
+        option.setAttribute('data-applies-to', item.applies_to);
+        option.textContent = item.name;
+        position.appendChild(option);
+      });
+      unit.disabled = position.disabled = false;
+      refreshPositions();
+    }).catch(function (error) {
+      unit.innerHTML = '<option value="">' + error.message + '</option>';
+      position.innerHTML = '<option value="">' + error.message + '</option>';
+    });
+  });
+  unit.addEventListener('change', refreshPositions);
+  position.addEventListener('change', refreshPositions);
+})();
+</script>
+<?php endif; ?>
 
 <div data-tabs>
   <div class="tabs" role="tablist" aria-label="Bagian profil">

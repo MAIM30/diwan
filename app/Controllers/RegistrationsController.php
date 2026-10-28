@@ -62,6 +62,12 @@ class RegistrationsController extends Controller {
 
         if ($registrations->markVerified($id, trim($_POST['review_note'] ?? ''))) {
             Flash::set('success', 'Pengajuan diverifikasi. Langkah berikutnya: tentukan penempatannya untuk mengaktifkan.');
+            $wa = WaNotify::registrationDecision($reg, 'verified');
+            if (empty($wa['ok'])) {
+                Flash::set('warn', !empty($wa['skipped'])
+                    ? 'Status berubah, tetapi pesan WhatsApp tidak dikirim. Periksa konfigurasi WA Gateway dan nomor pendaftar.'
+                    : 'Status berubah, tetapi pengiriman WhatsApp gagal. Periksa Log WhatsApp.');
+            }
         } else {
             Flash::set('error', 'Pengajuan ini tidak lagi berstatus Diajukan.');
         }
@@ -85,8 +91,17 @@ class RegistrationsController extends Controller {
             $this->redirect('registrations/review/' . $id);
         }
 
-        $registrations->reject($id, $note);
-        Flash::set('success', 'Pengajuan ditolak.');
+        if ($registrations->reject($id, $note)) {
+            Flash::set('success', 'Pengajuan ditolak.');
+            $wa = WaNotify::registrationDecision($reg, 'rejected', $note);
+            if (empty($wa['ok'])) {
+                Flash::set('warn', !empty($wa['skipped'])
+                    ? 'Status berubah, tetapi pesan WhatsApp tidak dikirim. Periksa konfigurasi WA Gateway dan nomor pendaftar.'
+                    : 'Status berubah, tetapi pengiriman WhatsApp gagal. Periksa Log WhatsApp.');
+            }
+        } else {
+            Flash::set('error', 'Status pengajuan sudah berubah; tidak ada pesan yang dikirim.');
+        }
         $this->redirect('registrations');
     }
 

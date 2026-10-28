@@ -94,6 +94,10 @@ $nav = function ($key, $href, $icon, $label, $badge = 0) use ($navKey) {
       <button type="button" class="icon-btn menu-btn" data-nav-toggle aria-label="Buka menu" aria-controls="sidebar">
         <?= Ui::icon('menu', 20) ?>
       </button>
+      <button type="button" class="icon-btn sidebar-collapse-btn" data-sidebar-collapse aria-label="Sembunyikan sidebar" aria-controls="sidebar" aria-expanded="true" title="Sembunyikan sidebar">
+        <span data-sidebar-collapse-icon><?= Ui::icon('sidebar-close', 20) ?></span>
+        <span data-sidebar-expand-icon hidden><?= Ui::icon('sidebar-open', 20) ?></span>
+      </button>
 
       <form class="search" action="<?= BASEURL ?>/people" method="get" role="search">
         <?= Ui::icon('search', 18) ?>

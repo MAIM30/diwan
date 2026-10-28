@@ -30,6 +30,19 @@ class PlacementsController extends Controller {
         $units = $this->model('UnitModel');
         $positions = $this->model('PositionModel');
         $people = $this->model('PersonModel');
+        $peopleOptions = $people->optionsInScope();
+        $selectedPersonId = !$id ? (int) ($_GET['person_id'] ?? 0) : 0;
+        $selectedPerson = null;
+        if ($selectedPersonId > 0) {
+            foreach ($peopleOptions as $personOption) {
+                if ((int) $personOption['id'] === $selectedPersonId) {
+                    $selectedPerson = $personOption;
+                    break;
+                }
+            }
+            // Jangan menerima person_id dari URL jika orang tersebut di luar lingkup akses.
+            if (!$selectedPerson) $selectedPersonId = 0;
+        }
 
         $this->view('admin/placements/form', [
             'title'     => $id ? 'Ubah Penempatan' : 'Tambah Penempatan',
@@ -39,7 +52,9 @@ class PlacementsController extends Controller {
             'otherPlacements' => $otherPlacements,
             'units'     => $units->unitsByTerm($row['term_id'] ?? $termId),
             'positions' => $positions->all(),
-            'people'    => $people->optionsInScope(),
+            'people'    => $peopleOptions,
+            'selectedPersonId' => $selectedPersonId,
+            'selectedPerson' => $selectedPerson,
         ]);
     }
 
@@ -71,6 +86,15 @@ class PlacementsController extends Controller {
 
         $baseTermId = (int) ($_POST['base_term_id'] ?? 0);
         $termId = (int) ($_POST['target_term_id'] ?? 0);
+        $id = !empty($_POST['id']) ? (int) $_POST['id'] : null;
+        $returnToPersonDetail = !empty($_POST['return_to_person_detail']);
+        $returnPersonId = (int) ($_POST['person_id'] ?? 0);
+        $returnTo = function () use ($returnToPersonDetail, $returnPersonId, $baseTermId, &$id) {
+            if ($returnToPersonDetail && $returnPersonId > 0) {
+                $this->redirect('people/detail/' . $returnPersonId);
+            }
+            $this->redirect('placements/form/' . $baseTermId . (!empty($id) ? '/' . (int) $id : ''));
+        };
         $terms = $this->model('TermModel');
         $baseTerm = $terms->findById($baseTermId);
         $term = $terms->findById($termId);
@@ -79,11 +103,10 @@ class PlacementsController extends Controller {
         $this->requireScope($term['structure_id']);
         if ((int) $baseTerm['governance_period_id'] !== (int) $term['governance_period_id']) {
             Flash::set('error', 'Struktur tujuan harus menggunakan acuan Periode Kepengurusan yang sama.');
-            $this->redirect('placements/form/' . $baseTermId . (!empty($_POST['id']) ? '/' . (int) $_POST['id'] : ''));
+            $this->redirect($returnToPersonDetail && $returnPersonId > 0 ? 'people/detail/' . $returnPersonId : 'placements/form/' . $baseTermId . (!empty($_POST['id']) ? '/' . (int) $_POST['id'] : ''));
         }
 
         $placements = $this->model('PlacementModel');
-        $id = !empty($_POST['id']) ? (int) $_POST['id'] : null;
 
         // Saat mengubah, ID penempatan harus benar-benar berasal dari periode yang dikirim.
         // Jangan izinkan POST mengganti struktur/periode penempatan lain hanya dengan mengubah hidden field.
@@ -112,7 +135,7 @@ class PlacementsController extends Controller {
 
         if ($data['person_id'] === 0 || $data['position_id'] === 0) {
             Flash::set('error', 'Orang dan jabatan wajib dipilih.');
-            $this->redirect('placements/form/' . $baseTermId . ($id ? '/' . $id : ''));
+            $returnTo();
         }
 
         $person = $this->model('PersonModel')->findById($data['person_id']);
@@ -122,12 +145,12 @@ class PlacementsController extends Controller {
         $expectedWing = $person['gender'] === 'P' ? 'muslimah' : 'umum';
         if ($term['wing'] !== $expectedWing || (!empty($_POST['gender']) && $_POST['gender'] !== $person['gender'])) {
             Flash::set('error', 'Jenis kelamin pengurus tidak sesuai dengan sayap struktur yang dipilih.');
-            $this->redirect('placements/form/' . $baseTermId . ($id ? '/' . $id : ''));
+            $returnTo();
         }
 
         if ($data['end_date'] !== '' && $data['start_date'] !== '' && $data['end_date'] < $data['start_date']) {
             Flash::set('error', 'Tanggal berakhir tidak boleh lebih awal dari tanggal mulai.');
-            $this->redirect('placements/form/' . $baseTermId . ($id ? '/' . $id : ''));
+            $returnTo();
         }
 
         // SKUO harus berasal dari periode dan struktur tujuan.
@@ -135,7 +158,7 @@ class PlacementsController extends Controller {
             $unit = $this->model('UnitModel')->unitFindById($data['structure_unit_id']);
             if (!$unit || (int) $unit['term_id'] !== $termId || (int) $unit['structure_id'] !== (int) $term['structure_id']) {
                 Flash::set('error', 'Unit Organisasi (SKUO) tidak termasuk dalam struktur dan periode ini.');
-                $this->redirect('placements/form/' . $baseTermId . ($id ? '/' . $id : ''));
+                $returnTo();
             }
         }
 
@@ -145,7 +168,7 @@ class PlacementsController extends Controller {
         $allowedPositionIds = array_map('intval', array_column($this->model('PositionModel')->forContext($context), 'id'));
         if (!in_array($data['position_id'], $allowedPositionIds, true)) {
             Flash::set('error', 'Jabatan tidak sesuai dengan konteks penempatan pada struktur/SKUO yang dipilih.');
-            $this->redirect('placements/form/' . $baseTermId . ($id ? '/' . $id : ''));
+            $returnTo();
         }
 
         try {
@@ -160,9 +183,10 @@ class PlacementsController extends Controller {
             }
         } catch (RuntimeException $e) {
             Flash::set('error', $e->getMessage());
-            $this->redirect('placements/form/' . $baseTermId . ($id ? '/' . $id : ''));
+            $returnTo();
         }
 
+        if ($returnToPersonDetail && $returnPersonId > 0) $this->redirect('people/detail/' . $returnPersonId);
         $this->redirect('terms/detail/' . $termId);
     }
 

@@ -56,7 +56,11 @@ $this->view('layouts/header', ['title' => $title]);
 <?php if ($match['confidence'] !== 'none'): ?>
   <div class="card">
     <h2>Kemungkinan Orang yang Sudah Ada
-      <span class="hint">&mdash; cocok pada: <?= e(str_replace('_', ' ', (string) $match['matched_on'])) ?></span>
+      <span class="hint">&mdash; <?= e([
+        'nik' => 'NIK cocok',
+        'nama_lengkap' => 'nama lengkap cocok',
+        'nama_tanpa_gelar' => 'nama cocok setelah gelar diabaikan',
+      ][$match['matched_on'] ?? ''] ?? 'kemungkinan identitas cocok') ?></span>
     </h2>
     <div class="alert <?= $match['confidence'] === 'ambiguous' ? 'error' : 'warn' ?>">
       <?php if ($match['confidence'] === 'ambiguous'): ?>

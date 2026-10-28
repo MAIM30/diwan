@@ -4,6 +4,33 @@
 
 class WaNotify {
 
+    // Pendaftar diberi kabar setelah verifikator mengubah statusnya. Hasil pengiriman
+    // dikembalikan supaya halaman admin bisa menandai bila gateway belum siap/gagal.
+    public static function registrationDecision(array $registration, $status, $note = '') {
+        if (!Whatsapp::isConfigured()) return ['ok' => false, 'skipped' => true];
+
+        $phone = Text::normalizePhone($registration['phone'] ?? '');
+        if (!$phone) return ['ok' => false, 'skipped' => true];
+
+        $name = trim($registration['name'] ?? '') ?: 'Pengurus';
+        $honorific = ($registration['gender'] ?? 'L') === 'P' ? 'Ustazah' : 'Ustaz';
+        if ($status === 'verified') {
+            $text = "Assalamu 'alaykum {$honorific} {$name},\n\n"
+                  . "Pengajuan Anda telah diverifikasi. Tahap berikutnya adalah penetapan penempatan dan aktivasi oleh admin.\n\n"
+                  . "Barokallohu Fikum.";
+        } elseif ($status === 'rejected') {
+            $reason = trim((string) $note);
+            $text = "Assalamu 'alaykum {$honorific} {$name},\n\n"
+                  . "Mohon maaf, pengajuan Anda belum dapat diterima.\n"
+                  . "Alasan: " . ($reason !== '' ? $reason : 'Silakan hubungi admin untuk informasi lebih lanjut.') . "\n\n"
+                  . "Barokallohu Fikum.";
+        } else {
+            return ['ok' => false, 'skipped' => true];
+        }
+
+        return Whatsapp::sendText($phone, $text);
+    }
+
     public static function placementCreated($personId, $placementId) {
         if (!Whatsapp::isConfigured()) return;
 

@@ -16,6 +16,29 @@
     var btn = $('[data-nav-toggle]');
     if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
   }
+  (function initSidebarCollapse() {
+    var shell = $('.app');
+    var button = $('[data-sidebar-collapse]');
+    if (!shell || !button) return;
+    var collapsed = false;
+    try { collapsed = localStorage.getItem('diwan-sidebar-collapsed') === '1'; } catch (e) {}
+    var update = function () {
+      shell.classList.toggle('sidebar-collapsed', collapsed);
+      button.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      button.setAttribute('aria-label', collapsed ? 'Tampilkan sidebar' : 'Sembunyikan sidebar');
+      button.title = collapsed ? 'Tampilkan sidebar' : 'Sembunyikan sidebar';
+      var closeIcon = $('[data-sidebar-collapse-icon]', button);
+      var openIcon = $('[data-sidebar-expand-icon]', button);
+      if (closeIcon) closeIcon.hidden = collapsed;
+      if (openIcon) openIcon.hidden = !collapsed;
+    };
+    update();
+    button.addEventListener('click', function () {
+      collapsed = !collapsed;
+      update();
+      try { localStorage.setItem('diwan-sidebar-collapsed', collapsed ? '1' : '0'); } catch (e) {}
+    });
+  })();
   document.addEventListener('click', function (e) {
     if (e.target.closest('[data-nav-toggle]')) { setNav(!document.body.classList.contains('nav-open')); return; }
     if (e.target.closest('[data-nav-close]')) { setNav(false); return; }

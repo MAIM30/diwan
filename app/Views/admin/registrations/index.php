@@ -2,6 +2,12 @@
 // PATH LOKASI FILE: app/Views/admin/registrations/index.php
 $this->view('layouts/header', ['title' => $title]);
 $tabs = ['submitted'=>'Diajukan','verified'=>'Diverifikasi','activated'=>'Aktif','rejected'=>'Ditolak','all'=>'Semua'];
+$matchLabels = [
+  'none' => ['Tidak ditemukan', 'Belum ada calon yang cocok; periksa identitas sebelum membuat orang baru.'],
+  'exact' => ['Kecocokan langsung', 'NIK atau nama lengkap cocok dengan satu data orang.'],
+  'normalized' => ['Nama cocok tanpa gelar', 'Nama asli cocok setelah gelar depan dan belakang diabaikan.'],
+  'ambiguous' => ['Perlu diperiksa', 'Ada beberapa calon yang cocok; tentukan orangnya secara manual.'],
+];
 ?>
 
 <div class="page-head"><h1>Pendaftaran Pengurus</h1></div>
@@ -10,6 +16,8 @@ $tabs = ['submitted'=>'Diajukan','verified'=>'Diverifikasi','activated'=>'Aktif'
   Pendaftar tidak otomatis masuk ke data pengurus. Pengajuan tersimpan terpisah sampai ada
   verifikator yang memutuskan &mdash; termasuk memutuskan apakah pendaftar ini orang baru atau
   orang yang sudah ada di database.
+  <div style="margin-top:8px"><strong>Arti status:</strong> Diajukan = menunggu tinjauan; Diverifikasi = lolos tinjauan, menunggu penempatan dan aktivasi; Aktif = data orang dan penempatan sudah dibuat; Ditolak = pengajuan ditolak dengan alasan.</div>
+  <div style="margin-top:6px"><strong>Kemungkinan ganda:</strong> Kecocokan langsung berarti NIK atau nama lengkap cocok; Nama cocok tanpa gelar berarti nama asli cocok setelah gelar diabaikan; Perlu diperiksa berarti ada beberapa calon; Tidak ditemukan berarti belum ada calon cocok. Ini hanya saran sistem, bukan keputusan otomatis.</div>
 </div>
 
 <div class="card">
@@ -38,11 +46,12 @@ $tabs = ['submitted'=>'Diajukan','verified'=>'Diverifikasi','activated'=>'Aktif'
           <td><?= $r['gender'] === 'P' ? 'P' : 'L' ?></td>
           <td class="small"><?= e($r['level'] . ' ' . $r['structure_name']) ?></td>
           <td class="small">
+            <?php $matchInfo = $matchLabels[$r['match_confidence']] ?? ['Tidak diketahui', '']; ?>
             <?php if ($r['match_confidence'] === 'none'): ?>
-              <span class="muted">—</span>
+              <span class="muted" title="<?= e($matchInfo[1]) ?>"><?= e($matchInfo[0]) ?></span>
             <?php else: ?>
-              <span class="badge <?= $r['match_confidence'] === 'ambiguous' ? 'danger' : 'core' ?>">
-                <?= e($r['match_confidence']) ?>
+              <span class="badge <?= $r['match_confidence'] === 'ambiguous' ? 'danger' : 'core' ?>" title="<?= e($matchInfo[1]) ?>">
+                <?= e($matchInfo[0]) ?>
               </span>
               <?php if ($r['matched_name']): ?>
                 <div class="muted"><?= e($r['matched_name']) ?></div>

@@ -88,7 +88,9 @@ h1, h2, h3 { color: var(--primer-gelap); }
   padding: 20px 14px 16px;
   background: linear-gradient(180deg, #07546a 0%, #053f50 100%);
   color: #fff;
+  transition: width .2s ease, flex-basis .2s ease, padding .2s ease;
 }
+.app.sidebar-collapsed .sidebar { flex-basis: 0; width: 0; padding-left: 0; padding-right: 0; overflow: hidden; }
 .logo { display: flex; align-items: center; gap: 11px; padding: 2px 8px 14px; color: #fff; }
 .logo:hover { text-decoration: none; }
 .logo-mark {
@@ -164,6 +166,8 @@ h1, h2, h3 { color: var(--primer-gelap); }
   border: 2px solid var(--bg);
 }
 .menu-btn { display: none; }
+.sidebar-collapse-btn { display: grid; flex: none; }
+.sidebar-collapse-btn [hidden] { display: none !important; }
 
 .user-menu { position: relative; }
 .user-menu summary {
@@ -189,7 +193,7 @@ h1, h2, h3 { color: var(--primer-gelap); }
 .user-menu .menu a:hover, .user-menu .menu button:hover { background: var(--primer-pucat); text-decoration: none; }
 .user-menu .menu form { margin: 0; }
 
-.content { width: 100%; max-width: 1480px; padding: 26px 28px 64px; }
+.content { width: 100%; max-width: none; padding: 26px 28px 64px; }
 .scrim { display: none; }
 
 /* =========================================================================================
@@ -218,7 +222,7 @@ h1, h2, h3 { color: var(--primer-gelap); }
 /* ---- Tabel ---- */
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: separate; border-spacing: 0; }
-th, td { padding: 11px 14px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: middle; }
+th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: middle; }
 th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; white-space: nowrap; }
 thead th { background: var(--primer-pucat); border-bottom: 1px solid var(--border); }
 thead th:first-child { border-radius: 10px 0 0 10px; }
@@ -1046,6 +1050,8 @@ a.hbar-row:hover, .hbar-row:hover, .hbar-row:focus { background: var(--primer-pu
 }
 @media (max-width: 960px) {
   .menu-btn { display: grid; }
+  .sidebar-collapse-btn { display: none; }
+  .app.sidebar-collapsed .sidebar { flex-basis: var(--sidebar-w); width: var(--sidebar-w); padding: 20px 14px 16px; }
   .sidebar {
     position: fixed; left: 0; top: 0; z-index: 60; transform: translateX(-100%); transition: transform .2s ease;
     box-shadow: 0 0 40px rgba(0, 0, 0, .35);

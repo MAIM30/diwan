@@ -161,9 +161,6 @@ $rc = function ($label, $count, $icon, $active, $href, $tone = '') {
           <tr>
             <td>
               <a href="<?= BASEURL ?>/people/detail/<?= (int) $r['id'] ?>"><?= Ui::nameHtml($r) ?></a>
-              <?php $tl = Ui::titlesLine($r); if ($tl !== ''): ?>
-                <div class="small muted"><?= e($tl) ?></div>
-              <?php endif; ?>
             </td>
             <td class="small">
               <?php if ($r['position_name']): ?>

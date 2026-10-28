@@ -34,8 +34,8 @@ $this->view('layouts/header', ['title' => $title]);
         <?php else: ?>
           <select id="gender" name="gender" required>
             <option value="">— pilih —</option>
-            <option value="L">Laki-laki</option>
-            <option value="P">Perempuan</option>
+            <option value="L" <?= ($selectedPerson['gender'] ?? '') === 'L' ? 'selected' : '' ?>>Laki-laki</option>
+            <option value="P" <?= ($selectedPerson['gender'] ?? '') === 'P' ? 'selected' : '' ?>>Perempuan</option>
           </select>
         <?php endif; ?>
       </div>
@@ -69,7 +69,7 @@ $this->view('layouts/header', ['title' => $title]);
       <select id="person_id" name="person_id" required <?= !empty($row['id']) ? 'disabled' : '' ?>>
         <option value="">— pilih —</option>
         <?php foreach ($people as $p): ?>
-          <option value="<?= (int) $p['id'] ?>" data-gender="<?= e($p['gender']) ?>" <?= (int) ($row['person_id'] ?? 0) === (int) $p['id'] ? 'selected' : '' ?>>
+          <option value="<?= (int) $p['id'] ?>" data-gender="<?= e($p['gender']) ?>" <?= (int) ($row['person_id'] ?? $selectedPersonId) === (int) $p['id'] ? 'selected' : '' ?>>
             <?= e(Ui::fullName($p)) ?>
           </option>
         <?php endforeach; ?>
