@@ -1092,6 +1092,9 @@ a.hbar-row:hover, .hbar-row:hover, .hbar-row:focus { background: var(--primer-pu
 .biodata-roster-trigger { border: 0; padding: 0; background: transparent; color: var(--primer); font: inherit; font-weight: 650; text-align: left; cursor: pointer; }
 .biodata-roster-trigger:hover { text-decoration: underline; }
 .biodata-roster-trigger:focus-visible { outline: 2px solid var(--primer); outline-offset: 3px; border-radius: 3px; }
+.placement-more { border: 0; padding: 0; background: transparent; color: var(--muted); font: inherit; cursor: pointer; }
+.placement-more:hover { color: var(--primer-tua); text-decoration: underline; }
+.placement-more:focus-visible { outline: 2px solid var(--primer); outline-offset: 2px; border-radius: 3px; }
 .biodata-roster-modal { width: min(720px, calc(100vw - 28px)); max-height: min(80vh, 720px); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; color: var(--text); background: var(--surface); box-shadow: 0 18px 50px rgba(8, 42, 55, .24); }
 .biodata-roster-modal::backdrop { background: rgba(10, 31, 40, .52); }
 .biodata-roster-modal .page-head { align-items: center; }

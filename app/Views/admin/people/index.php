@@ -168,7 +168,7 @@ $rc = function ($label, $count, $icon, $active, $href, $tone = '') {
             <td class="small">
               <?php if ($r['position_name']): ?>
                 <strong><?= e($r['position_name']) ?></strong>
-                <div class="muted"><?= e($r['structure_label']) ?><?= (int) $r['placement_count'] > 1 ? ' · +' . ((int) $r['placement_count'] - 1) . ' lainnya' : '' ?></div>
+                <div class="muted"><?= e($r['structure_label']) ?><?php $otherPlacementCount = max(0, (int) ($r['current_placement_count'] ?? 0) - 1); ?><?php if ($otherPlacementCount > 0): ?> · <button type="button" class="placement-more" data-placement-recap-url="<?= BASEURL ?>/people/other_placements/<?= (int) $r['id'] ?>?featured=<?= (int) ($r['current_placement_id'] ?? 0) ?>" data-person-name="<?= e(Ui::fullName($r)) ?>">+<?= $otherPlacementCount ?> lainnya</button><?php endif; ?></div>
               <?php else: ?>
                 <span class="muted">Belum ditempatkan</span>
               <?php endif; ?>
@@ -220,5 +220,17 @@ $rc = function ($label, $count, $icon, $active, $href, $tone = '') {
   <?php endif; ?>
 </div>
 <?php endif; ?>
+
+<dialog class="biodata-roster-modal" id="placement-recap-modal" aria-labelledby="placement-recap-title">
+  <div class="page-head">
+    <h2 id="placement-recap-title">Jabatan rangkap</h2>
+    <button type="button" class="btn small secondary" data-placement-recap-close>Tutup</button>
+  </div>
+  <div class="table-wrap">
+    <table><thead><tr><th>Jabatan</th><th>Unit Organisasi</th><th>Struktur</th><th>Periode</th></tr></thead>
+      <tbody id="placement-recap-body"><tr><td colspan="4" class="muted">Pilih daftar untuk memuat jabatan.</td></tr></tbody>
+    </table>
+  </div>
+</dialog>
 
 <?php $this->view('layouts/footer'); ?>

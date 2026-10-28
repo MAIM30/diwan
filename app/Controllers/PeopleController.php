@@ -245,6 +245,36 @@ class PeopleController extends Controller {
         ]);
     }
 
+    // Daftar penempatan aktif lainnya untuk pop-up Rekap Rangkap.
+    public function other_placements($id) {
+        $this->requireLogin();
+        [, $person] = $this->loadVisible($id);
+        $today = date('Y-m-d');
+        $rows = array_values(array_filter(
+            $this->model('PlacementModel')->historyOfPerson($id),
+            function ($row) use ($today) {
+                return !empty($row['is_current'])
+                    && (empty($row['end_date']) || $row['end_date'] >= $today)
+                    && AdminScope::allows($row['structure_id']);
+            }
+        ));
+        $featuredId = (int) ($_GET['featured'] ?? 0);
+        $rows = array_values(array_filter($rows, function ($row) use ($featuredId) {
+            return (int) $row['id'] !== $featuredId;
+        }));
+
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(array_map(function ($row) {
+            return [
+                'position' => $row['position_name'],
+                'level' => $row['level'],
+                'structure' => $row['structure_name'],
+                'unit' => $row['unit_name'] ?: '',
+                'period' => $row['term_name'],
+            ];
+        }, $rows), JSON_UNESCAPED_UNICODE);
+    }
+
     public function form($id = null) {
         $this->requireLogin();
         if (!Auth::canEdit()) $this->denied();

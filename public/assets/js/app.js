@@ -19,8 +19,52 @@
   document.addEventListener('click', function (e) {
     if (e.target.closest('[data-nav-toggle]')) { setNav(!document.body.classList.contains('nav-open')); return; }
     if (e.target.closest('[data-nav-close]')) { setNav(false); return; }
+    var placementTrigger = e.target.closest('[data-placement-recap-url]');
+    var placementClose = e.target.closest('[data-placement-recap-close]');
+    var placementDialog = document.getElementById('placement-recap-modal');
+    if (placementClose && placementDialog) { placementDialog.close(); return; }
+    if (placementTrigger && placementDialog) {
+      var placementTitle = document.getElementById('placement-recap-title');
+      var placementBody = document.getElementById('placement-recap-body');
+      placementTitle.textContent = 'Jabatan rangkap · ' + placementTrigger.getAttribute('data-person-name');
+      placementBody.innerHTML = '';
+      var loadingRow = document.createElement('tr');
+      var loadingCell = document.createElement('td');
+      loadingCell.colSpan = 4; loadingCell.className = 'muted'; loadingCell.textContent = 'Memuat jabatan...';
+      loadingRow.appendChild(loadingCell); placementBody.appendChild(loadingRow);
+      placementDialog.showModal();
+      fetch(placementTrigger.getAttribute('data-placement-recap-url'), { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+        .then(function (response) { if (!response.ok) throw new Error('Daftar jabatan gagal dimuat.'); return response.json(); })
+        .then(function (rows) {
+          placementBody.innerHTML = '';
+          if (!rows.length) {
+            var emptyRow = document.createElement('tr');
+            var emptyCell = document.createElement('td');
+            emptyCell.colSpan = 4; emptyCell.className = 'muted'; emptyCell.textContent = 'Tidak ada jabatan rangkap aktif lainnya.';
+            emptyRow.appendChild(emptyCell); placementBody.appendChild(emptyRow); return;
+          }
+          rows.forEach(function (item) {
+            var row = document.createElement('tr');
+            [item.position, item.unit || 'Pengurus inti', item.level + ' ' + item.structure, item.period].forEach(function (value) {
+              var cell = document.createElement('td'); cell.textContent = value; row.appendChild(cell);
+            });
+            placementBody.appendChild(row);
+          });
+        }).catch(function (error) {
+          placementBody.innerHTML = '';
+          var errorRow = document.createElement('tr');
+          var errorCell = document.createElement('td');
+          errorCell.colSpan = 4; errorCell.className = 'muted'; errorCell.textContent = error.message;
+          errorRow.appendChild(errorCell); placementBody.appendChild(errorRow);
+        });
+      return;
+    }
     // Menu pengguna (<details>) menutup saat klik di luarnya.
     $$('.user-menu[open]').forEach(function (d) { if (!d.contains(e.target)) d.removeAttribute('open'); });
+  });
+  document.addEventListener('click', function (e) {
+    var dialog = document.getElementById('placement-recap-modal');
+    if (dialog && e.target === dialog) dialog.close();
   });
 
   /* ---------- Roster ringkas dari rekap biodata ---------- */

@@ -243,12 +243,22 @@ class PersonModel {
         $params = [];
         $where = $this->listWhere($keyword, $filters, $params);
         $inScope = AdminScope::sqlFilter('pl.structure_id');
-        $latest = "pl.person_id = p.id AND pl.deleted_at IS NULL AND $inScope
-                   ORDER BY t.is_current DESC, t.start_date DESC, po.sort_order LIMIT 1";
+        $activeScope = AdminScope::sqlFilter('pla.structure_id');
+        $latest = "pl.person_id = p.id AND pl.deleted_at IS NULL AND t.is_current = 1 AND t.deleted_at IS NULL
+                   AND (pl.end_date IS NULL OR pl.end_date >= CURDATE()) AND $inScope
+                   ORDER BY t.start_date DESC, po.sort_order, pl.id LIMIT 1";
+        $activeLatest = "pla.person_id = p.id AND pla.deleted_at IS NULL AND ta.is_current = 1 AND ta.deleted_at IS NULL
+                         AND (pla.end_date IS NULL OR pla.end_date >= CURDATE()) AND $activeScope
+                         ORDER BY ta.start_date DESC, poa.sort_order, pla.id LIMIT 1";
 
         $stmt = $this->db->prepare("
             SELECT p.*,
                    (SELECT COUNT(*) FROM placements pl WHERE pl.person_id = p.id AND pl.deleted_at IS NULL AND $inScope) AS placement_count,
+                   (SELECT COUNT(*) FROM placements pla JOIN terms ta ON ta.id = pla.term_id
+                      WHERE pla.person_id = p.id AND pla.deleted_at IS NULL AND ta.is_current = 1 AND ta.deleted_at IS NULL
+                        AND (pla.end_date IS NULL OR pla.end_date >= CURDATE()) AND $activeScope) AS current_placement_count,
+                   (SELECT pla.id FROM placements pla JOIN terms ta ON ta.id = pla.term_id
+                      JOIN positions poa ON poa.id = pla.position_id WHERE $activeLatest) AS current_placement_id,
                    (SELECT po.name FROM placements pl JOIN terms t ON t.id = pl.term_id
                       JOIN positions po ON po.id = pl.position_id WHERE $latest) AS position_name,
                    (SELECT CONCAT(s.level, ' ', s.name) FROM placements pl JOIN terms t ON t.id = pl.term_id
