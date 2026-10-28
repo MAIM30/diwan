@@ -25,7 +25,8 @@ SET NAMES utf8mb4;
 -- 1. STRUKTUR ORGANISASI
 -- =====================================================================================================
 
--- Pohon struktur: DPP > DPW > DPD > DPC > DPRa, dengan sayap Muslimah MWP > MWW > MWD > MWC sebagai
+-- Pohon struktur: DPP > DPW > DPD > DPC > DPRa (serta DPLN setingkat DPW), dengan sayap Muslimah
+-- MWP > MWW > MWD > MWC > MWRa sebagai
 -- CABANG PARALEL yang menggantung di bawah akar yang sama (MWP.parent_id = DPP), persis seperti syuro.
 -- Konsekuensinya memang disengaja: lingkup "Nasional" (akar) mencakup sayap Muslimah, tetapi lingkup
 -- DPW TIDAK pernah menyeberang ke MWW yang mewakili wilayah sama -- keduanya node berbeda di cabang
@@ -34,22 +35,22 @@ SET NAMES utf8mb4;
 CREATE TABLE structures (
   id            INT UNSIGNED NOT NULL AUTO_INCREMENT,
   uuid          CHAR(36)     NOT NULL,
-  level         ENUM('DPP','DPW','DPD','DPC','DPRa','MWP','MWW','MWD','MWC') NOT NULL,
+  level         ENUM('DPP','DPW','DPD','DPC','DPRa','DPLN','MWP','MWW','MWD','MWC','MWRa') NOT NULL,
   name          VARCHAR(150) NOT NULL,
   parent_id     INT UNSIGNED NULL,
 
   -- Sayap organisasi, diturunkan dari `level` supaya tidak mungkin tidak sinkron.
   wing          ENUM('umum','muslimah')
-                GENERATED ALWAYS AS (IF(level IN ('MWP','MWW','MWD','MWC'),'muslimah','umum')) STORED,
+                GENERATED ALWAYS AS (IF(level IN ('MWP','MWW','MWD','MWC','MWRa'),'muslimah','umum')) STORED,
   -- Tingkat administratif: 1=Pusat, 2=Wilayah, 3=Daerah, 4=Cabang, 5=Ranting. Dua node yang mewakili
   -- wilayah sama (DPW Sultra & MWW Sultra) punya tier sama tapi wing berbeda.
   tier          TINYINT UNSIGNED
                 GENERATED ALWAYS AS (CASE level
                   WHEN 'DPP'  THEN 1 WHEN 'MWP' THEN 1
-                  WHEN 'DPW'  THEN 2 WHEN 'MWW' THEN 2
+                  WHEN 'DPW'  THEN 2 WHEN 'DPLN' THEN 2 WHEN 'MWW' THEN 2
                   WHEN 'DPD'  THEN 3 WHEN 'MWD' THEN 3
                   WHEN 'DPC'  THEN 4 WHEN 'MWC' THEN 4
-                  WHEN 'DPRa' THEN 5 END) STORED,
+                  WHEN 'DPRa' THEN 5 WHEN 'MWRa' THEN 5 END) STORED,
   -- Kode wilayah bersama (mis. 'SULTRA') -- pengait DPW<->MWW, bukan bagian dari hierarki.
   region_code   VARCHAR(20)  NULL,
 
@@ -78,19 +79,36 @@ CREATE TABLE structures (
 -- 2. PERIODE / MASA KEPENGURUSAN
 -- =====================================================================================================
 
--- Satu periode milik SATU struktur. DPP bisa berada di periode 2026-2031 sementara DPD Kota Kendari
--- masih di 2024-2029 -- tidak ada asumsi periode nasional yang seragam.
+-- Acuan periode dapat dipakai bersama oleh banyak struktur. Setiap struktur tetap memiliki baris
+-- terms sendiri karena status, SK, dan penempatan dikelola per struktur.
 --
 -- Tanggal akhir dipisah dua karena organisasi riil sering molor beberapa bulan sebelum musyawarah
 -- berikutnya: `end_date_planned` adalah apa yang tertulis di SK, `end_date_actual` diisi saat serah
 -- terima benar-benar terjadi. Keduanya NULL-able supaya periode berjalan tidak perlu dipaksa berakhir.
+CREATE TABLE governance_periods (
+  id                INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  uuid              CHAR(36) NOT NULL,
+  name              VARCHAR(50) NOT NULL,
+  start_date        DATE NOT NULL,
+  end_date_planned  DATE NULL,
+  identity_key      CHAR(64) GENERATED ALWAYS AS
+                    (SHA2(CONCAT(name, '#', DATE_FORMAT(start_date, '%Y-%m-%d'), '#', COALESCE(DATE_FORMAT(end_date_planned, '%Y-%m-%d'), '')), 256)) STORED,
+  created_at        DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at        DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_governance_periods_uuid (uuid),
+  UNIQUE KEY uq_governance_periods_identity (identity_key),
+  KEY idx_governance_periods_dates (start_date, end_date_planned)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE terms (
   id                INT UNSIGNED NOT NULL AUTO_INCREMENT,
   uuid              CHAR(36)     NOT NULL,
+  governance_period_id INT UNSIGNED NOT NULL,
   structure_id      INT UNSIGNED NOT NULL,
-  name              VARCHAR(50)  NOT NULL,  -- mis. '2026-2031'
-  start_date        DATE         NOT NULL,
-  end_date_planned  DATE         NULL,
+  name              VARCHAR(50)  NOT NULL,  -- snapshot dari governance_periods
+  start_date        DATE         NOT NULL,   -- snapshot dari governance_periods
+  end_date_planned  DATE         NULL,       -- snapshot dari governance_periods
   end_date_actual   DATE         NULL,
 
   status            ENUM('draft','active','ended') NOT NULL DEFAULT 'draft',
@@ -113,12 +131,14 @@ CREATE TABLE terms (
   PRIMARY KEY (id),
   UNIQUE KEY uq_terms_uuid (uuid),
   UNIQUE KEY uq_terms_structure_name (structure_id, name),
+  UNIQUE KEY uq_terms_structure_period (structure_id, governance_period_id),
   UNIQUE KEY uq_terms_one_current (current_guard),
   -- Index acuan untuk composite FK dari `unit_groups`, `structure_units`, dan `placements`.
   UNIQUE KEY uq_terms_structure_id (structure_id, id),
   KEY idx_terms_dates (start_date, end_date_planned),
   KEY idx_terms_sync (updated_at, id),
-  CONSTRAINT fk_terms_structure FOREIGN KEY (structure_id) REFERENCES structures (id) ON DELETE RESTRICT
+  CONSTRAINT fk_terms_structure FOREIGN KEY (structure_id) REFERENCES structures (id) ON DELETE RESTRICT,
+  CONSTRAINT fk_terms_governance_period FOREIGN KEY (governance_period_id) REFERENCES governance_periods (id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================================================================================================
@@ -560,6 +580,7 @@ CREATE TABLE import_review_items (
   reason              ENUM('matched_existing','matched_in_batch','ambiguous','unmapped_position','unmapped_unit','lainnya') NOT NULL,
   candidate_person_id INT UNSIGNED NULL,
   resolution          ENUM('pending','confirmed','split','corrected','ignored') NOT NULL DEFAULT 'pending',
+  resolution_note     TEXT         NULL,
   resolved_by         INT UNSIGNED NULL,
   resolved_at         DATETIME(3)  NULL,
   note                TEXT         NULL,

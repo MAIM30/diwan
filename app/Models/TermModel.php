@@ -1,7 +1,6 @@
 <?php
 // PATH LOKASI FILE: app/Models/TermModel.php
-// Periode kepengurusan per struktur. Inti dari aplikasi ini: selama setiap penempatan terikat ke
-// salah satu baris di sini, periode lama tidak pernah tertimpa oleh periode baru.
+// Acuan periode dipakai bersama; baris terms tetap menjadi susunan periode milik satu struktur.
 
 class TermModel {
     private $db;
@@ -12,8 +11,11 @@ class TermModel {
 
     public function findById($id) {
         $stmt = $this->db->prepare("
-            SELECT t.*, s.level, s.tier, s.name AS structure_name, s.uuid AS structure_uuid
+            SELECT t.*, gp.name AS shared_period_name, gp.start_date AS shared_start_date,
+                   gp.end_date_planned AS shared_end_date_planned,
+                   s.level, s.tier, s.wing, s.name AS structure_name, s.uuid AS structure_uuid
             FROM terms t JOIN structures s ON s.id = t.structure_id
+            JOIN governance_periods gp ON gp.id = t.governance_period_id
             WHERE t.id = :id AND t.deleted_at IS NULL
         ");
         $stmt->execute([':id' => (int) $id]);
@@ -23,8 +25,11 @@ class TermModel {
     public function findByUuid($uuid) {
         if (!Uuid::isValid($uuid)) return null;
         $stmt = $this->db->prepare("
-            SELECT t.*, s.level, s.name AS structure_name, s.uuid AS structure_uuid
+            SELECT t.*, gp.name AS shared_period_name, gp.start_date AS shared_start_date,
+                   gp.end_date_planned AS shared_end_date_planned,
+                   s.level, s.tier, s.wing, s.name AS structure_name, s.uuid AS structure_uuid
             FROM terms t JOIN structures s ON s.id = t.structure_id
+            JOIN governance_periods gp ON gp.id = t.governance_period_id
             WHERE t.uuid = :u AND t.deleted_at IS NULL
         ");
         $stmt->execute([':u' => $uuid]);
@@ -51,16 +56,114 @@ class TermModel {
         return $stmt->fetch() ?: null;
     }
 
+    public function governancePeriodFindById($id) {
+        $stmt = $this->db->prepare('SELECT * FROM governance_periods WHERE id = :id');
+        $stmt->execute([':id' => (int) $id]);
+        return $stmt->fetch() ?: null;
+    }
+
+    public function governancePeriodsInScope() {
+        return $this->db->query("SELECT gp.*,
+                    (SELECT COUNT(*) FROM terms t JOIN structures s ON s.id = t.structure_id
+                     WHERE t.governance_period_id = gp.id AND t.deleted_at IS NULL AND " . AdminScope::sqlFilter('s.id') . ") AS structure_count,
+                    (SELECT COUNT(*) FROM placements pl JOIN terms t ON t.id = pl.term_id
+                     WHERE t.governance_period_id = gp.id AND t.deleted_at IS NULL AND pl.deleted_at IS NULL
+                       AND " . AdminScope::sqlFilter('pl.structure_id') . ") AS placement_count
+                FROM governance_periods gp
+                ORDER BY gp.start_date DESC, gp.name DESC, gp.id DESC")->fetchAll();
+    }
+
+    public function termsForGovernancePeriod($periodId) {
+        $stmt = $this->db->prepare("SELECT t.*, s.level, s.tier, s.wing, s.name AS structure_name,
+                    s.path AS structure_path,
+                    (SELECT COUNT(*) FROM placements pl WHERE pl.term_id = t.id AND pl.deleted_at IS NULL) AS placement_count
+                FROM terms t JOIN structures s ON s.id = t.structure_id
+                WHERE t.governance_period_id = :period AND t.deleted_at IS NULL
+                  AND " . AdminScope::sqlFilter('t.structure_id') . "
+                ORDER BY s.path");
+        $stmt->execute([':period' => (int) $periodId]);
+        return $stmt->fetchAll();
+    }
+
+    public function structuresNotUsingGovernancePeriod($periodId) {
+        $stmt = $this->db->prepare("SELECT s.* FROM structures s
+            WHERE s.deleted_at IS NULL AND s.is_active = 1
+              AND " . AdminScope::sqlFilter('s.id') . "
+              AND NOT EXISTS (SELECT 1 FROM terms t
+                  WHERE t.structure_id = s.id AND t.governance_period_id = :period AND t.deleted_at IS NULL)
+            ORDER BY s.path");
+        $stmt->execute([':period' => (int) $periodId]);
+        return $stmt->fetchAll();
+    }
+
+    public function createGovernancePeriod(array $data) {
+        $stmt = $this->db->prepare("INSERT INTO governance_periods (uuid, name, start_date, end_date_planned)
+            VALUES (:uuid, :name, :start, :planned)");
+        $stmt->execute([
+            ':uuid' => Uuid::v4(),
+            ':name' => trim($data['name']),
+            ':start' => $data['start_date'],
+            ':planned' => $data['end_date_planned'] ?: null,
+        ]);
+        $id = (int) $this->db->lastInsertId();
+        Audit::log('governance_periods', $id, 'create', null, $this->governancePeriodFindById($id));
+        return $id;
+    }
+
+    public function attachGovernancePeriodToStructures($periodId, array $structureIds, $markCurrent = false) {
+        $period = $this->governancePeriodFindById($periodId);
+        if (!$period) throw new RuntimeException('Acuan Periode Kepengurusan tidak ditemukan.');
+        $ids = array_values(array_unique(array_map('intval', $structureIds)));
+        if (!$ids) throw new RuntimeException('Pilih sedikitnya satu struktur.');
+
+        $this->db->beginTransaction();
+        try {
+            $inserted = [];
+            foreach ($ids as $structureId) {
+                if ($this->termForStructureAndPeriod($structureId, $periodId)) continue;
+                if ($markCurrent) $this->clearCurrent($structureId);
+                $stmt = $this->db->prepare("INSERT INTO terms
+                    (uuid, governance_period_id, structure_id, name, start_date, end_date_planned, status, is_current)
+                    VALUES (:uuid, :period, :structure, :name, :start, :planned, :status, :current)");
+                $stmt->execute([
+                    ':uuid' => Uuid::v4(), ':period' => (int) $periodId, ':structure' => $structureId,
+                    ':name' => $period['name'], ':start' => $period['start_date'],
+                    ':planned' => $period['end_date_planned'], ':status' => $markCurrent ? 'active' : 'draft',
+                    ':current' => $markCurrent ? 1 : 0,
+                ]);
+                $termId = (int) $this->db->lastInsertId();
+                $inserted[] = $termId;
+                Audit::log('terms', $termId, 'create', null, $this->findById($termId));
+            }
+            $this->db->commit();
+            return count($inserted);
+        } catch (Throwable $e) {
+            if ($this->db->inTransaction()) $this->db->rollBack();
+            throw $e;
+        }
+    }
+
+    public function termForStructureAndPeriod($structureId, $periodId) {
+        $stmt = $this->db->prepare("SELECT t.*, s.level, s.tier, s.wing, s.name AS structure_name
+            FROM terms t JOIN structures s ON s.id = t.structure_id
+            WHERE t.structure_id = :structure AND t.governance_period_id = :period
+              AND t.deleted_at IS NULL LIMIT 1");
+        $stmt->execute([':structure' => (int) $structureId, ':period' => (int) $periodId]);
+        return $stmt->fetch() ?: null;
+    }
+
     // Seluruh periode dalam lingkup admin, dengan jumlah penempatannya -- kolom itu yang membuat
     // halaman daftar langsung berguna ("periode mana yang sudah terisi, mana yang masih kosong").
     public function allInScope() {
         return $this->db->query("
             SELECT t.*, s.level, s.name AS structure_name,
                    s.path AS structure_path, s.tier AS structure_tier,
+                   gp.id AS governance_period_id, gp.name AS shared_period_name,
                    (SELECT COUNT(*) FROM placements pl
                      WHERE pl.term_id = t.id AND pl.deleted_at IS NULL) AS placement_count
             FROM terms t
             JOIN structures s ON s.id = t.structure_id
+            JOIN governance_periods gp ON gp.id = t.governance_period_id
             WHERE t.deleted_at IS NULL AND " . AdminScope::sqlFilter('t.structure_id') . "
             ORDER BY s.path, t.start_date DESC
         ")->fetchAll();
@@ -68,7 +171,13 @@ class TermModel {
 
     public function create(array $data) {
         $structureId = (int) $data['structure_id'];
+        $period = $this->governancePeriodFindById($data['governance_period_id'] ?? 0);
+        if (!$period) throw new RuntimeException('Acuan Periode Kepengurusan tidak ditemukan.');
         $isCurrent = !empty($data['is_current']) ? 1 : 0;
+
+        if ($this->termForStructureAndPeriod($structureId, $period['id'])) {
+            throw new RuntimeException('Struktur ini sudah menggunakan Periode Kepengurusan tersebut.');
+        }
 
         $this->db->beginTransaction();
         try {
@@ -80,16 +189,17 @@ class TermModel {
             }
 
             $stmt = $this->db->prepare("
-                INSERT INTO terms (uuid, structure_id, name, start_date, end_date_planned, end_date_actual,
+                INSERT INTO terms (uuid, governance_period_id, structure_id, name, start_date, end_date_planned, end_date_actual,
                                    status, is_current, sk_number, sk_date, notes)
-                VALUES (:uuid, :sid, :name, :start, :planned, :actual, :status, :current, :sk_no, :sk_date, :notes)
+                VALUES (:uuid, :period, :sid, :name, :start, :planned, :actual, :status, :current, :sk_no, :sk_date, :notes)
             ");
             $stmt->execute([
                 ':uuid'    => Uuid::v4(),
+                ':period'  => (int) $period['id'],
                 ':sid'     => $structureId,
-                ':name'    => trim($data['name']),
-                ':start'   => $data['start_date'],
-                ':planned' => $data['end_date_planned'] ?: null,
+                ':name'    => $period['name'],
+                ':start'   => $period['start_date'],
+                ':planned' => $period['end_date_planned'],
                 ':actual'  => $data['end_date_actual'] ?: null,
                 ':status'  => $data['status'],
                 ':current' => $isCurrent,
@@ -150,15 +260,11 @@ class TermModel {
             }
 
             $stmt = $this->db->prepare("
-                UPDATE terms SET name = :name, start_date = :start, end_date_planned = :planned,
-                       end_date_actual = :actual, status = :status, is_current = :current,
+                UPDATE terms SET end_date_actual = :actual, status = :status, is_current = :current,
                        sk_number = :sk_no, sk_date = :sk_date, notes = :notes
                 WHERE id = :id
             ");
             $stmt->execute([
-                ':name'    => trim($data['name']),
-                ':start'   => $data['start_date'],
-                ':planned' => $data['end_date_planned'] ?: null,
                 ':actual'  => $data['end_date_actual'] ?: null,
                 ':status'  => $data['status'],
                 ':current' => $isCurrent,

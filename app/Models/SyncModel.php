@@ -155,9 +155,10 @@ class SyncModel {
         $stmt = $this->db->prepare("
             SELECT t.uuid, t.name, t.start_date, t.end_date_planned, t.end_date_actual,
                    t.status, t.is_current, t.sk_number, t.sk_date, t.updated_at, t.deleted_at,
-                   s.uuid AS structure_uuid
+                   s.uuid AS structure_uuid, gp.uuid AS governance_period_uuid
             FROM terms t
             JOIN structures s ON s.id = t.structure_id
+            JOIN governance_periods gp ON gp.id = t.governance_period_id
             WHERE " . implode(' AND ', $where) . "
             ORDER BY s.path, t.start_date DESC
         ");
@@ -170,6 +171,7 @@ class SyncModel {
         return [
             'uuid'             => $r['uuid'],
             'structure_uuid'   => $r['structure_uuid'],
+            'governance_period_uuid' => $r['governance_period_uuid'],
             'name'             => $r['name'],
             'start_date'       => $r['start_date'],
             'end_date_planned' => $r['end_date_planned'],
@@ -312,6 +314,7 @@ class SyncModel {
                    p.uuid AS person_uuid, p.full_name,
                    s.uuid AS structure_uuid, s.level, s.name AS structure_name,
                    tr.uuid AS term_uuid, tr.name AS term_name, tr.is_current,
+                   gp.uuid AS governance_period_uuid,
                    po.code AS position_code, po.name AS position_name, " . PositionModel::CORE_SQL . " AS is_core, po.sort_order,
                    su.uuid AS unit_uuid, c.name AS unit_name, c.abbreviation AS unit_abbr,
                    g.uuid AS group_uuid, g.name AS group_name, g.kind AS group_kind
@@ -319,6 +322,7 @@ class SyncModel {
             JOIN people p ON p.id = t.person_id
             JOIN structures s ON s.id = t.structure_id
             JOIN terms tr ON tr.id = t.term_id
+            JOIN governance_periods gp ON gp.id = tr.governance_period_id
             JOIN positions po ON po.id = t.position_id
             LEFT JOIN structure_units su ON su.id = t.structure_unit_id
             LEFT JOIN unit_catalog c ON c.id = su.unit_catalog_id
@@ -343,6 +347,7 @@ class SyncModel {
             'structure'      => trim($r['level'] . ' ' . $r['structure_name']),
             'term_uuid'      => $r['term_uuid'],
             'term_name'      => $r['term_name'],
+            'governance_period_uuid' => $r['governance_period_uuid'],
             'term_is_current'=> (bool) $r['is_current'],
             'position_code'  => $r['position_code'],
             'position_name'  => $r['position_name'],

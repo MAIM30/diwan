@@ -204,8 +204,12 @@ try {
     $termId = [];        // kunci -> id periode tujuan
     $termInfo = [];      // kunci -> [orgId, nama, status, is_current, end_actual, start, end]
     $currentTermOf = []; // orgId -> kunci periode berjalan (atau terbaru)
-    $insTerm = $pdo->prepare("INSERT INTO terms (uuid, structure_id, name, start_date, end_date_planned, end_date_actual, status, is_current, notes)
-                              VALUES (?,?,?,?,?,?,?,?,?)");
+    $periodIdByIdentity = [];
+    $findPeriod = $pdo->prepare("SELECT id FROM governance_periods
+        WHERE name = ? AND start_date = ? AND end_date_planned <=> ? LIMIT 1");
+    $insPeriod = $pdo->prepare("INSERT INTO governance_periods (uuid, name, start_date, end_date_planned) VALUES (?,?,?,?)");
+    $insTerm = $pdo->prepare("INSERT INTO terms (uuid, governance_period_id, structure_id, name, start_date, end_date_planned, end_date_actual, status, is_current, notes)
+                              VALUES (?,?,?,?,?,?,?,?,?,?)");
     foreach ($specs as $oid => $list) {
         uasort($list, function ($a, $b) { return strcmp($a['start'], $b['start']); });
         $keys = array_keys($list);
@@ -221,10 +225,21 @@ try {
                 $actual = ($t['end'] !== null && $t['end'] < $cut) ? $t['end'] : $cut;
             }
             $name = substr($t['start'], 0, 4) . '-' . ($t['end'] ? substr($t['end'], 0, 4) : '...');
+            $periodIdentity = $name . '|' . $t['start'] . '|' . ($t['end'] ?? '');
+            if (!isset($periodIdByIdentity[$periodIdentity])) {
+                $findPeriod->execute([$name, $t['start'], $t['end']]);
+                $periodId = $findPeriod->fetchColumn();
+                if (!$periodId) {
+                    $insPeriod->execute([$uuid(), $name, $t['start'], $t['end']]);
+                    $periodId = (int) $pdo->lastInsertId();
+                }
+                $periodIdByIdentity[$periodIdentity] = (int) $periodId;
+            }
+            $periodId = $periodIdByIdentity[$periodIdentity];
             $note = $t['fixed']
                 ? 'Periode ditetapkan pengelola data saat migrasi dari syuro: syuro tidak menyimpan tanggal masa amanah untuk hampir seluruh penempatan tingkat ini.'
                 : null;
-            $insTerm->execute([$uuid(), $struct[$oid], $name, $t['start'], $t['end'], $actual, $status, $isCur, $note]);
+            $insTerm->execute([$uuid(), $periodId, $struct[$oid], $name, $t['start'], $t['end'], $actual, $status, $isCur, $note]);
             $termId[$k] = (int) $pdo->lastInsertId();
             $termInfo[$k] = ['org' => $oid, 'name' => $name, 'status' => $status, 'cur' => $isCur, 'actual' => $actual, 'start' => $t['start'], 'end' => $t['end']];
             if ($i === $cur || ($cur === null && $i === count($keys) - 1)) $currentTermOf[$oid] = $k;

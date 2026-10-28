@@ -32,8 +32,8 @@ class AdminNaming {
     }
 
     private static function tierName($level) {
-        return ['DPP' => 'Pusat', 'MWP' => 'Pusat', 'DPW' => 'Wilayah', 'MWW' => 'Wilayah', 'DPD' => 'Daerah', 'MWD' => 'Daerah',
-                'DPC' => 'Cabang', 'MWC' => 'Cabang', 'DPRa' => 'Ranting'][$level] ?? $level;
+        return ['DPP' => 'Pusat', 'MWP' => 'Pusat', 'DPW' => 'Wilayah', 'DPLN' => 'Luar Negeri', 'MWW' => 'Wilayah', 'DPD' => 'Daerah', 'MWD' => 'Daerah',
+                'DPC' => 'Cabang', 'MWC' => 'Cabang', 'DPRa' => 'Ranting', 'MWRa' => 'Ranting'][$level] ?? $level;
     }
 
     // "Admin Daerah: DPD Kota Kendari", "Admin Wilayah: MWW Sulawesi Tenggara", "Admin Pusat: MWP". Awalan

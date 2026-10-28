@@ -16,6 +16,7 @@ class PersonModel {
         'tanpa_hp'         => 'Tanpa nomor WA',
         'tanpa_nik'        => 'Tanpa NIK',
         'tanpa_penempatan' => 'Belum punya penempatan',
+        'tanpa_unit'       => 'Tanpa Unit Organisasi (SKUO)',
         'nonaktif'         => 'Nonaktif',
     ];
 
@@ -201,6 +202,19 @@ class PersonModel {
             case 'tanpa_penempatan':
                 $where[] = "NOT EXISTS (SELECT 1 FROM placements pln WHERE pln.person_id = p.id AND pln.deleted_at IS NULL)";
                 break;
+            case 'tanpa_unit':
+                // Hanya SKUO yang aktif pada periode berjalan dan dalam lingkup admin yang dihitung.
+                // Jabatan Pengurus Inti (structure_unit_id NULL) tidak dianggap sebagai keanggotaan SKUO.
+                $where[] = "NOT EXISTS (SELECT 1 FROM placements plu
+                              JOIN terms tu ON tu.id = plu.term_id AND tu.is_current = 1 AND tu.deleted_at IS NULL
+                              JOIN structure_units su ON su.id = plu.structure_unit_id
+                                   AND su.term_id = plu.term_id AND su.structure_id = plu.structure_id AND su.deleted_at IS NULL
+                              WHERE plu.person_id = p.id AND plu.deleted_at IS NULL
+                                AND plu.structure_unit_id IS NOT NULL
+                                AND (plu.start_date IS NULL OR plu.start_date <= CURDATE())
+                                AND (plu.end_date IS NULL OR plu.end_date >= CURDATE())
+                                AND " . AdminScope::sqlFilter('plu.structure_id') . ")";
+                break;
             case 'lengkap':
                 $where[] = self::COMPLETE_SQL;
                 break;
@@ -285,7 +299,7 @@ class PersonModel {
     // Untuk <select> orang di formulir penempatan: ringan, hanya kolom yang dibutuhkan.
     public function optionsInScope($limit = 2000) {
         $stmt = $this->db->prepare("
-            SELECT p.id, p.title_prefix, p.name, p.title_suffix, p.full_name
+            SELECT p.id, p.title_prefix, p.name, p.title_suffix, p.full_name, p.gender
             FROM people p
             WHERE p.deleted_at IS NULL AND " . self::scopeSql('p') . "
             ORDER BY p.name, p.id LIMIT :limit
@@ -422,20 +436,113 @@ class PersonModel {
         Audit::log('people', $id, 'update', $before, $this->findById($id));
     }
 
-    public function softDelete($id) {
+    // Menghapus (menyembunyikan, deleted_at) satu orang. Penempatannya baru ikut ditiadakan bila $withPlacements -- itu pilihan
+    // sadar dari tombol Hapus, yang konfirmasinya menyebut jumlahnya; tanpa itu orang bertempat tidak dihapus. Penempatan juga hanya
+    // diberi deleted_at (bisa dipulihkan), dan SEMUA penempatan yang belum dihapus harus di dalam lingkup admin yang menghapus.
+    // Mengembalikan jumlah penempatan yang ikut ditiadakan, atau false bila orangnya tak ada.
+    public function softDelete($id, $withPlacements = false) {
         $id = (int) $id;
         $before = $this->findById($id);
         if (!$before) return false;
 
-        // Orang yang masih punya penempatan tidak dihapus: baris penempatan itu adalah arsip resmi.
-        $used = $this->db->prepare("SELECT COUNT(*) FROM placements WHERE person_id = :id AND deleted_at IS NULL");
-        $used->execute([':id' => $id]);
-        if ((int) $used->fetchColumn() > 0) {
-            throw new RuntimeException('Orang ini masih tercatat di penempatan aktif. Akhiri penempatannya lebih dulu.');
+        $stmt = $this->db->prepare("SELECT id, structure_id, term_id, structure_unit_id, position_id FROM placements
+                                    WHERE person_id = :id AND deleted_at IS NULL");
+        $stmt->execute([':id' => $id]);
+        $placements = $stmt->fetchAll();
+
+        if ($placements && !$withPlacements) {
+            throw new RuntimeException('Orang ini masih memiliki ' . count($placements) . ' penempatan/riwayat yang belum dihapus.');
+        }
+        foreach ($placements as $pl) {
+            if (!AdminScope::allows((int) $pl['structure_id'])) {
+                throw new RuntimeException('Orang ini juga menjabat di struktur di luar lingkup Anda, jadi tidak bisa dihapus dari sini.');
+            }
         }
 
-        $this->db->prepare("UPDATE people SET deleted_at = NOW(3) WHERE id = :id")->execute([':id' => $id]);
-        Audit::log('people', $id, 'delete', $before, null);
+        // Gunakan satu timestamp yang sama agar fitur pulihkan dapat membedakan penempatan yang
+        // ikut terhapus bersama orang ini dari penempatan yang pernah dihapus sendiri.
+        $now = microtime(true);
+        $deletedAt = date('Y-m-d H:i:s', (int) $now) . '.' . sprintf('%03d', (int) (($now - floor($now)) * 1000));
+
+        $this->db->beginTransaction();
+        try {
+            $this->db->prepare("UPDATE placements SET deleted_at = :deleted_at WHERE person_id = :id AND deleted_at IS NULL")
+                ->execute([':deleted_at' => $deletedAt, ':id' => $id]);
+            $this->db->prepare("UPDATE people SET deleted_at = :deleted_at WHERE id = :id")
+                ->execute([':deleted_at' => $deletedAt, ':id' => $id]);
+            $this->db->commit();
+        } catch (PDOException $e) {
+            $this->db->rollBack();
+            throw $e;
+        }
+
+        foreach ($placements as $pl) Audit::log('placements', (int) $pl['id'], 'delete', $pl + ['person_id' => $id], ['event' => 'people_delete']);
+        Audit::log('people', $id, 'delete', $before, ['event' => 'people_delete', 'placements_removed' => count($placements)]);
+        return count($placements);
+    }
+
+    // Daftar pemulihan hanya menampilkan data yang termasuk lingkup admin. Import lama yang tidak
+    // memiliki home_structure_id tetap dapat ditemukan lewat struktur pada riwayat penempatannya.
+    public function deletedInScope($limit = 100) {
+        $scope = AdminScope::isUnbounded()
+            ? '1=1'
+            : '(' . AdminScope::sqlFilter('p.home_structure_id') . '
+               OR EXISTS (SELECT 1 FROM placements pls WHERE pls.person_id = p.id AND '
+                    . AdminScope::sqlFilter('pls.structure_id') . '))';
+        $stmt = $this->db->prepare("SELECT p.id, p.uuid, p.title_prefix, p.name, p.title_suffix, p.full_name,
+                                           p.phone, p.deleted_at, p.home_structure_id,
+                                           (SELECT COUNT(*) FROM placements pl
+                                            WHERE pl.person_id = p.id AND pl.deleted_at = p.deleted_at) AS deleted_placements
+                                    FROM people p WHERE p.deleted_at IS NOT NULL AND $scope
+                                    ORDER BY p.deleted_at DESC, p.id DESC LIMIT :lim");
+        $stmt->bindValue(':lim', max(1, min(500, (int) $limit)), PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll();
+    }
+
+    public function restoreDeleted($id) {
+        $id = (int) $id;
+        $stmt = $this->db->prepare("SELECT * FROM people WHERE id = :id AND deleted_at IS NOT NULL");
+        $stmt->execute([':id' => $id]);
+        $before = $stmt->fetch();
+        if (!$before) return false;
+
+        $visible = AdminScope::allows($before['home_structure_id']);
+        if (!$visible && !AdminScope::isUnbounded()) {
+            $check = $this->db->prepare("SELECT COUNT(*) FROM placements pl WHERE pl.person_id = :id AND " . AdminScope::sqlFilter('pl.structure_id'));
+            $check->execute([':id' => $id]);
+            $visible = (int) $check->fetchColumn() > 0;
+        }
+        if (!$visible) throw new RuntimeException('Data ini berada di luar lingkup akses Anda.');
+
+        $placementStmt = $this->db->prepare("SELECT * FROM placements WHERE person_id = :id AND deleted_at = :deleted_at");
+        $placementStmt->execute([':id' => $id, ':deleted_at' => $before['deleted_at']]);
+        $restoringPlacements = $placementStmt->fetchAll();
+
+        $this->db->beginTransaction();
+        try {
+            // Timestamp identik hanya dimiliki penempatan yang terhapus dalam aksi hapus orang.
+            // Penempatan yang sebelumnya dihapus satu per satu tidak ikut dipulihkan.
+            $this->db->prepare("UPDATE placements SET deleted_at = NULL
+                                WHERE person_id = :id AND deleted_at = :deleted_at")
+                ->execute([':id' => $id, ':deleted_at' => $before['deleted_at']]);
+            $this->db->prepare("UPDATE people SET deleted_at = NULL WHERE id = :id AND deleted_at = :deleted_at")
+                ->execute([':id' => $id, ':deleted_at' => $before['deleted_at']]);
+            $this->db->commit();
+        } catch (PDOException $e) {
+            $this->db->rollBack();
+            if (strpos($e->getMessage(), 'uq_people_nik_live') !== false || strpos($e->getMessage(), 'uq_placements_live') !== false) {
+                throw new RuntimeException('Data tidak dapat dipulihkan karena NIK atau penempatannya sudah dipakai data lain. Selesaikan benturan itu terlebih dahulu.');
+            }
+            throw $e;
+        }
+
+        foreach ($restoringPlacements as $placement) {
+            $afterStmt = $this->db->prepare('SELECT * FROM placements WHERE id = :id');
+            $afterStmt->execute([':id' => (int) $placement['id']]);
+            Audit::log('placements', (int) $placement['id'], 'restore', $placement, $afterStmt->fetch() ?: null);
+        }
+        Audit::log('people', $id, 'restore', $before, ['full_name' => $before['full_name'], 'event' => 'restore']);
         return true;
     }
 

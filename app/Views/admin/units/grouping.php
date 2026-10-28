@@ -32,14 +32,19 @@ $options = function (array $map, $selected) {
 
 // Satu Bidang/kelompok (atau "Unit tanpa Bidang", $g = null) beserta unit-unitnya. $pick = Bidang yang bisa dipilih di tiap unit
 // (kosong = tanpa pemilih), $formId = formulir simpan pengelompokan periode ini.
-$bucket = function ($title, array $list, array $pick, $empty, $g, $tid, $formId) use ($canEdit, $unitKinds, $groupKinds, $defaultUnitKind, $nextId, $ctx, $options) {
+// $coords = calon Ketua Bidang periode ini (UnitModel::coordinatorCandidates); hanya dipakai pada Bidang/Subbidang, bukan kelompok biasa.
+$bucket = function ($title, array $list, array $pick, $empty, $g, $tid, $formId, array $coords = []) use ($canEdit, $unitKinds, $groupKinds, $defaultUnitKind, $nextId, $ctx, $options) {
     $list = Susunan::sortUnits($list);
+    $hasLead = $g && $g['kind'] !== 'grup';
+    $leadWord = $g && $g['kind'] === 'subbidang' ? 'Subbidang' : 'Bidang';
     ?>
     <li class="sn">
       <details>
         <summary>
           <?= Ui::icon('chevron-right', 16, 'caret') ?>
-          <span class="sn-main"><span class="sn-name"><?= e($title) ?></span></span>
+          <span class="sn-main"><span class="sn-name"><?= e($title) ?></span>
+            <?php if ($hasLead && !empty($g['coordinator_name'])): ?><span class="small muted"> &middot; Ketua <?= $leadWord ?>: <?= e($g['coordinator_name']) ?></span>
+            <?php elseif ($hasLead): ?><span class="small muted"> &middot; Ketua <?= $leadWord ?> belum ditetapkan</span><?php endif; ?></span>
           <span class="sn-n"><?= $list ? count($list) . ' unit' : 'belum ada unit' ?></span>
         </summary>
         <div class="sn-body sn-roster">
@@ -76,6 +81,15 @@ $bucket = function ($title, array $list, array $pick, $empty, $g, $tid, $formId)
                         <select id="<?= $b ?>" name="kind"><?= $options($groupKinds, $g['kind']) ?></select></div>
                       <div class="field"><label for="<?= $c ?>">Urutan</label>
                         <input type="number" id="<?= $c ?>" name="sort_order" min="0" max="65535" value="<?= (int) $g['sort_order'] ?>"></div>
+                      <?php if ($hasLead): $d = $nextId(); ?>
+                        <div class="field"><label for="<?= $d ?>">Ketua <?= $leadWord ?></label>
+                          <select id="<?= $d ?>" name="coordinator_placement_id">
+                            <option value="">&mdash; belum ditetapkan &mdash;</option>
+                            <?php foreach ($coords as $co): ?>
+                              <option value="<?= (int) $co['id'] ?>"<?= (int) ($g['coordinator_id'] ?? 0) === (int) $co['id'] ? ' selected' : '' ?>><?= e($co['full_name']) ?> (<?= e($co['position_name']) ?>)</option>
+                            <?php endforeach; ?>
+                          </select></div>
+                      <?php endif; ?>
                       <button type="submit" class="btn">Simpan</button>
                     </div>
                   </form>
@@ -230,7 +244,7 @@ $structureNode = function (array $e) use ($bucket, $canEdit, $groupRank, $openTe
 
         <?php if ($groups || $loose): ?>
           <ul>
-            <?php foreach ($groups as $g) $bucket($g['name'], $inGroup[(int) $g['id']] ?? [], $pick, 'Belum ada unit di sini.', $g, $tid, $formId); ?>
+            <?php foreach ($groups as $g) $bucket($g['name'], $inGroup[(int) $g['id']] ?? [], $pick, 'Belum ada unit di sini.', $g, $tid, $formId, $e['coordinators'] ?? []); ?>
             <?php if ($loose) $bucket('Unit tanpa Bidang', $loose, $pick, '', null, $tid, $formId); ?>
           </ul>
         <?php endif; ?>

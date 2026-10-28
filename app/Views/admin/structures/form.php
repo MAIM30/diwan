@@ -27,7 +27,7 @@ $this->view('layouts/header', ['title' => $title]);
             <option value="<?= e($lv) ?>" <?= ($row['level'] ?? '') === $lv ? 'selected' : '' ?>><?= e($lv) ?></option>
           <?php endforeach; ?>
         </select>
-        <div class="help">MWP/MWW/MWD/MWC = sayap Muslimah.</div>
+        <div class="help">DPLN setingkat DPW di bawah DPP. MWP/MWW/MWD/MWC/MWRa = sayap Muslimah; MWRa berarti Ranting (Kelurahan) di bawah MWC.</div>
       </div>
 
       <div class="field">
@@ -36,7 +36,7 @@ $this->view('layouts/header', ['title' => $title]);
           <option value="">— tanpa induk (akar) —</option>
           <?php foreach ($parents as $p): ?>
             <?php if (!empty($row['id']) && (int) $p['id'] === (int) $row['id']) continue; ?>
-            <option value="<?= (int) $p['id'] ?>" <?= (int) ($row['parent_id'] ?? 0) === (int) $p['id'] ? 'selected' : '' ?>>
+              <option value="<?= (int) $p['id'] ?>" data-parent-level="<?= e($p['level']) ?>" <?= (int) ($row['parent_id'] ?? 0) === (int) $p['id'] ? 'selected' : '' ?>>
               <?= e(str_repeat('— ', (int) $p['depth']) . $p['level'] . ' ' . $p['name']) ?>
             </option>
           <?php endforeach; ?>
@@ -71,5 +71,24 @@ $this->view('layouts/header', ['title' => $title]);
     </div>
   </form>
 </div>
+
+<script>
+(function () {
+  var level = document.getElementById('level');
+  var parent = document.getElementById('parent_id');
+  if (!level || !parent) return;
+  function syncParent() {
+    var required = level.value === 'DPLN' ? 'DPP' : (level.value === 'MWRa' ? 'MWC' : '');
+    Array.prototype.forEach.call(parent.options, function (option) {
+      if (!option.value) return;
+      option.hidden = !!required && option.getAttribute('data-parent-level') !== required;
+      option.disabled = option.hidden;
+    });
+    if (parent.selectedOptions[0] && parent.selectedOptions[0].disabled) parent.value = '';
+  }
+  level.addEventListener('change', syncParent);
+  syncParent();
+})();
+</script>
 
 <?php $this->view('layouts/footer'); ?>

@@ -39,7 +39,7 @@ if (!preg_match('/^[A-Za-z0-9_]+$/', $dbName)) fail('Nama database hanya boleh h
 // Kata sandi yang sudah terbit TIDAK bisa dipulihkan (di basis data hanya hash). Berkas keluaran dari jalan
 // sebelumnya karena itu tidak pernah ditimpa -- diperiksa SEBELUM ada akun yang dibuat.
 if ($out !== null && file_exists($out)) fail("Berkas $out sudah ada dan tidak akan ditimpa (isinya mungkin satu-satunya salinan kata sandi). Pakai nama lain atau hapus dulu bila sudah dibagikan.");
-$all = ['DPP', 'DPW', 'DPD', 'DPC', 'DPRa', 'MWP', 'MWW', 'MWD', 'MWC'];
+$all = ['DPP', 'DPW', 'DPLN', 'DPD', 'DPC', 'DPRa', 'MWP', 'MWW', 'MWD', 'MWC', 'MWRa'];
 if ($levels !== null) foreach ($levels as $l) if (!in_array($l, $all, true)) fail("Tingkat tidak dikenal: $l (pilihan: " . implode(', ', $all) . ').');
 
 try {

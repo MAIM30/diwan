@@ -12,16 +12,16 @@ dirawat bersama. Target MySQL 8.0+ (memakai generated column dan composite forei
 
 ## Yang membedakannya dari skema syuro
 
-1. **Periode adalah entitas.** Di syuro masa amanah adalah dua kolom di baris `users`, jadi mengisi
-   periode baru menimpa riwayat periode lama. Di sini setiap penempatan wajib terikat ke satu
-   `terms.id`, sehingga periode lama tetap utuh sebagai arsip.
+1. **Periode adalah entitas bersama.** governance_periods menyimpan acuan nama dan tanggal yang dapat
+   dipakai banyak struktur. Setiap struktur memiliki baris terms sendiri untuk status, SK, dan susunannya;
+   penempatan tetap terikat ke terms.id, sehingga riwayat dan rekap lintas struktur sama-sama terjaga.
 2. **Orang ≠ akun.** `people` adalah subjek data, `accounts` adalah hak login. Di syuro satu kolom
    `users.role` dipaksa mewakili dua sumbu: posisi di organisasi dan hak akses teknis.
 3. **Jabatan adalah katalog.** `positions` menggantikan `position_name` VARCHAR bebas. Kolom
    `positions.is_core` menggantikan seluruh `CASE WHEN` di `app/Core/PengurusInti.php` syuro:
    Pengurus Inti kini = `placements.structure_unit_id IS NULL AND positions.is_core = 1`, ditambah satu kekecualian per tingkat:
-   `positions.core_from_tier` (migrasi 007) menandai jabatan yang baru inti mulai tier tertentu. Wakil Ketua bernilai 2, jadi ia inti di DPW/DPD/DPC/DPRa dan
-   MWW/MWD/MWC tetapi tidak di DPP/MWP. Aturannya satu tempat: `PositionModel::CORE_SQL` (dan padanannya `PositionModel::isCoreAt`).
+   `positions.core_from_tier` (migrasi 007) menandai jabatan yang baru inti mulai tier tertentu. Wakil Ketua bernilai 2, jadi ia inti di DPW/DPLN/DPD/DPC/DPRa dan
+   MWW/MWD/MWC/MWRa tetapi tidak di DPP/MWP. Aturannya satu tempat: `PositionModel::CORE_SQL` (dan padanannya `PositionModel::isCoreAt`).
 4. **Bidang adalah tabel, dan terikat periode.** `organization_units.bidang` di syuro adalah VARCHAR
    bebas (21 nilai berbeda sudah beredar tanpa penjaga typo). Di sini `unit_groups` terikat ke
    (struktur + periode), karena susunan Bidang berubah antar SK.
@@ -40,7 +40,7 @@ php database/install.php --db=db_pengurus \
 ```
 
 Yang dilakukan installer: membuat database, menerapkan `001_schema.sql` + `002_seed_positions.sql`,
-menjalankan migrasi bernomor berikutnya (`003_pisah_nama.php`, `004_portal_pengurus.php`, `005_data_diri.php`, `006_alamat_dan_sandi.php`, `007_inti_wakil_ketua.php`, **idempoten** -- aman dijalankan ulang di
+menjalankan migrasi bernomor berikutnya (`003`-`016`, **idempoten** -- aman dijalankan ulang di
 basis data baru maupun yang sudah berisi), membuat struktur akar DPP beserta MWP sebagai cabang
 Muslimah di bawahnya, lalu membuat satu akun Super Admin. Tambahkan `--fresh` untuk menghapus database dan memasang ulang dari nol (pengembangan
 lokal saja).
@@ -75,7 +75,8 @@ database/
   005_data_diri.php           migrasi: people.occupation (pekerjaan) + people.family_phone (HP keluarga)
   006_alamat_dan_sandi.php    migrasi: people.village/district (kelurahan, kecamatan) + accounts.must_change_password
   007_inti_wakil_ketua.php    migrasi: positions.core_from_tier (Wakil Ketua = Pengurus Inti mulai tier Wilayah)
-  migrate.php                 menerapkan migrasi 003-007 pada basis data yang SUDAH terpasang (idempoten; jalankan setiap kali kode diperbarui)
+  008-016_*.php               migrasi lanjutan: gateway WA, OTP, biodata, audit, SKUO, catatan tinjauan impor, tingkat DPLN/MWRa, acuan periode bersama
+  migrate.php                 menerapkan migrasi bernomor pada basis data yang SUDAH terpasang (idempoten; jalankan setiap kali kode diperbarui)
   migrate_syuro.php           migrasi satu kali dari db_syuro (CLI; dry-run bawaan)
   provision_admins.php        satu admin_struktur per struktur yang belum punya (CLI; dry-run bawaan)
   reset_password.php          mengganti kata sandi akun admin (CLI)
@@ -140,6 +141,11 @@ menambahkan penempatan pertamanya.
 Setiap aksi atas satu orang (lihat, ubah, hapus, unggah foto) memeriksa visibilitas ini; di luar lingkup
 dijawab 404 (bukan 403) agar keberadaan baris tidak bocor. Pencocokan data ganda tetap berlaku ke
 seluruh basis data (satu orang, satu baris), tetapi biodata calon di luar lingkup diredaksi -- hanya nama.
+
+Penghapusan pengurus tersedia dari halaman profil dan merupakan soft delete. Konfirmasi menyebut bahwa seluruh
+penempatan yang belum dihapus, termasuk riwayat, ikut disembunyikan. Admin hanya dapat menghapus orang bila semua
+penempatannya berada dalam lingkupnya. Halaman **Data Terhapus** dapat memulihkan orang dan penempatan yang terhapus
+dalam aksi yang sama; penghapusan penempatan tersendiri tidak ikut dipulihkan.
 
 ## Tampilan
 
@@ -210,9 +216,10 @@ yang ada dipertahankan, ditambah dua yang khusus nomor:
 | Nomor bersama tak bisa dipakai masuk | `people.phone` sengaja tidak unik (mis. nomor suami pada data pengurus muslimah). Portal tak punya faktor kedua untuk memilih pemiliknya, jadi nomor yang dipakai **dua orang atau lebih** (yang belum dihapus) tidak bisa dipakai masuk oleh siapa pun, bukan "masuk sebagai yang pertama". Dihitung semua pemilik, bukan hanya yang layak, supaya hasilnya tak berubah mengikuti status orang lain. Pemilik ber-NIK tetap bisa masuk dengan NIK-nya. Admin melihat alasannya di profil ("Nomor WA dipakai orang lain juga") |
 | Pesan seragam | nomor tak terdaftar, dipakai bersama, akses dicabut, nonaktif, belum punya penempatan: satu pesan yang **identik** dengan NIK tak dikenal |
 
-Yang menguatkannya tanpa mengubah alurnya: **OTP WhatsApp** (nomor + kode sekali pakai). Itu butuh gateway pengirim pesan WA, yang belum
-ada di proyek ini; hanya `PengurusController::login_process` yang perlu disentuh. Sampai itu ada, `PORTAL_ENABLED = false` mematikan
-seluruh portal dan `people.portal_enabled` mencabut akses satu orang seketika.
+Jika WhatsApp Gateway dikonfigurasi, portal mengirim **OTP WhatsApp** dan meminta verifikasi kode sebelum membuat sesi.
+Kode berlaku 5 menit, kirim ulang dibatasi 60 detik, dan percobaan gagal dibatasi. Tanpa gateway, aplikasi memakai jalur
+masuk langsung dengan nomor WA/NIK; karena itu siapkan gateway sebelum membuka portal secara luas. `PORTAL_ENABLED = false`
+mematikan seluruh portal dan `people.portal_enabled` mencabut akses satu orang seketika.
 
 ### Soal risiko: NIK dan nomor WA bukan rahasia
 
@@ -237,10 +244,10 @@ pengamannya dipasang di sekelilingnya tanpa mengubah sifat "satu kredensial saja
 
 **Konsekuensi NIK utuh.** Masuk ke portal hanya bermodal nomor WA, dan nomor WA bukan rahasia; maka siapa pun yang tahu nomor WA seorang pengurus bisa melihat NIK
 lengkapnya di portal. Itu keputusan yang disengaja (NIK memang milik pemiliknya sendiri), tetapi ia menambah nilai nomor WA sebagai sasaran. Yang menutupnya adalah
-faktor kedua (OTP WhatsApp, lihat atas); NIK di jejak audit tetap disamarkan.
+OTP WhatsApp bila gateway diaktifkan (lihat atas); tanpa gateway, portal memakai jalur masuk langsung. NIK di jejak audit tetap disamarkan.
 
-Yang bisa menguatkannya tanpa mengubah alurnya: **tanggal lahir sebagai faktor kedua** (NIK + tanggal
-lahir), atau **OTP WhatsApp** seperti di syuro. Keduanya hanya menyentuh `PengurusController::login_process`.
+OTP WhatsApp adalah faktor kedua yang tersedia bila gateway dikonfigurasi. Admin dapat mematikan seluruh portal
+melalui `PORTAL_ENABLED` bila gateway belum siap atau akses perlu dihentikan sementara.
 
 **Syarat masuk** (`MemberModel::ELIGIBLE`, satu-satunya definisinya): orang belum dihapus, status
 `active`, `portal_enabled = 1`, dan punya setidaknya satu penempatan; masuk dengan nomor WA juga mensyaratkan nomor itu hanya dipakai satu orang.
@@ -363,11 +370,12 @@ seluruh keturunannya (`AdminScope`, materialized path), dan tidak pernah menyebe
 | Tingkat | Contoh admin | Lingkup yang terlihat/dikelola |
 |---|---|---|
 | Pusat | DPP | seluruh sistem, termasuk sayap Muslimah (MWP menggantung di bawah DPP) |
-| Pusat Muslimah | MWP | MWP + MWW + MWD + MWC |
+| Pusat Muslimah | MWP | MWP + MWW + MWD + MWC + MWRa |
 | Wilayah | DPW Sulawesi Tenggara | DPW itu + semua DPD/DPC/DPRa di bawahnya, **bukan** MWW Sultra |
+| Luar Negeri | DPLN | hanya DPLN dan keturunan yang berada di bawahnya |
 | Daerah | DPD Kota Kendari | DPD itu + DPC + DPRa di bawahnya |
 | Cabang | DPC Mandonga | DPC itu + DPRa di bawahnya |
-| Ranting | DPRa Ranting Satu | hanya ranting itu |
+| Ranting | DPRa Ranting Satu atau MWRa Ranting Satu | hanya ranting itu |
 
 Yang dibatasi: daftar & profil orang (di luar lingkup dijawab 404), formulir ubah, penempatan, periode, unit, pendaftar (tinjau + verifikasi),
 struktur (nama induk di luar lingkup tak ditampilkan), daftar akun, dan semua aksi tulis. **Mendelegasikan hanya ke bawah**: admin boleh membuat
@@ -406,7 +414,7 @@ Lingkup admin (`AdminScope`) dihitung saat masuk; setelah admin menambah atau me
 (`AdminScope::refresh`), sehingga struktur barunya langsung terlihat dan langkah berikutnya (form periode) tidak ditolak.
 
 **Pilihan Tingkat di form struktur mengikuti lingkup admin** (`StructureModel::levelsInScope`): di tiap sayap, mulai dari struktur tertingginya dalam lingkup ke bawah.
-Admin DPW melihat DPW/DPD/DPC/DPRa, admin DPD melihat DPD/DPC/DPRa, dan seterusnya; sayap yang tak ada dalam lingkupnya (Muslimah bagi admin DPW) tidak muncul,
+Admin DPW melihat DPW/DPD/DPC/DPRa, admin DPD melihat DPD/DPC/DPRa, dan seterusnya; admin DPP dapat membuat DPLN setingkat DPW dan admin MWC dapat membuat MWRa; sayap yang tak ada dalam lingkupnya (Muslimah bagi admin DPW) tidak muncul,
 sedangkan admin DPP dan Super Admin melihat semuanya. Batas yang sama dipaksakan di server saat menyimpan, jadi mengirim level lain secara manual ditolak.
 
 **Susunan periode dikelompokkan per kategori.** Halaman detail periode menampilkan "Susunan Lengkap" sebagai daftar yang membuka isinya saat diketuk (pola `<details>`
@@ -414,7 +422,7 @@ yang sama dengan halaman Struktur, lengkap dengan Buka semua / Tutup semua), dik
 
 | Simpul | Isinya |
 |---|---|
-| **Pengurus Inti** | jabatan tingkat struktur (tanpa unit) yang di katalog jabatan inti bagi struktur itu: bertanda `is_core`, atau `core_from_tier` sama/lebih kecil dari tier-nya (Wakil Ketua di DPW/DPD/DPC/DPRa dan MWW/MWD/MWC); terbuka sejak awal, dengan kolom Kontak |
+| **Pengurus Inti** | jabatan tingkat struktur (tanpa unit) yang di katalog jabatan inti bagi struktur itu: bertanda `is_core`, atau `core_from_tier` sama/lebih kecil dari tier-nya (Wakil Ketua di DPW/DPLN/DPD/DPC/DPRa dan MWW/MWD/MWC/MWRa); terbuka sejak awal, dengan kolom Kontak |
 | **Pimpinan Lainnya** | jabatan tingkat struktur yang bukan inti (mis. Wakil Ketua di DPP/MWP, Pengarah); hanya tampil bila ada |
 | **Bidang** → tiap Bidang → unit | tiap Bidang memuat unit yang dinaunginya: **Departemen dulu, lalu Lembaga**, lalu jenis lain (Biro, Badan, Pusat, Divisi); sayap Muslimah berlabel **Subbidang** |
 | kelompok lain (Pusat-Pusat, Badan-Badan, Biro-Biro) | kelompok bukan-Bidang milik periode itu, memakai namanya sendiri |
@@ -762,12 +770,7 @@ yang namanya cocok, tak ada foto/nomor WA yang dipakai dua orang, foto semuanya 
 - **SK periode lain.** Hanya SK DPP/MWP 2026-2031 yang tercatat. SK DPW dan MWW Sultra 2021-2026 belum ada (periodenya ditetapkan pengelola saat migrasi).
 - **Verifikasi nama per nama terhadap SK.** Baru pucuk pimpinan (39 nama) dan jumlah per unit; sisanya bergantung pada data sumber syuro (yang memuat satu salah eja).
 
-- **Impor massal SK.** Tabel `import_batches` dan `import_review_items` sudah ada di skema, tapi
-  antarmuka dan skrip importnya belum. Di syuro, log "perlu dicek manual" hanya dicetak ke stdout
-  dan hilang begitu terminal ditutup; tabel ini ada supaya daftar itu jadi pekerjaan yang bisa
-  diselesaikan.
-  Migrasi syuro dan impor biodata sudah mengisi `import_review_items` (butir ber-`resolution = pending`), tetapi layar untuk
-  meninjaunya belum ada; sementara ini dibaca lewat SQL.
-- **Login OTP WhatsApp.** Saat ini login memakai nomor + kata sandi dengan pembatas percobaan.
-  Pola OTP syuro bisa diadopsi menyusul.
-- **Unggah berkas SK.** Kolom `terms.sk_file_path` sudah ada, mekanisme unggahnya belum.
+- **Impor massal SK.** Skrip untuk mengimpor SK massal belum tersedia. Migrasi syuro dan impor biodata
+  mengisi daftar kasus yang perlu ditinjau; panel **Tinjauan Impor** kini mencatat keputusan dan catatan
+  Super Admin. Keputusan ini tidak mengubah data orang atau penempatan secara otomatis. Tombolnya hanya tampak bagi
+  Super Admin karena batch impor lama tidak selalu terikat ke satu struktur.

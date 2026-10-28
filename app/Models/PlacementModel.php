@@ -96,6 +96,28 @@ class PlacementModel {
         return $stmt->fetchAll();
     }
 
+    public function byGovernancePeriod($periodId, $personId) {
+        $stmt = $this->db->prepare("SELECT pl.*, p.full_name, p.title_prefix, p.name, p.title_suffix,
+                   po.name AS position_name, c.name AS unit_name, g.name AS group_name,
+                   s.level, s.name AS structure_name, t.name AS term_name,
+                   t.start_date AS term_start, t.end_date_planned, t.end_date_actual
+            FROM placements pl
+            JOIN people p ON p.id = pl.person_id
+            JOIN positions po ON po.id = pl.position_id
+            JOIN structures s ON s.id = pl.structure_id
+            JOIN terms t ON t.id = pl.term_id
+            LEFT JOIN structure_units su ON su.id = pl.structure_unit_id
+            LEFT JOIN unit_catalog c ON c.id = su.unit_catalog_id
+            LEFT JOIN unit_groups g ON g.id = su.unit_group_id
+            WHERE t.governance_period_id = :period AND pl.person_id = :person
+              AND pl.deleted_at IS NULL AND t.deleted_at IS NULL
+              AND " . AdminScope::sqlFilter('pl.structure_id') . "
+            ORDER BY s.path, ISNULL(pl.structure_unit_id) DESC, COALESCE(g.sort_order, 9999),
+                     g.name, su.sort_order, c.name, po.sort_order");
+        $stmt->execute([':period' => (int) $periodId, ':person' => (int) $personId]);
+        return $stmt->fetchAll();
+    }
+
     public function create(array $data) {
         $structureId = (int) $data['structure_id'];
         $termId = (int) $data['term_id'];
@@ -155,6 +177,40 @@ class PlacementModel {
                 ':sk_ref'   => !empty($data['sk_reference']) ? $data['sk_reference'] : null,
                 ':notes'    => !empty($data['notes']) ? $data['notes'] : null,
                 ':id'       => $id,
+            ]);
+            Audit::log('placements', $id, 'update', $before, $this->findById($id));
+            return true;
+        } catch (PDOException $e) {
+            throw new RuntimeException($this->explainDbError($e), 0, $e);
+        }
+    }
+
+    // Mengubah struktur tujuan tanpa keluar dari satu Periode Kepengurusan bersama.
+    // Baris histori tetap sama; composite foreign key tetap memastikan struktur, periode,
+    // dan SKUO tujuan saling cocok.
+    public function updateWithinGovernancePeriod($id, array $data) {
+        $id = (int) $id;
+        $before = $this->findById($id);
+        if (!$before) return false;
+
+        try {
+            $stmt = $this->db->prepare("UPDATE placements
+                SET term_id = :term, structure_id = :structure, structure_unit_id = :unit,
+                    position_id = :position, is_primary = :primary, start_date = :start,
+                    end_date = :end, end_reason = :reason, sk_reference = :sk_ref, notes = :notes
+                WHERE id = :id");
+            $stmt->execute([
+                ':term' => (int) $data['term_id'],
+                ':structure' => (int) $data['structure_id'],
+                ':unit' => !empty($data['structure_unit_id']) ? (int) $data['structure_unit_id'] : null,
+                ':position' => (int) $data['position_id'],
+                ':primary' => !empty($data['is_primary']) ? 1 : 0,
+                ':start' => !empty($data['start_date']) ? $data['start_date'] : null,
+                ':end' => !empty($data['end_date']) ? $data['end_date'] : null,
+                ':reason' => !empty($data['end_reason']) ? $data['end_reason'] : null,
+                ':sk_ref' => !empty($data['sk_reference']) ? $data['sk_reference'] : null,
+                ':notes' => !empty($data['notes']) ? $data['notes'] : null,
+                ':id' => $id,
             ]);
             Audit::log('placements', $id, 'update', $before, $this->findById($id));
             return true;

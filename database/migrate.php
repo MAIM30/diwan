@@ -4,8 +4,8 @@
 //
 //   php database/migrate.php --db=db_pengurus
 //
-// Semua migrasi IDEMPOTEN (memeriksa dulu apakah kolomnya sudah ada), jadi aman dijalankan kapan saja dan berulang --
-// jalankan setiap kali kode aplikasi diperbarui. Tidak menyentuh data, hanya menambah kolom bila belum ada.
+// Migrasi idempoten dan aman dijalankan berulang -- jalankan setiap kali kode aplikasi diperbarui.
+// Selain perubahan skema, migrasi 016 memetakan periode lama ke acuan bersama tanpa mengubah penempatan.
 // (install.php tetap untuk pemasangan BARU: ia juga membuat struktur akar dan akun Super Admin pertama.)
 
 if (PHP_SAPI !== 'cli') {
@@ -34,7 +34,11 @@ foreach ([['003_pisah_nama.php', 'migrate_003_pisah_nama'], ['004_portal_penguru
           ['009_otp_ip_varbinary.php', 'migrate_009_otp_ip_varbinary'],
           ['010_biodata_submissions.php', 'migrate_010_biodata_submissions'],
           ['011_biodata_foto_drive.php', 'migrate_011_biodata_foto_drive'],
-          ['012_audit_event_column.php', 'migrate_012_audit_event_column']] as [$file, $fn]) {
+          ['012_audit_event_column.php', 'migrate_012_audit_event_column'],
+          ['013_skuo_urut_ketua_bidang.php', 'migrate_013_skuo_urut_ketua_bidang'],
+          ['014_catatan_keputusan_impor.php', 'migrate_014_catatan_keputusan_impor'],
+          ['015_struktur_dpln_mwra.php', 'migrate_015_struktur_dpln_mwra'],
+          ['016_periode_bersama.php', 'migrate_016_periode_bersama']] as [$file, $fn]) {
     require_once __DIR__ . '/' . $file;
     $fn($pdo, $say);
 }

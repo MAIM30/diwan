@@ -77,7 +77,7 @@ $node = function (array $r, $open) use (&$node, $kids, $admins, $canEdit) {
 </div>
 
 <div class="note">
-  Sayap Muslimah (MWP/MWW/MWD/MWC) adalah cabang paralel di bawah akar yang sama, bukan label lain
+  Sayap Muslimah (MWP/MWW/MWD/MWC/MWRa) adalah cabang paralel di bawah akar yang sama, bukan label lain
   dari struktur umum: &ldquo;DPW Sulawesi Tenggara&rdquo; dan &ldquo;MWW Sulawesi Tenggara&rdquo;
   adalah dua baris berbeda. Lingkup admin tidak pernah menyeberang antar cabang.
 </div>

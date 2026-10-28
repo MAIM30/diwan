@@ -10,6 +10,7 @@ $this->view('layouts/header', ['title' => $title]);
   <h1><?= e($term['level'] . ' ' . $term['structure_name']) ?> &middot; <?= e($term['name']) ?></h1>
   <?php if ($term['is_current']): ?><span class="badge current">periode berjalan</span><?php endif; ?>
   <div class="actions">
+    <a class="btn secondary" href="<?= BASEURL ?>/terms/period_detail/<?= (int) $term['governance_period_id'] ?>">Rekap lintas struktur</a>
     <?php if (Auth::canEdit()): ?>
       <a class="btn" href="<?= BASEURL ?>/placements/form/<?= (int) $term['id'] ?>">Tambah Penempatan</a>
       <a class="btn secondary" href="<?= BASEURL ?>/units/term/<?= (int) $term['id'] ?>">Bidang &amp; Unit</a>

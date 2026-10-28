@@ -73,7 +73,9 @@ class BiodataPdf {
     private static function txt($s) {
         // Core font FPDF (Helvetica) cuma Latin-1 -- teks Bahasa Indonesia standar aman dikonversi.
         $s = (string) $s;
-        return function_exists('iconv') ? (iconv('UTF-8', 'ISO-8859-1//TRANSLIT', $s) ?: $s) : $s;
+        if (!function_exists('iconv')) return $s;
+        $converted = @iconv('UTF-8', 'ISO-8859-1//TRANSLIT//IGNORE', $s);
+        return $converted !== false ? $converted : '';
     }
 
     // Foto dimuat UTUH ke kotak PHOTO_MAX_W x PHOTO_MAX_H (mm) dengan proporsi aslinya -- tidak dipotong, tidak

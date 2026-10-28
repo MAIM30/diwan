@@ -30,21 +30,23 @@ $selectedStructure = (int) ($row['structure_id'] ?? $structureId ?? 0);
     </div>
 
     <div class="field">
-      <label for="name">Nama Periode</label>
-      <input type="text" id="name" name="name" required value="<?= e($row['name'] ?? '') ?>"
-             placeholder="mis. 2026-2031">
+      <label for="governance_period_id">Acuan Periode Kepengurusan</label>
+      <?php if (!empty($row['id'])): ?>
+        <input type="hidden" name="governance_period_id" value="<?= (int) $row['governance_period_id'] ?>">
+        <input type="text" id="governance_period_id" value="<?= e($row['name']) ?> · <?= e($row['start_date']) ?> s.d. <?= e($row['end_date_planned'] ?: 'belum ditentukan') ?>" disabled>
+        <div class="help">Acuan periode dikunci setelah susunan struktur dibuat. Nama dan tanggal bersama diatur dari daftar acuan periode.</div>
+      <?php else: ?>
+        <select id="governance_period_id" name="governance_period_id" required>
+          <option value="">— pilih acuan periode —</option>
+          <?php foreach ($governancePeriods as $period): ?>
+            <option value="<?= (int) $period['id'] ?>" <?= (int) $governancePeriodId === (int) $period['id'] ? 'selected' : '' ?>><?= e($period['name']) ?> · <?= e($period['start_date']) ?> s.d. <?= e($period['end_date_planned'] ?: 'belum ditentukan') ?></option>
+          <?php endforeach; ?>
+        </select>
+        <div class="help">Belum ada acuan yang sesuai? <a href="<?= BASEURL ?>/terms/period_form" target="_blank">Buat acuan periode</a> terlebih dahulu.</div>
+      <?php endif; ?>
     </div>
 
-    <div class="grid-3">
-      <div class="field">
-        <label for="start_date">Tanggal Mulai</label>
-        <input type="date" id="start_date" name="start_date" required value="<?= e($row['start_date'] ?? '') ?>">
-      </div>
-      <div class="field">
-        <label for="end_date_planned">Akhir &mdash; Rencana (SK)</label>
-        <input type="date" id="end_date_planned" name="end_date_planned" value="<?= e($row['end_date_planned'] ?? '') ?>">
-        <div class="help">Sesuai yang tertulis di SK.</div>
-      </div>
+    <div class="grid-2">
       <div class="field">
         <label for="end_date_actual">Akhir &mdash; Aktual</label>
         <input type="date" id="end_date_actual" name="end_date_actual" value="<?= e($row['end_date_actual'] ?? '') ?>">

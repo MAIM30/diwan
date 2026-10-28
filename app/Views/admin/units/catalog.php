@@ -11,7 +11,11 @@
 // satu-satunya hal yang tidak bisa dilihat dari daftar nama.
 //
 // Dari controller: $rows (sudah tersaring, berisi used_count/used_structures/head_name),
-// $counts (jumlah per jenis, TIDAK tersaring), $kind, $keyword.
+// $counts (jumlah per jenis, TIDAK tersaring), $kind, $keyword,
+// $urut (true = satu daftar menurut urutan resmi SKUO, bukan per jenis), $inti (UnitModel::intiInfo), $nextOrder (nomor urut berikutnya).
+//
+// PENGURUS INTI bukan baris katalog: ia penempatan tingkat struktur (tanpa unit), jadi hanya DITAMPILKAN di sini sebagai entri
+// bawaan sistem. Jabatan yang inti diatur di Jabatan (/positions), bukan di sini.
 
 $this->view('layouts/header', ['title' => $title]);
 
@@ -27,8 +31,8 @@ $kindTone = ['departemen' => 't-teal', 'lembaga' => 't-green', 'biro' => 't-viol
 $total = array_sum($counts);
 $canEdit = Auth::canEdit();
 
-$qs = function (array $over = []) use ($kind, $keyword) {
-    $p = array_merge(['kind' => $kind, 'q' => $keyword], $over);
+$qs = function (array $over = []) use ($kind, $keyword, $urut) {
+    $p = array_merge(['kind' => $kind, 'q' => $keyword, 'urut' => $urut ? 'skuo' : ''], $over);
     $p = array_filter($p, function ($v) { return $v !== '' && $v !== null; });
     return BASEURL . '/units/catalog' . ($p ? '?' . http_build_query($p) : '');
 };
@@ -42,7 +46,7 @@ $rc = function ($label, $count, $icon, $active, $href, $tone = '') {
 
 // Tanpa saringan jenis, baris dipecah per jenis menjadi beberapa kartu. Dengan saringan (atau
 // saat mencari), satu kartu saja -- memecah hasil pencarian per jenis justru menyembunyikannya.
-$grouped = ($kind === '' && $keyword === '');
+$grouped = ($kind === '' && $keyword === '' && !$urut);
 $sections = [];
 if ($grouped) {
     foreach ($rows as $r) $sections[$r['kind']][] = $r;
@@ -70,6 +74,28 @@ if ($grouped) {
   <a href="<?= BASEURL ?>/units/grouping">Pengelompokan Unit</a>.
 </div>
 
+<?php
+// Wakil Ketua inti sejak tier berapa -> kalimat pendek; jabatan lain inti di semua tingkat.
+$intiNames = [];
+foreach ($inti['positions'] as $ip) {
+    $intiNames[] = $ip['name'] . (!$ip['is_core'] && $ip['core_from_tier'] > 1 ? ' (mulai tingkat Wilayah)' : '');
+}
+?>
+<div class="card">
+  <h2><?= Ui::icon('users', 19) ?> PENGURUS INTI <span class="badge">bawaan sistem</span>
+    <span class="hint">&mdash; urutan pertama SKUO</span></h2>
+  <p style="margin:0 0 8px">
+    Wadah pimpinan tingkat struktur: <?= e(implode(', ', $intiNames)) ?>.
+    <strong>Ketua dan Wakil Ketua</strong> di sini adalah pemimpin Bidang
+    (atur di <a href="<?= BASEURL ?>/units/grouping">Pengelompokan Unit</a> &rarr; Ubah Bidang &rarr; Ketua Bidang).
+  </p>
+  <p class="small muted" style="margin:0">
+    Dipakai <?= (int) $inti['placements'] ?> penempatan di <?= (int) $inti['structures'] ?> struktur pada periode berjalan.
+    Dipilih sebagai &ldquo;PENGURUS INTI&rdquo; (tanpa unit) di formulir penempatan; daftar jabatan inti diatur di
+    <a href="<?= BASEURL ?>/positions">Jabatan</a>, jadi tidak bisa diubah atau dihapus dari sini.
+  </p>
+</div>
+
 <div class="stats recap">
   <?php foreach ($kinds as $k => $label): ?>
     <?= $rc($label, (int) ($counts[$k] ?? 0), $kindIcon[$k], $kind === $k,
@@ -83,10 +109,14 @@ if ($grouped) {
     <input type="search" name="q" value="<?= e($keyword) ?>" aria-label="Cari unit"
            placeholder="Cari nama atau singkatan unit">
     <?php if ($kind): ?><input type="hidden" name="kind" value="<?= e($kind) ?>"><?php endif; ?>
+    <?php if ($urut): ?><input type="hidden" name="urut" value="skuo"><?php endif; ?>
   </form>
   <?php if ($kind !== '' || $keyword !== ''): ?>
-    <a class="btn small secondary" href="<?= BASEURL ?>/units/catalog">Tampilkan semua</a>
+    <a class="btn small secondary" href="<?= BASEURL ?>/units/catalog<?= $urut ? '?urut=skuo' : '' ?>">Tampilkan semua</a>
   <?php endif; ?>
+  <a class="btn small secondary" href="<?= e($qs(['urut' => $urut ? '' : 'skuo'])) ?>" title="Tampilkan sebagai satu daftar menurut urutan resmi SKUO">
+    <?= Ui::icon('layers', 15) ?> <?= $urut ? 'Per jenis' : 'Urutan SKUO' ?>
+  </a>
   <label class="per-page">
     <select data-per-page="unit-table">
       <?php foreach ([10, 25, 50, 100] as $n): ?>
@@ -104,6 +134,7 @@ if ($grouped) {
     <?= Csrf::field() ?>
     <input type="hidden" name="kind_filter" value="<?= e($kind) ?>">
     <input type="hidden" name="q_filter" value="<?= e($keyword) ?>">
+    <input type="hidden" name="urut_filter" value="<?= $urut ? 'skuo' : '' ?>">
     <div class="grid-3">
       <div class="field">
         <label for="name">Nama Unit</label>
@@ -123,6 +154,12 @@ if ($grouped) {
         <div class="help">Jenis menentukan istilah kepala unitnya: Pusat &rarr; &ldquo;Kepala&rdquo;,
           Divisi &rarr; &ldquo;Koordinator&rdquo;, sisanya &rarr; &ldquo;Ketua&rdquo;.</div>
       </div>
+    </div>
+    <div class="field" style="max-width:260px">
+      <label for="new_sort">Urutan SKUO</label>
+      <input type="number" id="new_sort" name="sort_order" min="0" max="65535" placeholder="<?= (int) $nextOrder ?> (urutan terakhir)">
+      <div class="help">Angka kecil tampil lebih dulu. Kosongkan untuk menaruhnya di urutan terakhir; pakai angka di antara
+        dua unit (mis. 25 di antara 20 dan 30) untuk menyisipkan.</div>
     </div>
     <input type="hidden" name="is_active" value="1">
     <button type="submit" class="btn">Tambah</button>
@@ -151,6 +188,7 @@ if ($grouped) {
       <table id="unit-table">
         <thead>
           <tr>
+            <th class="num" title="Urutan resmi SKUO; angka kecil tampil lebih dulu">Urutan</th>
             <th>Nama</th>
             <th>Singkatan</th>
             <?php if ($sk === ''): ?><th>Jenis</th><?php endif; ?>
@@ -163,6 +201,7 @@ if ($grouped) {
         <tbody>
         <?php foreach ($list as $r): $id = (int) $r['id']; $used = (int) $r['used_count']; ?>
           <tr>
+            <td class="num small mono"><?= (int) $r['sort_order'] === 500 ? '<span class="muted" title="Belum diurutkan">&mdash;</span>' : (int) $r['sort_order'] ?></td>
             <td><strong><?= e($r['name']) ?></strong></td>
             <td class="small mono"><?= e($r['abbreviation'] ?: '—') ?></td>
             <?php if ($sk === ''): ?>
@@ -190,6 +229,7 @@ if ($grouped) {
                   <input type="hidden" name="id" value="<?= $id ?>">
                   <input type="hidden" name="kind_filter" value="<?= e($kind) ?>">
                   <input type="hidden" name="q_filter" value="<?= e($keyword) ?>">
+                  <input type="hidden" name="urut_filter" value="<?= $urut ? 'skuo' : '' ?>">
                   <button type="submit" class="icon-btn" title="Hapus"><?= Ui::icon('trash', 16) ?></button>
                 </form>
               </td>
@@ -197,12 +237,13 @@ if ($grouped) {
           </tr>
           <?php if ($canEdit): ?>
             <tr id="unit-<?= $id ?>" hidden>
-              <td colspan="<?= $sk === '' ? 7 : 6 ?>">
+              <td colspan="<?= $sk === '' ? 8 : 7 ?>">
                 <form method="post" action="<?= BASEURL ?>/units/catalog_save">
                   <?= Csrf::field() ?>
                   <input type="hidden" name="id" value="<?= $id ?>">
                   <input type="hidden" name="kind_filter" value="<?= e($kind) ?>">
                   <input type="hidden" name="q_filter" value="<?= e($keyword) ?>">
+                  <input type="hidden" name="urut_filter" value="<?= $urut ? 'skuo' : '' ?>">
                   <div class="grid-3">
                     <div class="field">
                       <label for="n<?= $id ?>">Nama Unit</label>
@@ -220,6 +261,11 @@ if ($grouped) {
                         <?php endforeach; ?>
                       </select>
                       <div class="help">Mengubah jenis ikut mengubah istilah kepala unitnya.</div>
+                    </div>
+                    <div class="field">
+                      <label for="o<?= $id ?>">Urutan SKUO</label>
+                      <input type="number" id="o<?= $id ?>" name="sort_order" min="0" max="65535" value="<?= (int) $r['sort_order'] ?>">
+                      <div class="help">Berlaku sebagai bawaan unit yang ditambahkan ke periode baru; unit di periode lama tidak berubah.</div>
                     </div>
                   </div>
                   <label class="check">

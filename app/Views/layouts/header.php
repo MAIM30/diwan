@@ -65,6 +65,9 @@ $nav = function ($key, $href, $icon, $label, $badge = 0) use ($navKey) {
       <div class="nav-label">Verifikasi</div>
       <?= $nav('registrations', 'registrations', 'inbox', 'Pendaftaran', $pendingCount) ?>
       <?= $nav('biodata', 'biodata', 'file-text', 'Biodata Pengurus') ?>
+      <?php if (Auth::isSuperAdmin()): ?>
+        <?= $nav('imports', 'imports', 'clipboard-check', 'Tinjauan Impor') ?>
+      <?php endif; ?>
 
       <?php if (Auth::hasAnyRole(['super_admin', 'admin_struktur'])): ?>
         <div class="nav-label">Pengaturan</div>

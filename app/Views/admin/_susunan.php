@@ -25,6 +25,9 @@ $roster = function (array $n) use ($canEdit) {
             <td>
               <?= Ui::personCell($r, BASEURL . '/people/detail/' . (int) $r['person_id'], null, 'sm') ?>
               <?php if (!$r['is_primary']): ?><span class="badge" style="margin-left:46px">rangkap</span><?php endif; ?>
+              <?php if (!empty($r['memimpin'])): ?>
+                <div class="small muted" style="margin-left:46px">Memimpin <?= e(implode(', ', $r['memimpin'])) ?></div>
+              <?php endif; ?>
             </td>
             <?php if ($n['phone']): ?><td class="small mono"><?= e($r['phone'] ?: '—') ?></td><?php endif; ?>
             <td class="small">
@@ -71,6 +74,7 @@ $node = function (array $n) use (&$node, $roster) {
           <span class="sn-main">
             <span class="sn-name"><?= e($n['title']) ?></span>
             <?php if ($n['badge']): ?><span class="badge"><?= e($n['badge']) ?></span><?php endif; ?>
+            <?php if ($n['lead']): ?><span class="small muted"> &middot; <?= e($n['lead']) ?></span><?php endif; ?>
           </span>
           <span class="sn-n"><?= e(implode(' · ', $meta)) ?></span>
         </summary>

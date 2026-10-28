@@ -57,6 +57,19 @@ $dash = '<span class="muted">—</span>';
             <button type="submit" class="btn secondary"><?= Ui::icon('trash', 16) ?> Hapus Foto</button>
           </form>
         <?php endif; ?>
+        <?php if ($hidden > 0): ?>
+          <span class="help" title="Sebagian riwayat berada di luar lingkup admin">Tidak dapat menghapus: <?= (int) $hidden ?> penempatan di luar lingkup</span>
+        <?php else: ?>
+          <form class="inline" method="post" action="<?= BASEURL ?>/people/delete"
+                onsubmit="return confirm(this.dataset.confirm)"
+                data-confirm="Hapus data <?= e($person['full_name']) ?> beserta <?= (int) $allPlacementCount ?> penempatan, termasuk seluruh riwayat? Data akan masuk ke daftar Data Terhapus dan dapat dipulihkan.">
+            <?= Csrf::field() ?>
+            <input type="hidden" name="id" value="<?= (int) $person['id'] ?>">
+            <input type="hidden" name="with_placements" value="1">
+            <input type="hidden" name="back" value="">
+            <button type="submit" class="btn danger"><?= Ui::icon('trash', 16) ?> Hapus Pengurus</button>
+          </form>
+        <?php endif; ?>
       </div>
     <?php endif; ?>
   </div>

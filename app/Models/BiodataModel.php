@@ -146,4 +146,141 @@ class BiodataModel {
         ");
         return $stmt->fetchAll();
     }
+
+    // Rekap biodata untuk susunan periode berjalan. Angka adalah orang unik, bukan jumlah
+    // penempatan; seseorang yang rangkap hanya dihitung sekali pada struktur/Bidang yang sama.
+    public function currentGroupingRecap() {
+        require_once ROOT_DIR . '/app/Models/PositionModel.php';
+        $scope = AdminScope::sqlFilter('pl.structure_id');
+        $base = "FROM placements pl
+                 JOIN people p ON p.id = pl.person_id AND p.deleted_at IS NULL
+                 JOIN terms t ON t.id = pl.term_id AND t.is_current = 1
+                 LEFT JOIN biodata_submissions b ON b.person_id = p.id";
+        $where = "WHERE pl.deleted_at IS NULL AND (pl.end_date IS NULL OR pl.end_date >= CURDATE()) AND $scope";
+        $result = ['structures' => [], 'groups' => [], 'units' => [], 'core' => []];
+
+        $queries = [
+            'structures' => "SELECT pl.term_id AS term_id, COUNT(DISTINCT pl.person_id) AS people_count,
+                                    COUNT(DISTINCT CASE WHEN b.person_id IS NOT NULL THEN pl.person_id END) AS biodata_count
+                             $base $where GROUP BY pl.term_id",
+            'units' => "SELECT pl.term_id AS term_id, su.id AS item_id,
+                               COUNT(DISTINCT pl.person_id) AS people_count,
+                               COUNT(DISTINCT CASE WHEN b.person_id IS NOT NULL THEN pl.person_id END) AS biodata_count
+                        $base JOIN structure_units su ON su.id = pl.structure_unit_id
+                              AND su.term_id = pl.term_id AND su.deleted_at IS NULL
+                        $where GROUP BY pl.term_id, su.id",
+            'groups' => "SELECT pl.term_id AS term_id, COALESCE(su.unit_group_id, 0) AS item_id,
+                                COUNT(DISTINCT pl.person_id) AS people_count,
+                                COUNT(DISTINCT CASE WHEN b.person_id IS NOT NULL THEN pl.person_id END) AS biodata_count
+                         $base JOIN structure_units su ON su.id = pl.structure_unit_id
+                               AND su.term_id = pl.term_id AND su.deleted_at IS NULL
+                         $where GROUP BY pl.term_id, su.unit_group_id",
+            'core' => "SELECT pl.term_id AS term_id, COUNT(DISTINCT pl.person_id) AS people_count,
+                              COUNT(DISTINCT CASE WHEN b.person_id IS NOT NULL THEN pl.person_id END) AS biodata_count
+                       $base JOIN structures s ON s.id = pl.structure_id
+                             JOIN positions po ON po.id = pl.position_id
+                       $where AND pl.structure_unit_id IS NULL AND " . PositionModel::CORE_SQL . "
+                       GROUP BY pl.term_id",
+        ];
+
+        foreach ($queries as $type => $sql) {
+            foreach ($this->db->query($sql)->fetchAll() as $row) {
+                $key = (int) $row['term_id'];
+                if ($type === 'structures' || $type === 'core') {
+                    $result[$type][$key] = ['total' => (int) $row['people_count'], 'biodata' => (int) $row['biodata_count']];
+                } else {
+                    $result[$type][$key][(int) $row['item_id']] = ['total' => (int) $row['people_count'], 'biodata' => (int) $row['biodata_count']];
+                }
+            }
+        }
+        return $result;
+    }
+
+    // Roster status biodata per periode berjalan; rangkap jabatan digabung menjadi satu orang.
+    public function currentStatusRoster($query = '', $status = 'all', array $assignmentFilter = []) {
+        $scope = AdminScope::sqlFilter('pl.structure_id');
+        $sql = "SELECT p.id, p.uuid, p.full_name, p.phone, p.city, p.province,
+                       MAX(b.person_id IS NOT NULL) AS has_biodata,
+                       GROUP_CONCAT(DISTINCT CONCAT(s.level, ' ', s.name, ' - ',
+                         COALESCE(ug.name, 'Pengurus Inti'), ' - ',
+                         COALESCE(NULLIF(su.display_name, ''), NULLIF(uc.name, ''), 'Pengurus Inti'), ' - ', po.name)
+                         ORDER BY s.level, s.name, su.sort_order SEPARATOR ' | ') AS placement_labels
+                FROM placements pl
+                JOIN people p ON p.id = pl.person_id AND p.deleted_at IS NULL
+                JOIN terms t ON t.id = pl.term_id AND t.is_current = 1
+                JOIN structures s ON s.id = pl.structure_id
+                LEFT JOIN structure_units su ON su.id = pl.structure_unit_id AND su.term_id = pl.term_id AND su.deleted_at IS NULL
+                LEFT JOIN unit_catalog uc ON uc.id = su.unit_catalog_id
+                LEFT JOIN unit_groups ug ON ug.id = su.unit_group_id AND ug.term_id = pl.term_id AND ug.deleted_at IS NULL
+                JOIN positions po ON po.id = pl.position_id
+                LEFT JOIN biodata_submissions b ON b.person_id = p.id
+                WHERE pl.deleted_at IS NULL AND (pl.end_date IS NULL OR pl.end_date >= CURDATE()) AND $scope";
+        $params = [];
+        if ($query !== '') {
+            $sql .= " AND (p.full_name LIKE :q1 OR p.phone LIKE :q2 OR p.city LIKE :q3 OR p.province LIKE :q4)";
+            $like = '%' . $query . '%';
+            $params = [':q1' => $like, ':q2' => $like, ':q3' => $like, ':q4' => $like];
+        }
+        if (($assignmentFilter['type'] ?? '') === 'group') {
+            $sql .= " AND pl.term_id = :filter_term AND su.unit_group_id = :filter_group";
+            $params[':filter_term'] = (int) $assignmentFilter['term_id'];
+            $params[':filter_group'] = (int) $assignmentFilter['id'];
+        } elseif (($assignmentFilter['type'] ?? '') === 'unit') {
+            $sql .= " AND pl.term_id = :filter_term AND pl.structure_unit_id = :filter_unit";
+            $params[':filter_term'] = (int) $assignmentFilter['term_id'];
+            $params[':filter_unit'] = (int) $assignmentFilter['id'];
+        }
+        if ($status === 'done') $sql .= " AND b.person_id IS NOT NULL";
+        elseif ($status === 'missing') $sql .= " AND b.person_id IS NULL";
+        $sql .= " GROUP BY p.id, p.uuid, p.full_name, p.phone, p.city, p.province ORDER BY p.full_name";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
+    // Anggota di Bidang/kelompok atau satu unit tertentu untuk modal rekap.
+    public function groupingRoster($termId, $groupId, $unitId = 0) {
+        if ($groupId === 'core') return $this->coreRoster($termId);
+        $scope = AdminScope::sqlFilter('pl.structure_id');
+        $sql = "SELECT p.full_name, p.phone, MAX(b.person_id IS NOT NULL) AS has_biodata
+                FROM placements pl
+                JOIN people p ON p.id = pl.person_id AND p.deleted_at IS NULL
+                JOIN terms t ON t.id = pl.term_id AND t.is_current = 1
+                JOIN structure_units su ON su.id = pl.structure_unit_id AND su.term_id = pl.term_id AND su.deleted_at IS NULL
+                LEFT JOIN biodata_submissions b ON b.person_id = p.id
+                WHERE pl.term_id = :term AND pl.deleted_at IS NULL AND (pl.end_date IS NULL OR pl.end_date >= CURDATE())
+                  AND $scope";
+        $params = [':term' => (int) $termId];
+        if ((int) $unitId > 0) {
+            $sql .= " AND su.id = :unit";
+            $params[':unit'] = (int) $unitId;
+        } else {
+            $sql .= " AND COALESCE(su.unit_group_id, 0) = :group_id";
+            $params[':group_id'] = (int) $groupId;
+        }
+        $sql .= " GROUP BY p.id, p.full_name, p.phone ORDER BY p.full_name";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
+    // Pengurus inti pada struktur di periode berjalan.
+    private function coreRoster($termId) {
+        require_once ROOT_DIR . '/app/Models/PositionModel.php';
+        $scope = AdminScope::sqlFilter('pl.structure_id');
+        $sql = "SELECT p.full_name, p.phone, MAX(b.person_id IS NOT NULL) AS has_biodata
+                FROM placements pl
+                JOIN people p ON p.id = pl.person_id AND p.deleted_at IS NULL
+                JOIN terms t ON t.id = pl.term_id AND t.is_current = 1
+                JOIN structures s ON s.id = pl.structure_id
+                JOIN positions po ON po.id = pl.position_id
+                LEFT JOIN biodata_submissions b ON b.person_id = p.id
+                WHERE pl.term_id = :term AND pl.structure_unit_id IS NULL
+                  AND pl.deleted_at IS NULL AND (pl.end_date IS NULL OR pl.end_date >= CURDATE())
+                  AND " . PositionModel::CORE_SQL . " AND $scope
+                GROUP BY p.id, p.full_name, p.phone ORDER BY p.full_name";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([':term' => (int) $termId]);
+        return $stmt->fetchAll();
+    }
 }

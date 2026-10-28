@@ -3,6 +3,11 @@
 $this->view('layouts/header', ['title' => $title]);
 
 $pages = max(1, (int) ceil($total / $perPage));
+$backQuery = http_build_query(array_filter([
+    'q' => $keyword, 'gender' => $gender, 'filter' => $filter,
+    'menjabat' => $serving ? 1 : '', 'susun' => $perBidang ? 'bidang' : '',
+    'geo' => $geoKey, 'page' => $page > 1 ? $page : '',
+], function ($v) { return $v !== '' && $v !== null; }));
 
 $qs = function (array $over = []) use ($keyword, $gender, $filter, $serving, $perBidang, $geoKey) {
     $p = array_merge(['q' => $keyword, 'gender' => $gender, 'filter' => $filter, 'menjabat' => $serving ? 1 : '', 'susun' => $perBidang ? 'bidang' : '', 'geo' => $geoKey], $over);
@@ -27,6 +32,7 @@ $rc = function ($label, $count, $icon, $active, $href, $tone = '') {
   <span class="badge"><?= Ui::n($total) ?> orang</span>
   <div class="actions">
     <?php if (Auth::canEdit()): ?>
+      <a class="btn secondary" href="<?= BASEURL ?>/people/deleted">Data Terhapus</a>
       <a class="btn" href="<?= BASEURL ?>/people/form"><?= Ui::icon('user-plus', 17) ?> Tambah Orang</a>
     <?php endif; ?>
   </div>
@@ -58,8 +64,13 @@ $rc = function ($label, $count, $icon, $active, $href, $tone = '') {
   </form>
   <div class="chips">
     <?= $chip('Per Bidang', $perBidang, $qs(['susun' => $perBidang ? '' : 'bidang', 'geo' => '', 'page' => '']), 'layers') ?>
+    <?= $chip('Tanpa Unit Organisasi (SKUO)', $filter === 'tanpa_unit', $qs(['filter' => $filter === 'tanpa_unit' ? '' : 'tanpa_unit', 'susun' => '', 'geo' => '', 'page' => '']), 'users') ?>
   </div>
 </div>
+
+<?php if ($filter === 'tanpa_unit'): ?>
+  <div class="note">Daftar ini mencakup pengurus tanpa penempatan aktif di SKUO pada periode berjalan, termasuk yang hanya menjabat sebagai Pengurus Inti atau belum memiliki penempatan.</div>
+<?php endif; ?>
 
 <?php if ($perBidang && !empty($geoTabs)): ?>
 <div class="chips" style="margin-bottom:12px">
@@ -105,6 +116,15 @@ $rc = function ($label, $count, $icon, $active, $href, $tone = '') {
                       <td class="nowrap">
                         <?php if (Auth::canEdit()): ?>
                           <a class="btn small secondary" href="<?= BASEURL ?>/people/form/<?= (int) $r['id'] ?>"><?= Ui::icon('edit', 14) ?> Ubah</a>
+                          <form class="inline" method="post" action="<?= BASEURL ?>/people/delete"
+                                onsubmit="return confirm(this.dataset.confirm)"
+                                data-confirm="Hapus <?= e($r['full_name']) ?> beserta seluruh riwayat penempatannya? Data dapat dipulihkan dari Data Terhapus. Penghapusan ditolak bila ada penempatan di luar lingkup Anda.">
+                            <?= Csrf::field() ?>
+                            <input type="hidden" name="id" value="<?= (int) $r['id'] ?>">
+                            <input type="hidden" name="with_placements" value="1">
+                            <input type="hidden" name="back" value="<?= e($backQuery) ?>">
+                            <button type="submit" class="btn small danger" title="Hapus pengurus"><?= Ui::icon('trash', 14) ?> Hapus</button>
+                          </form>
                         <?php endif; ?>
                       </td>
                     </tr>
@@ -164,6 +184,15 @@ $rc = function ($label, $count, $icon, $active, $href, $tone = '') {
             <td class="nowrap">
               <?php if (Auth::canEdit()): ?>
                 <a class="btn small secondary" href="<?= BASEURL ?>/people/form/<?= (int) $r['id'] ?>"><?= Ui::icon('edit', 14) ?> Ubah</a>
+                <form class="inline" method="post" action="<?= BASEURL ?>/people/delete"
+                      onsubmit="return confirm(this.dataset.confirm)"
+                      data-confirm="Hapus <?= e($r['full_name']) ?> beserta <?= (int) $r['placement_count'] ?> penempatan dalam lingkup Anda? Semua riwayat akan disembunyikan dan dapat dipulihkan dari Data Terhapus. Penghapusan ditolak bila orang ini juga menjabat di luar lingkup Anda.">
+                  <?= Csrf::field() ?>
+                  <input type="hidden" name="id" value="<?= (int) $r['id'] ?>">
+                  <input type="hidden" name="with_placements" value="1">
+                  <input type="hidden" name="back" value="<?= e($backQuery) ?>">
+                  <button type="submit" class="btn small danger" title="Hapus pengurus"><?= Ui::icon('trash', 14) ?> Hapus</button>
+                </form>
               <?php endif; ?>
             </td>
           </tr>

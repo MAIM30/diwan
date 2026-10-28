@@ -10,7 +10,7 @@
 --                   WHERE pl.structure_unit_id IS NULL AND p.is_core = 1
 -- Itu menggantikan seluruh PengurusInti::sqlCaseFragment() di syuro.
 -- Satu tambahan: 'wakil_ketua' berstatus is_core = 0 di sini, tetapi migrasi 007 memberinya core_from_tier = 2, sehingga ia inti
--- di DPW/DPD/DPC/DPRa dan MWW/MWD/MWC (tier 2 ke bawah) namun tidak di DPP/MWP (PositionModel::CORE_SQL).
+-- di DPW/DPLN/DPD/DPC/DPRa dan MWW/MWD/MWC/MWRa (tier 2 ke bawah) namun tidak di DPP/MWP (PositionModel::CORE_SQL).
 --
 -- `applies_to` hanya pemandu UI/validasi saat entri (jabatan mana yang wajar ditawarkan di konteks
 -- mana), bukan batasan keras di tingkat database.
@@ -24,7 +24,7 @@ INSERT INTO positions (code, name, applies_to, is_core, sort_order) VALUES
   ('bendahara_umum',            'Bendahara Umum',            'structure', 1,  50),
   ('wakil_bendahara_umum',      'Wakil Bendahara Umum',      'structure', 1,  60),
 
-  -- Istilah polos: pucuk pimpinan DPW/DPD/DPC/DPRa dan MWP/MWW/MWD/MWC, SEKALIGUS kepala unit SKUO.
+  -- Istilah polos: pucuk pimpinan tingkat bawah dan MWP/MWW/MWD/MWC/MWRa, SEKALIGUS kepala unit SKUO.
   ('ketua',                     'Ketua',                     'both',      1,  11),
   ('wakil_ketua',               'Wakil Ketua',               'both',      0,  21),
   ('sekretaris',                'Sekretaris',                'both',      1,  31),

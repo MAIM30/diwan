@@ -8,11 +8,11 @@
 // WAJIB lewat model ini, karena di sinilah path ikut diperbarui.
 
 class StructureModel {
-    // Level tiap sayap, dari yang tertinggi ke terendah. Urutannya = tier (indeks + 1), sama dengan kolom
-    // structures.tier yang dihitung database.
+    // Urutan tampilan tingkat pada masing-masing sayap. DPLN setingkat DPW dan MWRa tingkat Ranting.
     const BY_WING = [
-        'umum'     => ['DPP', 'DPW', 'DPD', 'DPC', 'DPRa'],
-        'muslimah' => ['MWP', 'MWW', 'MWD', 'MWC'],
+        // DPLN sementara ditempatkan setingkat DPW; MWRa adalah tingkat ranting di bawah MWC.
+        'umum'     => ['DPP', 'DPW', 'DPLN', 'DPD', 'DPC', 'DPRa'],
+        'muslimah' => ['MWP', 'MWW', 'MWD', 'MWC', 'MWRa'],
     ];
     const LEVELS = [...self::BY_WING['umum'], ...self::BY_WING['muslimah']];
 
@@ -64,26 +64,18 @@ class StructureModel {
         ")->fetchAll();
     }
 
-    // Level yang boleh dipilih admin yang sedang login: di tiap sayap, dari struktur tertingginya dalam
-    // lingkup ke bawah. Admin DPW hanya DPW/DPD/DPC/DPRa, admin DPD mulai dari DPD; admin DPP dan Super Admin
-    // mendapat semuanya. Sayap yang tak ada dalam lingkupnya (mis. Muslimah bagi admin DPW) tidak ikut.
+    // Tingkat yang sudah ada di lingkup admin dan tingkat yang dapat dibuat sebagai anaknya.
     public function levelsInScope() {
         if (AdminScope::isUnbounded()) return self::LEVELS;
-
-        $rows = $this->db->query("
-            SELECT s.wing, MIN(s.tier) AS top_tier
-            FROM structures s
-            WHERE s.deleted_at IS NULL AND " . AdminScope::sqlFilter('s.id') . "
-            GROUP BY s.wing
-        ")->fetchAll();
-        $top = [];
-        foreach ($rows as $r) $top[$r['wing']] = (int) $r['top_tier'];
-
-        $levels = [];
-        foreach (self::BY_WING as $wing => $list) {
-            if (isset($top[$wing])) $levels = array_merge($levels, array_slice($list, $top[$wing] - 1));
-        }
-        return $levels;
+        $rows = $this->db->query("SELECT s.level FROM structures s
+            WHERE s.deleted_at IS NULL AND " . AdminScope::sqlFilter('s.id'))->fetchAll(PDO::FETCH_COLUMN);
+        $children = [
+            'DPP' => ['DPW', 'DPLN', 'MWP'], 'DPW' => ['DPD'], 'DPD' => ['DPC'], 'DPC' => ['DPRa'],
+            'MWP' => ['MWW'], 'MWW' => ['MWD'], 'MWD' => ['MWC'], 'MWC' => ['MWRa'],
+        ];
+        $allowed = array_fill_keys($rows, true);
+        foreach ($rows as $level) foreach ($children[$level] ?? [] as $child) $allowed[$child] = true;
+        return array_values(array_filter(self::LEVELS, function ($level) use ($allowed) { return isset($allowed[$level]); }));
     }
 
     public function roots() {

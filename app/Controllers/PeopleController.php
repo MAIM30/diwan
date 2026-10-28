@@ -20,7 +20,7 @@ class PeopleController extends Controller {
         return [$people, $person];
     }
 
-    const VALID_FILTERS = ['tanpa_hp', 'tanpa_nik', 'tanpa_penempatan', 'nonaktif',
+    const VALID_FILTERS = ['tanpa_hp', 'tanpa_nik', 'tanpa_penempatan', 'tanpa_unit', 'nonaktif',
                            'lengkap', 'belum_lengkap', 'rangkap', 'tidak_rangkap'];
 
     public function index() {
@@ -44,8 +44,8 @@ class PeopleController extends Controller {
         }
 
         $levels = $this->model('StructureModel')->levelsInScope();
-        $umum = ['DPP', 'DPW', 'DPD', 'DPC', 'DPRa'];
-        $musl = ['MWP', 'MWW', 'MWD', 'MWC'];
+        $umum = ['DPP', 'DPW', 'DPLN', 'DPD', 'DPC', 'DPRa'];
+        $musl = ['MWP', 'MWW', 'MWD', 'MWC', 'MWRa'];
         $hasUmum = !empty(array_intersect($levels, $umum));
         $hasMuslimah = !empty(array_intersect($levels, $musl));
 
@@ -69,10 +69,37 @@ class PeopleController extends Controller {
         ]);
     }
 
+    public function deleted() {
+        $this->requireLogin();
+        if (!Auth::canEdit()) $this->denied();
+
+        $this->view('admin/people/deleted', [
+            'title' => 'Data Pengurus Terhapus',
+            'rows'  => $this->model('PersonModel')->deletedInScope(),
+        ]);
+    }
+
+    public function restore() {
+        $this->requireLogin();
+        if (!Auth::canEdit()) $this->denied();
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') $this->redirect('people/deleted');
+
+        $id = (int) ($_POST['id'] ?? 0);
+        try {
+            if (!$this->model('PersonModel')->restoreDeleted($id)) {
+                $this->notFound('Data terhapus tidak ditemukan.');
+            }
+            Flash::set('success', 'Data pengurus dan penempatan yang terhapus bersamanya berhasil dipulihkan.');
+        } catch (RuntimeException $e) {
+            Flash::set('error', $e->getMessage());
+        }
+        $this->redirect('people/deleted');
+    }
+
     private function geoTabs() {
         $levels = $this->model('StructureModel')->levelsInScope();
-        $tierOf = ['DPP' => 1, 'DPW' => 2, 'DPD' => 3, 'DPC' => 4, 'DPRa' => 5,
-                   'MWP' => 1, 'MWW' => 2, 'MWD' => 3, 'MWC' => 4];
+        $tierOf = ['DPP' => 1, 'DPW' => 2, 'DPLN' => 2, 'DPD' => 3, 'DPC' => 4, 'DPRa' => 5,
+                   'MWP' => 1, 'MWW' => 2, 'MWD' => 3, 'MWC' => 4, 'MWRa' => 5];
         $topTier = 5;
         foreach ($levels as $l) {
             $t = $tierOf[$l] ?? 5;
@@ -210,6 +237,7 @@ class PeopleController extends Controller {
             'person'   => $person,
             'history'  => $history,
             'hidden'   => $hidden,
+            'allPlacementCount' => count($all),
             'current'  => $current,
             'portal'     => $portal,
             'portalLast' => $portalLast,
@@ -316,16 +344,20 @@ class PeopleController extends Controller {
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') $this->redirect('people');
 
         $id = (int) ($_POST['id'] ?? 0);
-        [$people] = $this->loadVisible($id);
+        [$people, $person] = $this->loadVisible($id);
+
+        // Kembali ke daftar dengan penyaringan dan halaman yang sama; hanya kunci yang dikenal daftar yang dipakai ulang.
+        parse_str((string) ($_POST['back'] ?? ''), $q);
+        $keep = array_filter(array_intersect_key((array) $q, array_flip(['q', 'gender', 'filter', 'menjabat', 'susun', 'geo', 'page'])), 'is_scalar');
+        $back = 'people' . ($keep ? '?' . http_build_query($keep) : '');
 
         try {
-            $people->softDelete($id);
-            Flash::set('success', 'Data orang dihapus.');
-            $this->redirect('people');
+            $removed = $people->softDelete($id, ($_POST['with_placements'] ?? '') === '1');
+            Flash::set('success', 'Data ' . $person['full_name'] . ' dihapus' . ($removed ? ', beserta ' . $removed . ' penempatannya.' : '.'));
         } catch (RuntimeException $e) {
             Flash::set('error', $e->getMessage());
-            $this->redirect('people/detail/' . $id);
         }
+        $this->redirect($back);
     }
 
     // ---------- Foto ----------

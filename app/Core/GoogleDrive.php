@@ -258,6 +258,54 @@ class GoogleDrive {
         ];
     }
 
+    // Ganti isi PDF yang sudah dibuat aplikasi tanpa membuat berkas ganda di Drive.
+    public static function update($fileId, $bytes, $filename, $mime = 'application/pdf') {
+        if (!self::isConfigured()) return ['ok' => false, 'error' => 'Google Drive belum dikonfigurasi.'];
+
+        $tok = self::accessToken();
+        if (!$tok['ok']) return ['ok' => false, 'error' => $tok['error']];
+
+        $boundary = 'diwan-' . bin2hex(random_bytes(12));
+        $metadata = json_encode(['name' => $filename], JSON_UNESCAPED_UNICODE);
+        $body = "--$boundary\r\n"
+              . "Content-Type: application/json; charset=UTF-8\r\n\r\n"
+              . $metadata . "\r\n"
+              . "--$boundary\r\n"
+              . "Content-Type: $mime\r\n\r\n"
+              . $bytes . "\r\n"
+              . "--$boundary--";
+
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL            => 'https://www.googleapis.com/upload/drive/v3/files/' . rawurlencode($fileId) . '?uploadType=multipart&fields=id,webViewLink',
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => self::TIMEOUT,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_CUSTOMREQUEST  => 'PATCH',
+            CURLOPT_HTTPHEADER     => [
+                'Authorization: Bearer ' . $tok['token'],
+                'Content-Type: multipart/related; boundary=' . $boundary,
+            ],
+            CURLOPT_POSTFIELDS => $body,
+        ]);
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
+        curl_close($ch);
+
+        if ($error) return ['ok' => false, 'error' => 'Tidak bisa menghubungi Google Drive: ' . $error];
+        $decoded = json_decode($response, true);
+        if ($httpCode !== 200 || empty($decoded['id'])) {
+            return ['ok' => false, 'error' => $decoded['error']['message'] ?? ('HTTP ' . $httpCode)];
+        }
+
+        return [
+            'ok' => true,
+            'file_id' => $decoded['id'],
+            'url' => $decoded['webViewLink'] ?? ('https://drive.google.com/file/d/' . $decoded['id'] . '/view'),
+        ];
+    }
+
     // Tes sungguhan tanpa mengunggah apa pun: ambil access token DAN pastikan folder tujuan terbaca.
     public static function testConnection() {
         if (!self::isConfigured()) return ['ok' => false, 'error' => 'Google Drive belum dihubungkan.'];

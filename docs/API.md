@@ -327,7 +327,7 @@ Field bertanda *nullable* bisa bernilai `null`.
 |---|---|---|
 | `uuid` | string | Kunci utama di salinan lokal Anda |
 | `parent_uuid` | string \| null | `null` hanya untuk akar (DPP) |
-| `level` | enum | `DPP` `DPW` `DPD` `DPC` `DPRa` `MWP` `MWW` `MWD` `MWC` |
+| `level` | enum | `DPP` `DPW` `DPLN` `DPD` `DPC` `DPRa` `MWP` `MWW` `MWD` `MWC` `MWRa` |
 | `wing` | enum | `umum` (DP*) atau `muslimah` (MW*) |
 | `tier` | int | `1` Pusat, `2` Wilayah, `3` Daerah, `4` Cabang, `5` Ranting |
 | `name` | string | Nama wilayah, mis. `"Sulawesi Tenggara"` |
@@ -347,6 +347,7 @@ umum — `MWW` dan `DPW` sama-sama tier 2.
 |---|---|---|
 | `uuid` | string | |
 | `structure_uuid` | string | Struktur pemilik periode |
+| `governance_period_uuid` | string | Acuan periode bersama yang dapat dipakai struktur lain |
 | `name` | string | Mis. `"2021-2026"` |
 | `start_date` | date \| null | |
 | `end_date_planned` | date \| null | Akhir menurut SK |
@@ -396,6 +397,7 @@ jebakan (`"M."` di data Indonesia hampir selalu "Muhammad", bukan "Magister").
 | `structure` | string | Label siap tampil, mis. `"DPW Sulawesi Tenggara"` |
 | `term_uuid` | string | Relasi ke periode |
 | `term_name` | string | Mis. `"2021-2026"` |
+| `governance_period_uuid` | string | Acuan periode lintas struktur |
 | `term_is_current` | bool | Periode ini sedang berjalan |
 | `position_code` | string | Kode jabatan stabil, mis. `"ketua"` — pakai ini untuk logika |
 | `position_name` | string | Nama jabatan siap tampil, mis. `"Ketua"` |

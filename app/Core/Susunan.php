@@ -49,9 +49,18 @@ class Susunan {
             }, self::sortUnits($list));
         };
 
+        // Ketua Bidang <-> Bidang: sisi Bidang menampilkan siapa Ketuanya, sisi Pengurus Inti menampilkan Bidang yang dipimpin.
+        $leads = [];
+        foreach ($groups as $g) {
+            if (!empty($g['coordinator_id']) && $g['kind'] !== 'grup') $leads[(int) $g['coordinator_id']][] = $g['name'];
+        }
+        foreach ($inti as &$ir) $ir['memimpin'] = $leads[(int) $ir['id']] ?? [];
+        unset($ir);
+
         $bidang = []; $subbidang = []; $lainGrup = [];
         foreach ($groups as $g) {
-            $n = self::node($g['name'], ['children' => $unitNodes($unitsOf[(int) $g['id']] ?? []), 'noun' => 'unit', 'empty' => 'Belum ada unit di sini.']);
+            $lead = (!empty($g['coordinator_name']) && $g['kind'] !== 'grup') ? ($g['coordinator_position'] ?: 'Ketua') . ' ' . ($g['kind'] === 'subbidang' ? 'Subbidang' : 'Bidang') . ': ' . $g['coordinator_name'] : null;
+            $n = self::node($g['name'], ['lead' => $lead, 'children' => $unitNodes($unitsOf[(int) $g['id']] ?? []), 'noun' => 'unit', 'empty' => 'Belum ada unit di sini.']);
             if ($g['kind'] === 'bidang') $bidang[] = $n;
             elseif ($g['kind'] === 'subbidang') $subbidang[] = $n;
             else $lainGrup[] = $n;
@@ -69,12 +78,13 @@ class Susunan {
         return $out;
     }
 
-    // Urutan unit di dalam satu Bidang: Departemen, lalu Lembaga, lalu jenis lain; yang sejenis mengikuti sort_order
-    // (urutan masukan dipertahankan bila sama). $list: UnitModel::unitsByTerm.
+    // Urutan unit di dalam satu Bidang: urutan resmi SKUO (sort_order) lebih dulu; yang urutannya sama -- termasuk yang belum
+    // pernah diurutkan (500) -- Departemen dulu, lalu Lembaga, lalu jenis lain (urutan masukan dipertahankan bila masih sama).
+    // $list: UnitModel::unitsByTerm.
     public static function sortUnits(array $list) {
         usort($list, function ($a, $b) {
             $ra = self::KIND_RANK[$a['kind']] ?? 9; $rb = self::KIND_RANK[$b['kind']] ?? 9;
-            return $ra <=> $rb ?: ((int) $a['sort_order'] <=> (int) $b['sort_order']);
+            return ((int) $a['sort_order'] <=> (int) $b['sort_order']) ?: ($ra <=> $rb);
         });
         return $list;
     }
@@ -113,7 +123,7 @@ class Susunan {
     }
 
     private static function node($title, array $o = []) {
-        return $o + ['title' => $title, 'badge' => null, 'rows' => null, 'children' => [], 'noun' => null,
+        return $o + ['title' => $title, 'badge' => null, 'lead' => null, 'rows' => null, 'children' => [], 'noun' => null,
                      'open' => false, 'phone' => false, 'empty' => 'Belum ada pengurus.', 'count' => 0];
     }
 

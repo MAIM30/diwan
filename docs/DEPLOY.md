@@ -33,6 +33,8 @@ Setelah `git pull` (langkah A di atas), jalankan migrasi di server:
 php database/migrate.php --user=diwan --pass='ISI_PASSWORD' --db=db_pengurus
 ```
 Aman dijalankan berulang (idempoten) — skrip ini melewati migrasi yang sudah pernah diterapkan.
+Migrasi 015 menambah tingkat DPLN/MWRa; migrasi 016 membuat acuan periode bersama dan menautkan periode lama
+berdasarkan nama serta tanggal yang sama. Migrasi 016 tidak menghapus atau mengganti penempatan.
 
 ## C. Perubahan DATA (bukan skema — isi tabel: orang, penempatan, dll.)
 

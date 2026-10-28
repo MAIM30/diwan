@@ -13,13 +13,17 @@ class UnitsController extends Controller {
 
         $kind    = in_array($_GET['kind'] ?? '', self::UNIT_KINDS, true) ? $_GET['kind'] : '';
         $keyword = trim($_GET['q'] ?? '');
+        $urut    = ($_GET['urut'] ?? '') === 'skuo';   // satu daftar menurut urutan resmi SKUO, bukan per jenis
 
         $this->view('admin/units/catalog', [
             'title'   => 'Unit Organisasi',
-            'rows'    => $units->catalogList($kind, $keyword),
+            'rows'    => $units->catalogList($kind, $keyword, $urut),
             'counts'  => $units->catalogCountsByKind(),
             'kind'    => $kind,
             'keyword' => $keyword,
+            'urut'    => $urut,
+            'inti'    => $units->intiInfo(),
+            'nextOrder' => $units->catalogNextOrder(),
         ]);
     }
 
@@ -28,7 +32,7 @@ class UnitsController extends Controller {
     private function backToCatalog() {
         $kind = in_array($_POST['kind_filter'] ?? '', self::UNIT_KINDS, true) ? $_POST['kind_filter'] : '';
         $q    = trim($_POST['q_filter'] ?? '');
-        $p    = array_filter(['kind' => $kind, 'q' => $q], function ($v) { return $v !== ''; });
+        $p    = array_filter(['kind' => $kind, 'q' => $q, 'urut' => ($_POST['urut_filter'] ?? '') === 'skuo' ? 'skuo' : ''], function ($v) { return $v !== ''; });
         $this->redirect('units/catalog' . ($p ? '?' . http_build_query($p) : ''));
     }
 
@@ -60,6 +64,7 @@ class UnitsController extends Controller {
             'abbreviation' => trim($_POST['abbreviation'] ?? ''),
             'kind'         => in_array($_POST['kind'] ?? '', self::UNIT_KINDS, true) ? $_POST['kind'] : 'lainnya',
             'is_active'    => !empty($_POST['is_active']),
+            'sort_order'   => trim((string) ($_POST['sort_order'] ?? '')),   // kosong: entri baru ke urutan terakhir, entri lama tetap
         ];
 
         if ($data['name'] === '') {
@@ -103,7 +108,8 @@ class UnitsController extends Controller {
         foreach ($structures as $s) {
             $t = $currentOf[(int) $s['id']] ?? null;
             if (!$t) { $without[] = $s; continue; }
-            $entries[] = ['structure' => $s, 'term' => $t, 'groups' => $units->groupsByTerm($t['id']), 'units' => $units->unitsByTerm($t['id'])];
+            $entries[] = ['structure' => $s, 'term' => $t, 'groups' => $units->groupsByTerm($t['id']), 'units' => $units->unitsByTerm($t['id']),
+                          'coordinators' => $units->coordinatorCandidates($t['id'])];
         }
 
         $this->view('admin/units/grouping', [
@@ -204,6 +210,17 @@ class UnitsController extends Controller {
             $this->back($termId);
         }
 
+        // Ketua Bidang hanya diubah bila formulirnya mengirim isian itu (halaman Bidang & Unit lama tidak mengirimnya). Id yang
+        // dikirim wajib salah satu calon sah periode ini; kelompok biasa (Biro-Biro, dst.) tidak punya Ketua Bidang.
+        if ($id && array_key_exists('coordinator_placement_id', $_POST)) {
+            $coord = !empty($_POST['coordinator_placement_id']) ? (int) $_POST['coordinator_placement_id'] : null;
+            if ($coord !== null && ($data['kind'] === 'grup' || !$units->isCoordinatorCandidate($termId, $coord))) {
+                Flash::set('error', 'Ketua Bidang harus Ketua atau Wakil Ketua di Pengurus Inti periode ini.');
+                $this->back($termId);
+            }
+            $data['coordinator_placement_id'] = $coord;
+        }
+
         try {
             $units->groupSave($id, $data);
             Flash::set('success', 'Bidang disimpan.');
@@ -299,7 +316,9 @@ class UnitsController extends Controller {
             'unit_catalog_id' => $existing ? (int) $existing['unit_catalog_id'] : $catalogId,
             'unit_group_id'   => $groupId,
             'display_name'    => $displayName,
-            'sort_order'      => $this->sortOrder($_POST['sort_order'] ?? 500),
+            // Unit baru yang urutannya tak diisi mengikuti urutan resmi SKUO di katalog (500 bila entri itu belum diurutkan).
+            'sort_order'      => $this->sortOrder(($_POST['sort_order'] ?? '') !== '' ? $_POST['sort_order']
+                                  : ($units->catalogFindById($existing ? (int) $existing['unit_catalog_id'] : $catalogId)['sort_order'] ?? 500)),
         ];
 
         try {

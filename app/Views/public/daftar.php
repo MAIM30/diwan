@@ -71,7 +71,7 @@ if (!empty($_SESSION['daftar_phone'])) {
         <input type="text" id="structure_search" autocomplete="off" required
                placeholder="Ketik nama kota/kabupaten atau provinsi...">
         <div id="structure-results" class="autocomplete-list"></div>
-        <div class="help">Ketik minimal 2 huruf untuk mencari. Pengurus Muslimah memilih struktur MWP/MWW/MWD/MWC.</div>
+        <div class="help">Ketik minimal 2 huruf untuk mencari. Laki-laki memilih struktur DPP/DPW/DPLN/DPD/DPC/DPRa; perempuan memilih MWP/MWW/MWD/MWC/MWRa.</div>
       </div>
 
       <div class="btn-row">

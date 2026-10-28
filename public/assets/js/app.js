@@ -23,6 +23,125 @@
     $$('.user-menu[open]').forEach(function (d) { if (!d.contains(e.target)) d.removeAttribute('open'); });
   });
 
+  /* ---------- Roster ringkas dari rekap biodata ---------- */
+  document.addEventListener('click', function (e) {
+    var trigger = e.target.closest ? e.target.closest('[data-roster-url]') : null;
+    var close = e.target.closest ? e.target.closest('[data-roster-close]') : null;
+    var copy = e.target.closest ? e.target.closest('[data-roster-copy]') : null;
+    var statusCopy = e.target.closest ? e.target.closest('[data-status-roster-copy]') : null;
+    var dialog = document.getElementById('biodata-roster-modal');
+    if (close && dialog) { dialog.close(); return; }
+    if (statusCopy) {
+      var statusNames = Array.prototype.map.call(document.querySelectorAll('#biodata-status-table tbody tr'), function (row) {
+        var cells = row.querySelectorAll('td');
+        if (!cells.length || cells[0].classList.contains('muted')) return '';
+        var name = cells[0].textContent.trim();
+        var phone = cells[1] ? cells[1].textContent.trim() : '';
+        if (phone && phone !== '-') {
+          var digits = phone.replace(/\D/g, '');
+          if (digits.indexOf('62') === 0) phone = '0' + digits.slice(2);
+          else phone = digits || phone;
+        }
+        if (!phone) phone = '-';
+        var mark = row.getAttribute('data-has-biodata') === '1' ? '✅' : '❌';
+        return mark + ' | ' + name + ' | ' + phone;
+      }).filter(Boolean);
+      if (!statusNames.length) return;
+      var statusButton = statusCopy;
+      var statusCopied = function () {
+        statusButton.textContent = 'Tersalin';
+        window.setTimeout(function () { if (statusButton.isConnected) statusButton.textContent = 'Salin nama'; }, 1800);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(statusNames.join('\n')).then(statusCopied).catch(function () { copyRosterFallback(statusNames.join('\n'), statusCopied); });
+      } else copyRosterFallback(statusNames.join('\n'), statusCopied);
+      return;
+    }
+    if (copy && dialog) {
+      var rosterRows = Array.prototype.slice.call(document.querySelectorAll('#biodata-roster-body tr'));
+      var names = rosterRows.map(function (row) {
+        var cells = row.querySelectorAll('td');
+        if (cells.length < 3 || cells[0].classList.contains('muted')) return '';
+        var mark = cells[0].textContent.trim() === '✓' ? '✅' : '❌';
+        return mark + ' | ' + cells[1].textContent.trim();
+      }).filter(Boolean);
+      if (!names.length) return;
+      var doneCount = rosterRows.filter(function (row) {
+        var cells = row.querySelectorAll('td');
+        return cells.length >= 3 && cells[0].textContent.trim() === '✓';
+      }).length;
+      var totalCount = names.length;
+      var missingCount = totalCount - doneCount;
+      var donePercent = (doneCount * 100 / totalCount).toFixed(1);
+      var missingPercent = (missingCount * 100 / totalCount).toFixed(1);
+      var groupTitle = document.getElementById('biodata-roster-title').textContent.trim();
+      var clipboardText = groupTitle + '\n' +
+        'Sudah memiliki biodata: ' + doneCount + '/' + totalCount + ' (' + donePercent + '%)\n' +
+        'Belum memiliki biodata: ' + missingCount + '/' + totalCount + ' (' + missingPercent + '%)\n\n' +
+        names.join('\n');
+      var button = copy;
+      var copied = function () {
+        button.textContent = 'Tersalin';
+        window.setTimeout(function () { if (button.isConnected) button.textContent = 'Salin daftar'; }, 1800);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(clipboardText).then(copied).catch(function () { copyRosterFallback(clipboardText, copied); });
+      } else copyRosterFallback(clipboardText, copied);
+      return;
+    }
+    if (!trigger || !dialog) return;
+    e.preventDefault();
+    var title = document.getElementById('biodata-roster-title');
+    var body = document.getElementById('biodata-roster-body');
+    var copyButton = document.querySelector('[data-roster-copy]');
+    copyButton.disabled = true;
+    copyButton.textContent = 'Salin daftar';
+    var nodeName = trigger.textContent.trim();
+    title.textContent = nodeName || 'Daftar pengurus';
+    body.innerHTML = '';
+    var loading = document.createElement('tr');
+    var loadingCell = document.createElement('td');
+    loadingCell.className = 'muted'; loadingCell.textContent = 'Memuat daftar...';
+    loading.appendChild(loadingCell); body.appendChild(loading);
+    dialog.showModal();
+    fetch(trigger.getAttribute('data-roster-url'), { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+      .then(function (response) { if (!response.ok) throw new Error('Gagal memuat daftar.'); return response.json(); })
+      .then(function (rows) {
+        body.innerHTML = '';
+        if (!rows.length) {
+          var tr = document.createElement('tr'), td = document.createElement('td');
+          td.className = 'muted'; td.colSpan = 3; td.textContent = 'Belum ada pengurus pada kelompok ini.'; tr.appendChild(td); body.appendChild(tr); return;
+        }
+        copyButton.disabled = false;
+        rows.forEach(function (person) {
+          var tr = document.createElement('tr');
+          var status = document.createElement('td');
+          status.className = Number(person.has_biodata) ? 'biodata-roster-status is-done' : 'biodata-roster-status is-missing';
+          status.textContent = Number(person.has_biodata) ? '✓' : '✗';
+          status.setAttribute('aria-label', Number(person.has_biodata) ? 'Sudah punya biodata' : 'Belum punya biodata');
+          var name = document.createElement('td'); name.textContent = person.full_name;
+          var phone = document.createElement('td'); phone.textContent = person.phone || '-';
+          tr.appendChild(status); tr.appendChild(name); tr.appendChild(phone);
+          body.appendChild(tr);
+        });
+      })
+      .catch(function () {
+        body.innerHTML = '';
+        var tr = document.createElement('tr'), td = document.createElement('td');
+        td.className = 'muted'; td.colSpan = 3; td.textContent = 'Daftar gagal dimuat. Silakan coba lagi.'; tr.appendChild(td); body.appendChild(tr);
+      });
+  });
+
+  function copyRosterFallback(text, done) {
+    var textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed'; textarea.style.left = '-9999px';
+    document.body.appendChild(textarea); textarea.select();
+    try { if (document.execCommand('copy')) done(); }
+    finally { document.body.removeChild(textarea); }
+  }
+
   /* ---------- Pintasan: Ctrl/Cmd+K atau "/" memfokuskan pencarian; Esc menutup ---------- */
   document.addEventListener('keydown', function (e) {
     var tag = (e.target.tagName || '').toLowerCase();

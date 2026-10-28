@@ -8,6 +8,8 @@
 // menaungi lewat "Bidang Pelayanan Umat", Muslimah Pusat lewat "Subbidang Pelayanan Umat". Karena
 // itu Bidang tidak pernah jadi atribut katalog unit; ia hidup di relasi struktur+periode+unit.
 
+require_once ROOT_DIR . '/app/Models/PositionModel.php'; // PositionModel::CORE_SQL: batas Pengurus Inti
+
 class UnitModel {
     // Urutan tampil jenis unit, dipakai kartu rekap maupun pengurutan tabel supaya keduanya
     // tidak pernah berselisih. Nilainya literal (bukan masukan pengguna), jadi aman disisipkan
@@ -40,7 +42,8 @@ class UnitModel {
     // daftar nama saja, dan itulah yang membuat 105 baris bisa dievaluasi, bukan cuma dibaca.
     //   used_count      = berapa penempatan unit (structure_units) menunjuk entri ini
     //   used_structures = di berapa struktur berbeda
-    public function catalogList($kind = '', $keyword = '') {
+    // $flat = true: satu daftar menurut urutan resmi SKUO (sort_order), bukan dipecah per jenis.
+    public function catalogList($kind = '', $keyword = '', $flat = false) {
         $where = [];
         $params = [];
 
@@ -59,7 +62,7 @@ class UnitModel {
             $params[':kw_abbr'] = $like;
         }
 
-        $order = "FIELD(c.kind, '" . implode("','", self::KIND_ORDER) . "')";
+        $order = $flat ? "c.sort_order" : "FIELD(c.kind, '" . implode("','", self::KIND_ORDER) . "'), c.sort_order";
         $stmt = $this->db->prepare("
             SELECT c.*, p.name AS head_name,
                    (SELECT COUNT(*) FROM structure_units su
@@ -113,11 +116,22 @@ class UnitModel {
         return [$this->catalogSave(null, ['name' => $name, 'abbreviation' => '', 'kind' => $kind, 'is_active' => true]), true];
     }
 
+    // Nomor urut berikutnya di urutan resmi SKUO: kelipatan 10 di atas yang terbesar, melewati 500 (500 = "belum diurutkan").
+    public function catalogNextOrder() {
+        $max = (int) $this->db->query("SELECT COALESCE(MAX(sort_order), 0) FROM unit_catalog WHERE sort_order <> 500")->fetchColumn();
+        $next = (int) (floor($max / 10) * 10) + 10;
+        return $next === 500 ? 510 : min($next, 65535);
+    }
+
+    // $data['sort_order'] kosong/tak ada: entri baru memakai nomor urut berikutnya, entri lama tidak berubah urutannya.
     public function catalogSave($id, array $data) {
+        $hasOrder = isset($data['sort_order']) && $data['sort_order'] !== '';
+        $order = $hasOrder ? max(0, min(65535, (int) $data['sort_order'])) : null;
+
         if ($id) {
             $stmt = $this->db->prepare("
                 UPDATE unit_catalog SET name = :name, abbreviation = :abbr, kind = :kind,
-                       default_head_position_id = :head, is_active = :active
+                       default_head_position_id = :head, is_active = :active, sort_order = COALESCE(:sort, sort_order)
                 WHERE id = :id
             ");
             $stmt->execute([
@@ -126,6 +140,7 @@ class UnitModel {
                 ':kind'   => $data['kind'],
                 ':head'   => $this->defaultHeadPositionId($data['kind']),
                 ':active' => !empty($data['is_active']) ? 1 : 0,
+                ':sort'   => $order,
                 ':id'     => (int) $id,
             ]);
             Audit::log('unit_catalog', $id, 'update', null, $data);
@@ -133,8 +148,8 @@ class UnitModel {
         }
 
         $stmt = $this->db->prepare("
-            INSERT INTO unit_catalog (uuid, name, abbreviation, kind, default_head_position_id)
-            VALUES (:uuid, :name, :abbr, :kind, :head)
+            INSERT INTO unit_catalog (uuid, name, abbreviation, kind, default_head_position_id, sort_order)
+            VALUES (:uuid, :name, :abbr, :kind, :head, :sort)
         ");
         $stmt->execute([
             ':uuid' => Uuid::v4(),
@@ -142,6 +157,7 @@ class UnitModel {
             ':abbr' => $data['abbreviation'] !== '' ? $data['abbreviation'] : null,
             ':kind' => $data['kind'],
             ':head' => $this->defaultHeadPositionId($data['kind']),
+            ':sort' => $order ?? $this->catalogNextOrder(),
         ]);
         $newId = (int) $this->db->lastInsertId();
         Audit::log('unit_catalog', $newId, 'create', null, $data);
@@ -177,16 +193,70 @@ class UnitModel {
 
     // ---------- Bidang (per struktur + periode) ----------
 
+    // Ketua Bidang ikut dibawa: coordinator_* kosong bila belum ditetapkan ATAU penempatannya sudah dihapus/diakhiri
+    // (penempatan yang dihapus tidak memicu ON DELETE SET NULL karena hanya diberi deleted_at, jadi dicek di sini).
     public function groupsByTerm($termId) {
         $stmt = $this->db->prepare("
             SELECT g.*, (SELECT COUNT(*) FROM structure_units su
-                          WHERE su.unit_group_id = g.id AND su.deleted_at IS NULL) AS unit_count
+                          WHERE su.unit_group_id = g.id AND su.deleted_at IS NULL) AS unit_count,
+                   cp.id AS coordinator_id, cp.person_id AS coordinator_person_id, cpe.full_name AS coordinator_name,
+                   cpo.name AS coordinator_position
             FROM unit_groups g
+            LEFT JOIN placements cp ON cp.id = g.coordinator_placement_id AND cp.deleted_at IS NULL
+                                    AND (cp.end_date IS NULL OR cp.end_date >= CURDATE())
+            LEFT JOIN people cpe ON cpe.id = cp.person_id AND cpe.deleted_at IS NULL
+            LEFT JOIN positions cpo ON cpo.id = cp.position_id
             WHERE g.term_id = :t AND g.deleted_at IS NULL
             ORDER BY g.sort_order, g.name
         ");
         $stmt->execute([':t' => (int) $termId]);
         return $stmt->fetchAll();
+    }
+
+    // Calon Ketua Bidang: penempatan tingkat struktur (tanpa unit) berjabatan Ketua / Wakil Ketua yang inti di struktur ini
+    // dan masih berlaku pada periode itu. Satu-satunya sumber pilihan di formulir, jadi isian lain tidak bisa dikirim.
+    public function coordinatorCandidates($termId) {
+        $stmt = $this->db->prepare("
+            SELECT pl.id, p.full_name, po.name AS position_name
+            FROM placements pl
+            JOIN people p ON p.id = pl.person_id AND p.deleted_at IS NULL
+            JOIN positions po ON po.id = pl.position_id
+            JOIN structures s ON s.id = pl.structure_id
+            WHERE pl.term_id = :t AND pl.deleted_at IS NULL AND pl.structure_unit_id IS NULL
+              AND (pl.end_date IS NULL OR pl.end_date >= CURDATE())
+              AND po.code IN ('ketua', 'wakil_ketua') AND " . PositionModel::CORE_SQL . "
+            ORDER BY po.sort_order, p.name
+        ");
+        $stmt->execute([':t' => (int) $termId]);
+        return $stmt->fetchAll();
+    }
+
+    // Penempatan itu sah dijadikan Ketua Bidang di periode $termId? (id yang dikirim formulir tidak dipercaya begitu saja)
+    public function isCoordinatorCandidate($termId, $placementId) {
+        foreach ($this->coordinatorCandidates($termId) as $c) {
+            if ((int) $c['id'] === (int) $placementId) return true;
+        }
+        return false;
+    }
+
+    // Ringkasan PENGURUS INTI (entri bawaan sistem di Unit Organisasi): jabatan yang menjadi inti dan pemakaiannya pada periode
+    // berjalan. Tidak disimpan di katalog -- inti tetap berupa penempatan tanpa unit, aturannya satu-satunya ada di PositionModel::CORE_SQL.
+    public function intiInfo() {
+        $positions = $this->db->query("
+            SELECT name, is_core, core_from_tier FROM positions
+            WHERE is_active = 1 AND (is_core = 1 OR core_from_tier IS NOT NULL) ORDER BY sort_order
+        ")->fetchAll();
+
+        $use = $this->db->query("
+            SELECT COUNT(DISTINCT pl.structure_id) AS structures, COUNT(*) AS placements
+            FROM placements pl
+            JOIN positions po ON po.id = pl.position_id
+            JOIN structures s ON s.id = pl.structure_id
+            JOIN terms t ON t.id = pl.term_id AND t.is_current = 1
+            WHERE pl.deleted_at IS NULL AND pl.structure_unit_id IS NULL AND " . PositionModel::CORE_SQL . "
+        ")->fetch();
+
+        return ['positions' => $positions, 'structures' => (int) $use['structures'], 'placements' => (int) $use['placements']];
     }
 
     public function groupFindById($id) {
@@ -195,17 +265,23 @@ class UnitModel {
         return $stmt->fetch() ?: null;
     }
 
+    // $data['coordinator_placement_id']: hanya ditulis bila kuncinya ada (null/0 = kosongkan). Formulir lama yang tak
+    // mengirimnya tidak menghapus Ketua Bidang yang sudah ditetapkan.
     public function groupSave($id, array $data) {
         if ($id) {
+            $setCoord = array_key_exists('coordinator_placement_id', $data);
             $stmt = $this->db->prepare("
-                UPDATE unit_groups SET name = :name, kind = :kind, sort_order = :sort WHERE id = :id
+                UPDATE unit_groups SET name = :name, kind = :kind, sort_order = :sort"
+                . ($setCoord ? ", coordinator_placement_id = :coord" : "") . " WHERE id = :id
             ");
-            $stmt->execute([
+            $params = [
                 ':name' => trim($data['name']),
                 ':kind' => $data['kind'],
                 ':sort' => (int) $data['sort_order'],
                 ':id'   => (int) $id,
-            ]);
+            ];
+            if ($setCoord) $params[':coord'] = !empty($data['coordinator_placement_id']) ? (int) $data['coordinator_placement_id'] : null;
+            $stmt->execute($params);
             Audit::log('unit_groups', $id, 'update', null, $data);
             return (int) $id;
         }

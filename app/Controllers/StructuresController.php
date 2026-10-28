@@ -79,9 +79,18 @@ class StructuresController extends Controller {
         // struktur baru di bawah DPW lain.
         if (!empty($data['parent_id'])) {
             $this->requireScope($data['parent_id']);
+            $parent = $structures->findById($data['parent_id']);
+            $requiredParent = ['DPLN' => 'DPP', 'MWRa' => 'MWC'][$data['level']] ?? null;
+            if ($requiredParent !== null && (!$parent || $parent['level'] !== $requiredParent)) {
+                Flash::set('error', $data['level'] . ' harus berada di bawah ' . $requiredParent . '.');
+                $this->redirect('structures/form' . ($id ? '/' . $id : ''));
+            }
         } elseif (!AdminScope::isUnbounded()) {
             Flash::set('error', 'Hanya Super Admin yang boleh membuat struktur tanpa induk (akar).');
             $this->redirect('structures');
+        } elseif (in_array($data['level'], ['DPLN', 'MWRa'], true)) {
+            Flash::set('error', $data['level'] . ' wajib memiliki induk yang sesuai.');
+            $this->redirect('structures/form' . ($id ? '/' . $id : ''));
         }
 
         if ($id) {

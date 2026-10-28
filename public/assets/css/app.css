@@ -338,6 +338,7 @@ form.inline { display: inline; }
 .sn-main { flex: 1 1 0; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; }
 .sn-name { overflow-wrap: anywhere; font-weight: 700; color: var(--text); }
 .sn-n { flex: none; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+.sn-recap-line { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 6px 10px; }
 @media (max-width: 560px) {
   .sn > details > summary { flex-wrap: wrap; }
   .sn-n { flex-basis: 100%; padding-left: 24px; white-space: normal; }
@@ -1085,6 +1086,23 @@ a.hbar-row:hover, .hbar-row:hover, .hbar-row:focus { background: var(--primer-pu
   max-height: 240px; overflow-y: auto; background: var(--surface); border: 1px solid var(--border);
   border-radius: 0 0 var(--radius) var(--radius); box-shadow: 0 4px 12px rgba(0,0,0,.12);
 }
+
+/* Status biodata: tab ringkas, daftar anggota, dan modal roster. */
+.biodata-tabs { display: flex; gap: 8px; margin: 0 0 14px; flex-wrap: wrap; }
+.biodata-roster-trigger { border: 0; padding: 0; background: transparent; color: var(--primer); font: inherit; font-weight: 650; text-align: left; cursor: pointer; }
+.biodata-roster-trigger:hover { text-decoration: underline; }
+.biodata-roster-trigger:focus-visible { outline: 2px solid var(--primer); outline-offset: 3px; border-radius: 3px; }
+.biodata-roster-modal { width: min(720px, calc(100vw - 28px)); max-height: min(80vh, 720px); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; color: var(--text); background: var(--surface); box-shadow: 0 18px 50px rgba(8, 42, 55, .24); }
+.biodata-roster-modal::backdrop { background: rgba(10, 31, 40, .52); }
+.biodata-roster-modal .page-head { align-items: center; }
+.biodata-roster-modal .page-head h2 { font-size: 18px; }
+.biodata-roster-status { display: inline-block; min-width: 1.5em; font: 700 20px/1 Arial, sans-serif; text-align: center; }
+.biodata-roster-status.is-done { color: #16803c; }
+.biodata-roster-status.is-missing { color: #c62828; }
+.biodata-roster-filter { align-items: end; flex-wrap: wrap; }
+.biodata-roster-filter .field { min-width: 190px; flex: 1; }
+.biodata-roster-filter .field span { display: block; margin-bottom: 5px; }
+@media (max-width: 640px) { .biodata-roster-modal { padding: 12px; } .biodata-roster-filter .field { min-width: 100%; } }
 .autocomplete-item {
   padding: 8px 12px; cursor: pointer; font-size: 14px; line-height: 1.5;
   border-bottom: 1px solid var(--border);

@@ -7,6 +7,7 @@ $filterStructure = isset($_GET['structure']) ? (int) $_GET['structure'] : 0;
 <div class="page-head">
   <h1>Periode Kepengurusan</h1>
   <div class="actions">
+    <a class="btn secondary" href="<?= BASEURL ?>/terms/period_catalog">Acuan Periode &amp; Rekap</a>
     <?php if (Auth::canEdit()): ?>
       <a class="btn" href="<?= BASEURL ?>/terms/form">Tambah Periode</a>
     <?php endif; ?>
@@ -14,9 +15,8 @@ $filterStructure = isset($_GET['structure']) ? (int) $_GET['structure'] : 0;
 </div>
 
 <div class="note">
-  Setiap penempatan jabatan terikat ke salah satu periode di daftar ini. Karena itu mengisi periode
-  baru <strong>tidak pernah</strong> menimpa susunan periode sebelumnya &mdash; periode lama tetap
-  bisa dibuka sebagai arsip.
+  Acuan periode dapat digunakan oleh banyak struktur. Setiap struktur memiliki susunan, status, dan SK sendiri;
+  penempatan lama tetap menjadi arsip.
 </div>
 
 <div class="card">
@@ -52,6 +52,7 @@ $filterStructure = isset($_GET['structure']) ? (int) $_GET['structure'] : 0;
           <td></td>
           <td>
             <a href="<?= BASEURL ?>/terms/detail/<?= (int) $r['id'] ?>"><strong><?= e($r['name']) ?></strong></a>
+            <a class="small muted" href="<?= BASEURL ?>/terms/period_detail/<?= (int) $r['governance_period_id'] ?>">rekap periode</a>
             <?php if ($r['is_current']): ?><span class="badge current">berjalan</span><?php endif; ?>
           </td>
           <td class="nowrap small"><?= e($r['start_date']) ?></td>

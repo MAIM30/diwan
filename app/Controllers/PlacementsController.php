@@ -1,8 +1,7 @@
 <?php
 // PATH LOKASI FILE: app/Controllers/PlacementsController.php
-// Penempatan jabatan. Perhatikan bahwa tidak ada aksi "pindahkan ke periode baru": memulai periode
-// baru selalu berarti MENAMBAH baris di periode itu, bukan mengubah baris periode sebelumnya --
-// itulah yang menjaga riwayat tetap utuh.
+// Penempatan jabatan terkait ke periode struktur. Perpindahan struktur hanya dibolehkan di dalam
+// acuan periode bersama yang sama; perubahan antar acuan tetap menjadi penempatan periode berbeda.
 
 class PlacementsController extends Controller {
     public function form($termId, $id = null) {
@@ -16,11 +15,16 @@ class PlacementsController extends Controller {
 
         $placements = $this->model('PlacementModel');
         $row = null;
+        $otherPlacements = [];
         if ($id) {
             $row = $placements->findById($id);
             if (!$row || (int) $row['term_id'] !== (int) $termId) {
                 $this->notFound('Penempatan tidak ditemukan di periode ini.');
             }
+            $otherPlacements = array_values(array_filter($placements->byGovernancePeriod($term['governance_period_id'], $row['person_id']), function ($placement) use ($row) {
+                return (int) $placement['person_id'] === (int) $row['person_id']
+                    && (int) $placement['id'] !== (int) $row['id'];
+            }));
         }
 
         $units = $this->model('UnitModel');
@@ -31,10 +35,33 @@ class PlacementsController extends Controller {
             'title'     => $id ? 'Ubah Penempatan' : 'Tambah Penempatan',
             'term'      => $term,
             'row'       => $row,
-            'units'     => $units->unitsByTerm($termId),
+            'targetTerms' => $terms->termsForGovernancePeriod($term['governance_period_id']),
+            'otherPlacements' => $otherPlacements,
+            'units'     => $units->unitsByTerm($row['term_id'] ?? $termId),
             'positions' => $positions->all(),
             'people'    => $people->optionsInScope(),
         ]);
+    }
+
+    // Memuat SKUO dan konteks jabatan ketika struktur tujuan diganti pada formulir.
+    public function options($baseTermId, $targetTermId) {
+        $this->requireLogin();
+        header('Content-Type: application/json; charset=utf-8');
+        $terms = $this->model('TermModel');
+        $base = $terms->findById($baseTermId);
+        $target = $terms->findById($targetTermId);
+        if (!$base || !$target || (int) $base['governance_period_id'] !== (int) $target['governance_period_id']) {
+            http_response_code(404);
+            echo json_encode(['error' => 'Struktur tidak memakai acuan periode yang sama.']);
+            return;
+        }
+        $this->requireScope($base['structure_id']);
+        $this->requireScope($target['structure_id']);
+        echo json_encode([
+            'term' => ['id' => (int) $target['id'], 'level' => $target['level'], 'tier' => (int) $target['tier'], 'structure_name' => $target['structure_name']],
+            'units' => $this->model('UnitModel')->unitsByTerm($target['id']),
+            'positions' => $this->model('PositionModel')->all(),
+        ], JSON_UNESCAPED_UNICODE);
     }
 
     public function save() {
@@ -42,21 +69,35 @@ class PlacementsController extends Controller {
         if (!Auth::canEdit()) $this->denied();
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') $this->redirect('terms');
 
-        $termId = (int) ($_POST['term_id'] ?? 0);
+        $baseTermId = (int) ($_POST['base_term_id'] ?? 0);
+        $termId = (int) ($_POST['target_term_id'] ?? 0);
         $terms = $this->model('TermModel');
+        $baseTerm = $terms->findById($baseTermId);
         $term = $terms->findById($termId);
-        if (!$term) $this->notFound('Periode tidak ditemukan.');
+        if (!$baseTerm || !$term) $this->notFound('Periode tidak ditemukan.');
+        $this->requireScope($baseTerm['structure_id']);
         $this->requireScope($term['structure_id']);
+        if ((int) $baseTerm['governance_period_id'] !== (int) $term['governance_period_id']) {
+            Flash::set('error', 'Struktur tujuan harus menggunakan acuan Periode Kepengurusan yang sama.');
+            $this->redirect('placements/form/' . $baseTermId . (!empty($_POST['id']) ? '/' . (int) $_POST['id'] : ''));
+        }
 
         $placements = $this->model('PlacementModel');
         $id = !empty($_POST['id']) ? (int) $_POST['id'] : null;
 
+        // Saat mengubah, ID penempatan harus benar-benar berasal dari periode yang dikirim.
+        // Jangan izinkan POST mengganti struktur/periode penempatan lain hanya dengan mengubah hidden field.
+        if ($id) {
+            $existing = $placements->findById($id);
+            if (!$existing || (int) $existing['term_id'] !== $baseTermId) {
+                $this->notFound('Penempatan tidak ditemukan di periode ini.');
+            }
+            $this->requireScope($existing['structure_id']);
+        }
+
         $data = [
             'person_id'         => (int) ($_POST['person_id'] ?? 0),
             'term_id'           => $termId,
-            // structure_id diambil dari PERIODE, bukan dari input form. Composite FK di database
-            // akan menolak kalau keduanya tidak cocok, tapi mengambilnya dari sumber yang benar
-            // sejak awal berarti pengguna tidak pernah bisa salah memilihnya.
             'structure_id'      => (int) $term['structure_id'],
             'structure_unit_id' => !empty($_POST['structure_unit_id']) ? (int) $_POST['structure_unit_id'] : null,
             'position_id'       => (int) ($_POST['position_id'] ?? 0),
@@ -71,18 +112,47 @@ class PlacementsController extends Controller {
 
         if ($data['person_id'] === 0 || $data['position_id'] === 0) {
             Flash::set('error', 'Orang dan jabatan wajib dipilih.');
-            $this->redirect('placements/form/' . $termId . ($id ? '/' . $id : ''));
+            $this->redirect('placements/form/' . $baseTermId . ($id ? '/' . $id : ''));
+        }
+
+        $person = $this->model('PersonModel')->findById($data['person_id']);
+        if (!$person || !$this->model('PersonModel')->isVisible($data['person_id'])) {
+            $this->notFound('Data orang tidak ditemukan.');
+        }
+        $expectedWing = $person['gender'] === 'P' ? 'muslimah' : 'umum';
+        if ($term['wing'] !== $expectedWing || (!empty($_POST['gender']) && $_POST['gender'] !== $person['gender'])) {
+            Flash::set('error', 'Jenis kelamin pengurus tidak sesuai dengan sayap struktur yang dipilih.');
+            $this->redirect('placements/form/' . $baseTermId . ($id ? '/' . $id : ''));
         }
 
         if ($data['end_date'] !== '' && $data['start_date'] !== '' && $data['end_date'] < $data['start_date']) {
             Flash::set('error', 'Tanggal berakhir tidak boleh lebih awal dari tanggal mulai.');
-            $this->redirect('placements/form/' . $termId . ($id ? '/' . $id : ''));
+            $this->redirect('placements/form/' . $baseTermId . ($id ? '/' . $id : ''));
+        }
+
+        // SKUO harus berasal dari periode dan struktur tujuan.
+        if ($data['structure_unit_id']) {
+            $unit = $this->model('UnitModel')->unitFindById($data['structure_unit_id']);
+            if (!$unit || (int) $unit['term_id'] !== $termId || (int) $unit['structure_id'] !== (int) $term['structure_id']) {
+                Flash::set('error', 'Unit Organisasi (SKUO) tidak termasuk dalam struktur dan periode ini.');
+                $this->redirect('placements/form/' . $baseTermId . ($id ? '/' . $id : ''));
+            }
+        }
+
+        // Jabatan tingkat struktur dan jabatan di dalam SKUO dibedakan oleh konteks katalog.
+        // Validasi di server tetap diperlukan meskipun pilihan formulir juga difilter di browser.
+        $context = $data['structure_unit_id'] ? 'unit' : 'structure';
+        $allowedPositionIds = array_map('intval', array_column($this->model('PositionModel')->forContext($context), 'id'));
+        if (!in_array($data['position_id'], $allowedPositionIds, true)) {
+            Flash::set('error', 'Jabatan tidak sesuai dengan konteks penempatan pada struktur/SKUO yang dipilih.');
+            $this->redirect('placements/form/' . $baseTermId . ($id ? '/' . $id : ''));
         }
 
         try {
             if ($id) {
-                $placements->update($id, $data);
-                Flash::set('success', 'Penempatan diperbarui.');
+                if ($termId !== $baseTermId) $placements->updateWithinGovernancePeriod($id, $data);
+                else $placements->update($id, $data);
+                Flash::set('success', $termId !== $baseTermId ? 'Penempatan dipindahkan ke struktur tujuan dalam acuan periode yang sama.' : 'Penempatan diperbarui.');
             } else {
                 $newId = $placements->create($data);
                 WaNotify::placementCreated((int) $data['person_id'], $newId);
@@ -90,6 +160,7 @@ class PlacementsController extends Controller {
             }
         } catch (RuntimeException $e) {
             Flash::set('error', $e->getMessage());
+            $this->redirect('placements/form/' . $baseTermId . ($id ? '/' . $id : ''));
         }
 
         $this->redirect('terms/detail/' . $termId);
@@ -127,7 +198,7 @@ class PlacementsController extends Controller {
         $this->requireScope($row['structure_id']);
 
         $placements->softDelete($row['id']);
-        Flash::set('success', 'Penempatan dihapus.');
-        $this->redirect('terms/detail/' . $row['term_id']);
+        Flash::set('success', 'Penempatan berhasil dianulir. Data orang tetap tersimpan; bila tidak memiliki penempatan aktif dalam SKUO lain, orang ini muncul pada filter Tanpa Unit Organisasi (SKUO).');
+        $this->redirect('people?filter=tanpa_unit');
     }
 }
