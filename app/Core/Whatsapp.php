@@ -132,7 +132,10 @@ class Whatsapp {
 
         $result = self::request('POST', 'send', $body);
         self::log($phone, 'otp', null, $body, $result);
-        return $result['ok'] ? $code : false;
+        return [
+            'code' => $code,
+            'sent' => !empty($result['ok']),
+        ];
     }
 
     public static function verifyOtp($phone, $code) {

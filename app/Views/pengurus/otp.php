@@ -25,6 +25,13 @@
       <form method="post" action="<?= BASEURL ?>/pengurus/otp_verify">
         <?= Csrf::field() ?>
 
+        <?php if (!empty($fallbackCode)): ?>
+          <div class="alert warn" role="alert" style="margin-bottom:16px">
+            WhatsApp gagal mengirim. Masukkan kode OTP berikut:
+            <strong style="display:block; margin-top:6px; font-size:1.5rem; letter-spacing:.2em"><?= e($fallbackCode) ?></strong>
+          </div>
+        <?php endif; ?>
+
         <div class="field">
           <label for="code">Kode OTP</label>
           <div class="input-icon">

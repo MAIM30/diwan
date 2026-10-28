@@ -62,16 +62,16 @@ class PengurusController extends Controller {
         // Bila WA Gateway aktif, kirim OTP dan alihkan ke halaman verifikasi.
         if (Whatsapp::isConfigured()) {
             $phone = $person['phone'];
-            $code  = Whatsapp::sendOtp($person['id'], $phone);
-            if ($code === false) {
-                Flash::set('error', 'Gagal mengirim kode OTP. Silakan coba lagi.');
-                $this->redirect('pengurus/login');
-            }
+            $otp = Whatsapp::sendOtp($person['id'], $phone);
             $_SESSION['otp_pending'] = [
                 'person_id' => (int) $person['id'],
                 'phone'     => $phone,
                 'sent_at'   => time(),
+                'fallback_code' => $otp['sent'] ? null : $otp['code'],
             ];
+            if (!$otp['sent']) {
+                Flash::set('warn', 'WhatsApp gagal mengirim kode. Gunakan kode OTP yang ditampilkan di halaman ini.');
+            }
             $this->redirect('pengurus/otp');
             return;
         }
@@ -89,7 +89,12 @@ class PengurusController extends Controller {
 
         $phone = $_SESSION['otp_pending']['phone'] ?? '';
         $masked = Text::maskPhone($phone);
-        $this->view('pengurus/otp', ['title' => 'Verifikasi OTP', 'maskedPhone' => $masked]);
+        $fallbackCode = $_SESSION['otp_pending']['fallback_code'] ?? null;
+        $this->view('pengurus/otp', [
+            'title' => 'Verifikasi OTP',
+            'maskedPhone' => $masked,
+            'fallbackCode' => $fallbackCode,
+        ]);
     }
 
     public function otp_verify() {
@@ -147,14 +152,13 @@ class PengurusController extends Controller {
             $this->redirect('pengurus/otp');
         }
 
-        $code = Whatsapp::sendOtp($pending['person_id'], $pending['phone']);
-        if ($code === false) {
-            Flash::set('error', 'Gagal mengirim ulang kode OTP.');
-            $this->redirect('pengurus/otp');
-        }
+        $otp = Whatsapp::sendOtp($pending['person_id'], $pending['phone']);
 
         $_SESSION['otp_pending']['sent_at'] = time();
-        Flash::set('success', 'Kode OTP baru telah dikirim ke WhatsApp Anda.');
+        $_SESSION['otp_pending']['fallback_code'] = $otp['sent'] ? null : $otp['code'];
+        Flash::set($otp['sent'] ? 'success' : 'warn', $otp['sent']
+            ? 'Kode OTP baru telah dikirim ke WhatsApp Anda.'
+            : 'WhatsApp gagal mengirim kode. Gunakan kode OTP baru yang ditampilkan di halaman ini.');
         $this->redirect('pengurus/otp');
     }
 
