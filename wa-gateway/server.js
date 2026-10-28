@@ -19,6 +19,8 @@ const logger = P({ level: process.env.LOG_LEVEL || 'warn' });
 const PORT = process.env.PORT || 3001;
 const AUTH_DIR = './auth_state';
 const API_KEY = process.env.API_KEY || 'diwan-wa-secret';
+// Masa berlaku tiap QR, dalam milidetik. Baileys default memakai 20 detik untuk QR berikutnya.
+const QR_TIMEOUT_MS = 5 * 60 * 1000;
 
 // Anti-spam: jeda default antar pesan broadcast (detik), bisa di-override per request
 const DEFAULT_DELAY_MIN = 8;
@@ -57,6 +59,7 @@ async function startWhatsApp() {
     browser: ['DIWAN WA Gateway', 'Chrome', '131.0'],
     generateHighQualityLinkPreview: false,
     defaultQueryTimeoutMs: 60000,
+    qrTimeout: QR_TIMEOUT_MS,
     logger,
     getMessage: async (key) => sentMessages.get(key.id),
   });
@@ -285,7 +288,7 @@ app.get('/qr', (req, res) => {
           <li>Ketuk <b>Titik tiga (⋮) → Perangkat tertaut</b></li>
           <li>Ketuk <b>Tautkan perangkat</b>, lalu arahkan kamera ke kode di atas</li>
         </ol>
-        <p class="foot">QR berubah otomatis setiap sekitar 20 detik. Halaman pemindaian tersedia ${displayMinutes} menit.</p>
+        <p class="foot">QR berlaku hingga sekitar 5 menit dan diperbarui otomatis. Halaman pemindaian tersedia ${displayMinutes} menit.</p>
         <div class="qr-expired" style="display:none;margin-top:14px;padding:12px;border-radius:10px;background:var(--warn-bg);color:var(--warn)">
           Waktu pemindaian ${displayMinutes} menit selesai. Tekan tombol untuk memulai sesi tampilan baru dengan QR terbaru.
           <button type="button" onclick="sessionStorage.removeItem('diwan-wa-qr-display-start');location.reload()" style="display:block;margin:12px auto 0;padding:9px 14px;border:0;border-radius:8px;background:#0f96b0;color:#fff;font-weight:700">Mulai lagi</button>

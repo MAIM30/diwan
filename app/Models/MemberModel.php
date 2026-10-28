@@ -19,8 +19,9 @@ class MemberModel {
 
     // Syarat BOLEH masuk. Satu-satunya tempat syarat ini didefinisikan: dipakai saat masuk DAN
     // pada setiap halaman sesudahnya, supaya pencabutan akses oleh admin berlaku seketika.
-    const ELIGIBLE = "p.deleted_at IS NULL AND p.status = 'active' AND p.portal_enabled = 1
-                      AND EXISTS (SELECT 1 FROM placements plx WHERE plx.person_id = p.id AND plx.deleted_at IS NULL)";
+    // Penempatan bukan syarat login: pengurus yang datanya sudah ada boleh masuk meski jabatan
+    // belum dicatat. Status aktif, izin portal, dan nomor yang tidak ambigu tetap wajib.
+    const ELIGIBLE = "p.deleted_at IS NULL AND p.status = 'active' AND p.portal_enabled = 1";
 
     // Pencarian lewat nik_guard (kolom turunan ber-indeks unik), bukan nik: nik biasa tidak
     // terindeks, jadi pencarian lewat nik memindai seluruh tabel pada setiap percobaan masuk --
