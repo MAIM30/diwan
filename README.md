@@ -216,9 +216,10 @@ yang ada dipertahankan, ditambah dua yang khusus nomor:
 | Nomor bersama tak bisa dipakai masuk | `people.phone` sengaja tidak unik (mis. nomor suami pada data pengurus muslimah). Portal tak punya faktor kedua untuk memilih pemiliknya, jadi nomor yang dipakai **dua orang atau lebih** (yang belum dihapus) tidak bisa dipakai masuk oleh siapa pun, bukan "masuk sebagai yang pertama". Dihitung semua pemilik, bukan hanya yang layak, supaya hasilnya tak berubah mengikuti status orang lain. Pemilik ber-NIK tetap bisa masuk dengan NIK-nya. Admin melihat alasannya di profil ("Nomor WA dipakai orang lain juga") |
 | Pesan seragam | nomor tak terdaftar, dipakai bersama, akses dicabut, nonaktif, belum punya penempatan: satu pesan yang **identik** dengan NIK tak dikenal |
 
-Jika WhatsApp Gateway dikonfigurasi, portal mengirim **OTP WhatsApp** dan meminta verifikasi kode sebelum membuat sesi.
-Kode berlaku 5 menit, kirim ulang dibatasi 60 detik, dan percobaan gagal dibatasi. Tanpa gateway, aplikasi memakai jalur
-masuk langsung dengan nomor WA/NIK; karena itu siapkan gateway sebelum membuka portal secara luas. `PORTAL_ENABLED = false`
+Setelah nomor dikenali, portal meminta pengurus mengetik **kode OTP 4 digit** yang ditampilkan di atas kolom isian halaman
+verifikasi. Kode **tidak dikirim lewat WhatsApp** (pengiriman OTP membuat nomor gateway sering diblokir WhatsApp), jadi
+kode ini hanya langkah konfirmasi, **bukan bukti bahwa pengguna memegang nomor itu**. Kode berlaku 5 menit, sekali pakai,
+dan percobaan gagal dibatasi. Gateway WhatsApp hanya dipakai untuk notifikasi dan broadcast. `PORTAL_ENABLED = false`
 mematikan seluruh portal dan `people.portal_enabled` mencabut akses satu orang seketika.
 
 ### Soal risiko: NIK dan nomor WA bukan rahasia
@@ -243,11 +244,11 @@ pengamannya dipasang di sekelilingnya tanpa mengubah sifat "satu kredensial saja
 | Tanpa cache | `Cache-Control: no-store` di semua halaman portal |
 
 **Konsekuensi NIK utuh.** Masuk ke portal hanya bermodal nomor WA, dan nomor WA bukan rahasia; maka siapa pun yang tahu nomor WA seorang pengurus bisa melihat NIK
-lengkapnya di portal. Itu keputusan yang disengaja (NIK memang milik pemiliknya sendiri), tetapi ia menambah nilai nomor WA sebagai sasaran. Yang menutupnya adalah
-OTP WhatsApp bila gateway diaktifkan (lihat atas); tanpa gateway, portal memakai jalur masuk langsung. NIK di jejak audit tetap disamarkan.
+lengkapnya di portal. Itu keputusan yang disengaja (NIK memang milik pemiliknya sendiri), tetapi ia menambah nilai nomor WA sebagai sasaran. OTP yang
+ditampilkan di layar (lihat atas) tidak menutupnya, karena kode itu terlihat oleh siapa pun yang memasukkan nomor tersebut. NIK di jejak audit tetap disamarkan.
 
-OTP WhatsApp adalah faktor kedua yang tersedia bila gateway dikonfigurasi. Admin dapat mematikan seluruh portal
-melalui `PORTAL_ENABLED` bila gateway belum siap atau akses perlu dihentikan sementara.
+Admin dapat mematikan seluruh portal melalui `PORTAL_ENABLED` atau mencabut akses satu orang lewat `people.portal_enabled`
+bila akses perlu dihentikan.
 
 **Syarat masuk** (`MemberModel::ELIGIBLE`, satu-satunya definisinya): orang belum dihapus, status
 `active`, `portal_enabled = 1`, dan punya setidaknya satu penempatan; masuk dengan nomor WA juga mensyaratkan nomor itu hanya dipakai satu orang.

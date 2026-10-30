@@ -2,8 +2,7 @@
 // PATH LOKASI FILE: app/Controllers/PengurusController.php
 // Portal Pengurus: pengurus melihat data kepengurusannya sendiri.
 //
-// Alur masuk: nomor WA → (bila WA Gateway aktif) OTP via WhatsApp → verifikasi → sesi.
-// Bila gateway belum dikonfigurasi, masuk langsung seperti sebelumnya (tanpa OTP).
+// Alur masuk: nomor WA → OTP yang ditampilkan di halaman verifikasi (tidak dikirim lewat WhatsApp) → sesi.
 
 class PengurusController extends Controller {
 
@@ -19,7 +18,7 @@ class PengurusController extends Controller {
         if (Member::check()) {
             $this->redirect('pengurus');
         }
-        $this->view('pengurus/login', ['title' => 'Masuk Pengurus', 'otpEnabled' => Whatsapp::isConfigured()]);
+        $this->view('pengurus/login', ['title' => 'Masuk Pengurus']);
     }
 
     public function login_process() {
@@ -59,27 +58,12 @@ class PengurusController extends Controller {
             $this->redirect('daftar');
         }
 
-        // Bila WA Gateway aktif, kirim OTP dan alihkan ke halaman verifikasi.
-        if (Whatsapp::isConfigured()) {
-            $phone = $person['phone'];
-            $otp = Whatsapp::sendOtp($person['id'], $phone);
-            $_SESSION['otp_pending'] = [
-                'person_id' => (int) $person['id'],
-                'phone'     => $phone,
-                'sent_at'   => time(),
-                'fallback_code' => $otp['sent'] ? null : $otp['code'],
-            ];
-            if (!$otp['sent']) {
-                Flash::set('warn', 'WhatsApp gagal mengirim kode. Gunakan kode OTP yang ditampilkan di halaman ini.');
-            }
-            $this->redirect('pengurus/otp');
-            return;
-        }
-
-        // Fallback: tanpa WA Gateway, masuk langsung.
-        Member::login($person);
-        $members->recordLogin($person['id']);
-        $this->redirect('pengurus');
+        $_SESSION['otp_pending'] = [
+            'person_id' => (int) $person['id'],
+            'code'      => Otp::issue($person['id'], $person['phone'] ?? ''),
+            'issued_at' => time(),
+        ];
+        $this->redirect('pengurus/otp');
     }
 
     public function otp() {
@@ -87,13 +71,9 @@ class PengurusController extends Controller {
         if (Member::check()) $this->redirect('pengurus');
         if (empty($_SESSION['otp_pending'])) $this->redirect('pengurus/login');
 
-        $phone = $_SESSION['otp_pending']['phone'] ?? '';
-        $masked = Text::maskPhone($phone);
-        $fallbackCode = $_SESSION['otp_pending']['fallback_code'] ?? null;
         $this->view('pengurus/otp', [
             'title' => 'Verifikasi OTP',
-            'maskedPhone' => $masked,
-            'fallbackCode' => $fallbackCode,
+            'code'  => $_SESSION['otp_pending']['code'],
         ]);
     }
 
@@ -112,17 +92,16 @@ class PengurusController extends Controller {
         $pending = $_SESSION['otp_pending'];
         $code    = trim((string) ($_POST['code'] ?? ''));
 
-        // OTP berlaku 5 menit sejak dikirim.
-        if (time() - (int) $pending['sent_at'] > 300) {
+        if (time() - (int) $pending['issued_at'] > Otp::TTL) {
             unset($_SESSION['otp_pending']);
             Flash::set('error', 'Kode OTP sudah kedaluwarsa. Silakan masuk ulang.');
             $this->redirect('pengurus/login');
         }
 
-        $personId = Whatsapp::verifyOtp($pending['phone'], $code);
-        if ($personId === false || $personId !== (int) $pending['person_id']) {
+        $personId = (int) $pending['person_id'];
+        if (!Otp::verify($personId, $code)) {
             $throttle->recordFailure();
-            Flash::set('error', 'Kode OTP tidak valid. Periksa kembali kode yang dikirim ke WhatsApp Anda.');
+            Flash::set('error', 'Kode OTP tidak valid. Periksa kembali kode yang tampil di halaman ini.');
             $this->redirect('pengurus/otp');
         }
 
@@ -137,29 +116,6 @@ class PengurusController extends Controller {
         Member::login($person);
         $members->recordLogin($person['id']);
         $this->redirect('pengurus');
-    }
-
-    public function otp_resend() {
-        $this->noStore();
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST') $this->redirect('pengurus/login');
-        if (empty($_SESSION['otp_pending'])) $this->redirect('pengurus/login');
-
-        $pending = $_SESSION['otp_pending'];
-
-        // Batas kirim ulang: minimal 60 detik sejak OTP sebelumnya.
-        if (time() - (int) $pending['sent_at'] < 60) {
-            Flash::set('info', 'Tunggu sebentar sebelum mengirim ulang kode.');
-            $this->redirect('pengurus/otp');
-        }
-
-        $otp = Whatsapp::sendOtp($pending['person_id'], $pending['phone']);
-
-        $_SESSION['otp_pending']['sent_at'] = time();
-        $_SESSION['otp_pending']['fallback_code'] = $otp['sent'] ? null : $otp['code'];
-        Flash::set($otp['sent'] ? 'success' : 'warn', $otp['sent']
-            ? 'Kode OTP baru telah dikirim ke WhatsApp Anda.'
-            : 'WhatsApp gagal mengirim kode. Gunakan kode OTP baru yang ditampilkan di halaman ini.');
-        $this->redirect('pengurus/otp');
     }
 
     // POST + CSRF (diverifikasi App): keluar lewat GET bisa dipicu orang lain lewat <img src>.

@@ -18,19 +18,17 @@
     <div class="auth-card">
       <span class="role-pill is-member"><?= Ui::icon('shield', 14) ?> Verifikasi</span>
       <h1>Masukkan Kode OTP</h1>
-      <p class="lead">Kode 4 digit telah dikirim ke WhatsApp <strong><?= e($maskedPhone) ?></strong>. Berlaku 5 menit.</p>
+      <p class="lead">Ketik kode 4 digit di bawah ini. Berlaku 5 menit.</p>
 
       <?php $this->view('layouts/flash'); ?>
 
       <form method="post" action="<?= BASEURL ?>/pengurus/otp_verify">
         <?= Csrf::field() ?>
 
-        <?php if (!empty($fallbackCode)): ?>
-          <div class="alert warn" role="alert" style="margin-bottom:16px">
-            WhatsApp gagal mengirim. Masukkan kode OTP berikut:
-            <strong style="display:block; margin-top:6px; font-size:1.5rem; letter-spacing:.2em"><?= e($fallbackCode) ?></strong>
-          </div>
-        <?php endif; ?>
+        <div class="alert info" style="text-align:center">
+          Kode OTP Anda
+          <strong style="display:block; margin-top:6px; font-size:1.8rem; letter-spacing:.3em"><?= e($code) ?></strong>
+        </div>
 
         <div class="field">
           <label for="code">Kode OTP</label>
@@ -46,11 +44,7 @@
         <button type="submit" class="btn block">Verifikasi</button>
       </form>
 
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px">
-        <form method="post" action="<?= BASEURL ?>/pengurus/otp_resend" data-loading="Mengirim ulang kode..." data-loading-text="Kode dikirim lewat WhatsApp Anda.">
-          <?= Csrf::field() ?>
-          <button type="submit" class="btn-link small">Kirim ulang kode</button>
-        </form>
+      <div style="text-align:center; margin-top:16px">
         <a href="<?= BASEURL ?>/pengurus/login" class="small">Ganti nomor</a>
       </div>
     </div>

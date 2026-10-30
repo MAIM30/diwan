@@ -330,7 +330,7 @@ async function doSend(phone, message, simulate = false) {
   return result;
 }
 
-// Kirim pesan langsung (OTP, notifikasi) — tanpa antrian
+// Kirim pesan langsung (notifikasi) — tanpa antrian
 app.post('/send', authMiddleware, async (req, res) => {
   if (connectionStatus !== 'open' || !sock) {
     return res.status(503).json({ ok: false, error: 'WhatsApp belum terhubung' });

@@ -105,58 +105,6 @@ class Whatsapp {
         return $result;
     }
 
-    public static function sendOtp($personId, $phone) {
-        $phone  = self::formatPhone($phone);
-        $code   = self::generateOtp();
-        $expiry = date('Y-m-d H:i:s', time() + 300);
-
-        $db = Database::getInstance()->getConnection();
-        $db->prepare("UPDATE otp_codes SET verified = -1 WHERE phone = :ph AND verified = 0 AND expires_at > NOW()")
-           ->execute([':ph' => $phone]);
-
-        $db->prepare("INSERT INTO otp_codes (person_id, phone, code, expires_at, ip) VALUES (:pid, :ph, :code, :exp, :ip)")
-           ->execute([':pid' => (int) $personId, ':ph' => $phone, ':code' => $code, ':exp' => $expiry, ':ip' => Text::clientIp()]);
-
-        $stmt = $db->prepare("SELECT name, gender FROM people WHERE id = :id LIMIT 1");
-        $stmt->execute([':id' => (int) $personId]);
-        $person = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
-        $name = trim($person['name'] ?? '') ?: 'Pengurus';
-        $honorific = ($person['gender'] ?? 'L') === 'P' ? 'Ustazah' : 'Ustaz';
-        $text = "Assalamu 'alaykum {$honorific} {$name},\n\n"
-              . "Kode OTP antum adalah *{$code}*.\n"
-              . "Kode berlaku 5 menit. Jangan berikan kode ini kepada siapa pun.\n\n"
-              . "Barokallohu Fikum.";
-        $body = [
-            'target'  => $phone,
-            'message' => $text,
-        ];
-
-        $result = self::request('POST', 'send', $body);
-        self::log($phone, 'otp', null, $body, $result);
-        return [
-            'code' => $code,
-            'sent' => !empty($result['ok']),
-        ];
-    }
-
-    public static function verifyOtp($phone, $code) {
-        $phone = self::formatPhone($phone);
-        $db = Database::getInstance()->getConnection();
-
-        $stmt = $db->prepare("
-            SELECT id, person_id FROM otp_codes
-            WHERE phone = :ph AND code = :code AND verified = 0 AND expires_at > NOW()
-            ORDER BY id DESC LIMIT 1
-        ");
-        $stmt->execute([':ph' => $phone, ':code' => $code]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if (!$row) return false;
-
-        $db->prepare("UPDATE otp_codes SET verified = 1 WHERE id = :id")->execute([':id' => $row['id']]);
-        return (int) $row['person_id'];
-    }
-
     public static function testConnection() {
         return self::request('GET', 'status');
     }
@@ -172,10 +120,6 @@ class Whatsapp {
         if (str_starts_with($phone, '0')) $phone = '62' . substr($phone, 1);
         if (!str_starts_with($phone, '62')) $phone = '62' . $phone;
         return $phone;
-    }
-
-    private static function generateOtp() {
-        return str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT);
     }
 
     private static function log($phone, $type, $templateName, $payload, $result) {

@@ -18,13 +18,11 @@
     <div class="auth-card">
       <span class="role-pill is-member"><?= Ui::icon('id-card', 14) ?> Pengurus</span>
       <h1>Masuk</h1>
-      <p class="lead"><?= !empty($otpEnabled)
-          ? 'Masukkan nomor WhatsApp Anda. Kode OTP akan dikirim untuk verifikasi.'
-          : 'Masukkan nomor WhatsApp Anda untuk melanjutkan.' ?></p>
+      <p class="lead">Masukkan nomor WhatsApp Anda untuk melanjutkan.</p>
 
       <?php $this->view('layouts/flash'); ?>
 
-      <form method="post" action="<?= BASEURL ?>/pengurus/login_process"<?= !empty($otpEnabled) ? ' data-loading="Mengirim kode OTP..." data-loading-text="Kode dikirim lewat WhatsApp Anda."' : '' ?>>
+      <form method="post" action="<?= BASEURL ?>/pengurus/login_process">
         <?= Csrf::field() ?>
 
         <div class="field">
@@ -35,11 +33,10 @@
             <input type="tel" id="wa" name="wa" inputmode="tel" autocomplete="tel" required
                    placeholder="08xxxxxxxxxx" autofocus>
           </div>
-          <div class="help">Nomor yang tercatat di data pengurus.<?= !empty($otpEnabled)
-              ? '' : ' NIK 16 digit juga bisa dipakai bila sudah tercatat.' ?></div>
+          <div class="help">Nomor yang tercatat di data pengurus.</div>
         </div>
 
-        <button type="submit" class="btn block"><?= !empty($otpEnabled) ? 'Kirim Kode OTP' : 'Masuk' ?></button>
+        <button type="submit" class="btn block">Lanjutkan</button>
       </form>
 
       <p class="auth-alt">

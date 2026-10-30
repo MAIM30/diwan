@@ -26,6 +26,7 @@ require_once ROOT_DIR . '/app/Core/Member.php';
 require_once ROOT_DIR . '/app/Core/MemberThrottle.php';
 require_once ROOT_DIR . '/app/Core/AdminScope.php';
 require_once ROOT_DIR . '/app/Core/Audit.php';
+require_once ROOT_DIR . '/app/Core/Otp.php';
 require_once ROOT_DIR . '/app/Core/Whatsapp.php';
 require_once ROOT_DIR . '/app/Core/WaNotify.php';
 require_once ROOT_DIR . '/app/Core/BiodataPdf.php';
