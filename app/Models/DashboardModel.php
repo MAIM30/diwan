@@ -321,6 +321,11 @@ class DashboardModel {
                 $title = 'Pendaftaran ' . ($d['full_name'] ?? '') . ' ' . $verb;
                 $sub = $struct;
                 break;
+            case 'registration_requests:delete':
+                $icon = 'trash'; $tone = 'rose';
+                $title = 'Pendaftaran ' . ($d['full_name'] ?? '') . ' dihapus';
+                $sub = $struct;
+                break;
         }
 
         if (($after['event'] ?? '') === 'portal_edit') {

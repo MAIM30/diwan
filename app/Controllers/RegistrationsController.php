@@ -105,6 +105,33 @@ class RegistrationsController extends Controller {
         $this->redirect('registrations');
     }
 
+    // Hapus pengajuan ganda. Hanya admin (bukan verifikator), dan hanya pada struktur dalam lingkupnya.
+    public function delete() {
+        $this->requireLogin();
+        if (!Auth::canEdit()) $this->denied();
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') $this->redirect('registrations');
+
+        $registrations = $this->model('RegistrationModel');
+        $id = (int) ($_POST['id'] ?? 0);
+        $reg = $registrations->findById($id);
+        if (!$reg) $this->notFound('Pengajuan tidak ditemukan.');
+        $this->requireScope($reg['target_structure_id']);
+
+        try {
+            if ($registrations->delete($id)) {
+                Flash::set('success', 'Pengajuan ' . $reg['full_name'] . ' dihapus.');
+            } else {
+                Flash::set('error', 'Pengajuan tidak dihapus: statusnya sudah berubah.');
+            }
+        } catch (RuntimeException $e) {
+            Flash::set('error', $e->getMessage());
+        }
+
+        // Kembali ke tab yang sedang dibuka admin.
+        $back = $_POST['status'] ?? '';
+        $this->redirect('registrations' . (in_array($back, ['submitted', 'verified', 'activated', 'rejected', 'all'], true) ? '?status=' . $back : ''));
+    }
+
     // Aktivasi: pengajuan berubah menjadi data master + satu baris penempatan.
     public function activate() {
         $this->requireLogin();

@@ -206,6 +206,25 @@ class RegistrationModel {
         return $stmt->rowCount() > 0;
     }
 
+    // Menghapus pengajuan yang berulang/ganda. Baris dihapus sungguhan, tetapi isinya tersimpan di
+    // audit_log (before_data) supaya masih bisa dilacak siapa yang menghapus dan apa isinya.
+    // Pengajuan Aktif tidak boleh dihapus: ia satu-satunya catatan dari mana orang dan penempatan itu berasal.
+    public function delete($id) {
+        $reg = $this->findById($id);
+        if (!$reg) return false;
+        if ($reg['status'] === 'activated') {
+            throw new RuntimeException('Pengajuan yang sudah Aktif tidak bisa dihapus, karena menjadi catatan asal data orang dan penempatannya.');
+        }
+
+        // Status diperiksa lagi di sini: bisa saja admin lain mengaktifkannya sejak halaman dimuat.
+        $stmt = $this->db->prepare("DELETE FROM registration_requests WHERE id = :id AND status <> 'activated'");
+        $stmt->execute([':id' => (int) $id]);
+        if ($stmt->rowCount() === 0) return false;
+
+        Audit::log('registration_requests', $id, 'delete', $reg, null);
+        return true;
+    }
+
     // Aktivasi: inilah satu-satunya tempat pengajuan berubah menjadi data master.
     //
     // $personId: diisi verifikator bila pendaftar ini TERNYATA orang yang sudah ada (hasil

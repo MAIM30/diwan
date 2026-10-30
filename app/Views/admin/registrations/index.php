@@ -70,6 +70,15 @@ $matchLabels = [
             <?php if (Auth::canVerify()): ?>
               <a class="btn small secondary" href="<?= BASEURL ?>/registrations/review/<?= (int) $r['id'] ?>">Tinjau</a>
             <?php endif; ?>
+            <?php if (Auth::canEdit() && $r['status'] !== 'activated'): ?>
+              <form class="inline" method="post" action="<?= BASEURL ?>/registrations/delete"
+                    data-confirm="Hapus pengajuan <?= e($r['full_name']) ?>? Pengajuan dihapus permanen tanpa memberi tahu pendaftar. Gunakan ini untuk pengajuan ganda; bila pendaftar perlu diberi alasan, pakai Tinjau lalu Tolak.">
+                <?= Csrf::field() ?>
+                <input type="hidden" name="id" value="<?= (int) $r['id'] ?>">
+                <input type="hidden" name="status" value="<?= e($status) ?>">
+                <button type="submit" class="btn small danger" title="Hapus pengajuan ganda"><?= Ui::icon('trash', 14) ?> Hapus</button>
+              </form>
+            <?php endif; ?>
           </td>
         </tr>
       <?php endforeach; ?>
