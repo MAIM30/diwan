@@ -25,7 +25,8 @@ $this->view('layouts/header', ['title' => $title]);
   $metric = function ($counts) {
       $total = (int) ($counts['total'] ?? 0);
       $done = (int) ($counts['biodata'] ?? 0);
-      return $done . ' dari ' . $total . ' pengurus';
+      $pct = $total > 0 ? round($done / $total * 100) . '%' : '0%';
+      return $done . ' dari ' . $total . ' (' . $pct . ') pengurus';
   };
   $recap = $recap ?? ['structures' => [], 'groups' => [], 'units' => [], 'core' => []];
   ?>
