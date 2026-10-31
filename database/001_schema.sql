@@ -25,19 +25,36 @@ SET NAMES utf8mb4;
 -- 1. STRUKTUR ORGANISASI
 -- =====================================================================================================
 
--- Pohon struktur: DPP > DPW > DPD > DPC > DPRa (serta DPLN setingkat DPW), dengan sayap Muslimah
--- MWP > MWW > MWD > MWC > MWRa sebagai
--- CABANG PARALEL yang menggantung di bawah akar yang sama (MWP.parent_id = DPP), persis seperti syuro.
--- Konsekuensinya memang disengaja: lingkup "Nasional" (akar) mencakup sayap Muslimah, tetapi lingkup
--- DPW TIDAK pernah menyeberang ke MWW yang mewakili wilayah sama -- keduanya node berbeda di cabang
--- berbeda. `region_code` + `tier` + `wing` dipakai untuk MENGAITKAN pasangan wilayah itu demi keperluan
--- tampilan/laporan, tanpa menyatukannya jadi satu entitas.
+-- Wahdah Islamiyah memiliki 4 Lembaga Tinggi setara (bukan hierarki satu-sama-lain):
+--   DPP (Dewan Pimpinan Pusat)      — membawahi DPW/DPLN > DPD > DPC > DPRa
+--   DSO (Dewan Syura)               — unit berupa Komisi
+--   DSY (Dewan Syariah)             — unit berupa Komisi
+--   DPK (Dewan Pengawas Keuangan)   — struktur datar
+-- Sayap Muslimah (MWP > MWW > MWD > MWC > MWRa) adalah cabang paralel di bawah DPP.
+-- `region_code` + `tier` + `wing` mengaitkan pasangan wilayah (DPW Sultra ↔ MWW Sultra)
+-- tanpa menyatukan keduanya jadi satu entitas.
+--
+-- Setiap baris terikat ke lembaga_tinggi_id: DPP + seluruh keturunannya = 1,
+-- DSO/DSY/DPK = 2/3/4. Bidang (unit_groups) hanya ada di lembaga DPP (lembaga_tinggi_id=1).
+
+-- Katalog Lembaga Tinggi (diisi oleh migrasi 017).
+CREATE TABLE lembaga_tinggi (
+  id           TINYINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  abbreviation VARCHAR(10)  NOT NULL,
+  name         VARCHAR(100) NOT NULL,
+  sort_order   TINYINT UNSIGNED NOT NULL DEFAULT 10,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_lt_abbreviation (abbreviation)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE structures (
   id            INT UNSIGNED NOT NULL AUTO_INCREMENT,
   uuid          CHAR(36)     NOT NULL,
-  level         ENUM('DPP','DPW','DPD','DPC','DPRa','DPLN','MWP','MWW','MWD','MWC','MWRa') NOT NULL,
+  level         ENUM('DPP','DPW','DPD','DPC','DPRa','DPLN','MWP','MWW','MWD','MWC','MWRa',
+                     'DSO','DSY','DPK') NOT NULL,
   name          VARCHAR(150) NOT NULL,
   parent_id     INT UNSIGNED NULL,
+  lembaga_tinggi_id TINYINT UNSIGNED NULL,
 
   -- Sayap organisasi, diturunkan dari `level` supaya tidak mungkin tidak sinkron.
   wing          ENUM('umum','muslimah')
@@ -47,6 +64,7 @@ CREATE TABLE structures (
   tier          TINYINT UNSIGNED
                 GENERATED ALWAYS AS (CASE level
                   WHEN 'DPP'  THEN 1 WHEN 'MWP' THEN 1
+                  WHEN 'DSO'  THEN 1 WHEN 'DSY' THEN 1 WHEN 'DPK' THEN 1
                   WHEN 'DPW'  THEN 2 WHEN 'DPLN' THEN 2 WHEN 'MWW' THEN 2
                   WHEN 'DPD'  THEN 3 WHEN 'MWD' THEN 3
                   WHEN 'DPC'  THEN 4 WHEN 'MWC' THEN 4
@@ -72,7 +90,8 @@ CREATE TABLE structures (
   KEY idx_structures_path (path),
   KEY idx_structures_region (region_code, tier, wing),
   KEY idx_structures_sync (updated_at, id),
-  CONSTRAINT fk_structures_parent FOREIGN KEY (parent_id) REFERENCES structures (id) ON DELETE RESTRICT
+  CONSTRAINT fk_structures_parent FOREIGN KEY (parent_id) REFERENCES structures (id) ON DELETE RESTRICT,
+  CONSTRAINT fk_structures_lembaga_tinggi FOREIGN KEY (lembaga_tinggi_id) REFERENCES lembaga_tinggi (id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================================================================================================
@@ -243,7 +262,7 @@ CREATE TABLE unit_catalog (
   abbreviation  VARCHAR(50)  NULL,
   -- Jenis unit menentukan istilah kepala unitnya: Departemen/Lembaga/Biro/Badan -> "Ketua",
   -- Pusat -> "Kepala", Divisi -> "Koordinator". Disimpan eksplisit, tidak ditebak dari awalan nama.
-  kind          ENUM('departemen','lembaga','biro','badan','pusat','divisi','lainnya') NOT NULL DEFAULT 'lainnya',
+  kind          ENUM('departemen','lembaga','biro','badan','pusat','divisi','komisi','lainnya') NOT NULL DEFAULT 'lainnya',
   -- Jabatan kepala unit yang diharapkan -- default untuk UI/impor, bukan batasan keras.
   default_head_position_id SMALLINT UNSIGNED NULL,
   is_active     TINYINT(1)   NOT NULL DEFAULT 1,
