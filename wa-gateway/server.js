@@ -56,7 +56,7 @@ async function startWhatsApp() {
       creds: state.creds,
       keys: makeCacheableSignalKeyStore(state.keys, logger),
     },
-    browser: ['DIWAN WA Gateway', 'Chrome', '131.0'],
+    browser: ['Chrome (Linux)', 'Chrome', '131.0.0.0'],
     generateHighQualityLinkPreview: false,
     defaultQueryTimeoutMs: 60000,
     qrTimeout: QR_TIMEOUT_MS,
