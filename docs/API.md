@@ -11,10 +11,6 @@ hanya satu token dan kemampuan mengirim permintaan HTTP GET.
 - **Metode:** hanya `GET`
 - **Format:** JSON (`application/json; charset=utf-8`)
 
-> Aplikasi sedang dipindah ke hosting baru (Hostinger, domain `diwan.wahdah.or.id` via Cloudflare).
-> Basis URL produksi di atas belum aktif sampai pemindahan ini selesai dan DNS diarahkan — jangan
-> mengintegrasikan Syuro ke URL ini sampai ada konfirmasi bahwa deploy sudah selesai.
-
 ---
 
 ## Daftar Isi
@@ -326,8 +322,8 @@ Field bertanda *nullable* bisa bernilai `null`.
 | Field | Tipe | Keterangan |
 |---|---|---|
 | `uuid` | string | Kunci utama di salinan lokal Anda |
-| `parent_uuid` | string \| null | `null` hanya untuk akar (DPP) |
-| `level` | enum | `DPP` `DPW` `DPLN` `DPD` `DPC` `DPRa` `MWP` `MWW` `MWD` `MWC` `MWRa` |
+| `parent_uuid` | string \| null | `null` untuk akar (DPP, DSO, DSY, DPK) |
+| `level` | enum | `DPP` `DPW` `DPLN` `DPD` `DPC` `DPRa` `MWP` `MWW` `MWD` `MWC` `MWRa` `DSO` `DSY` `DPK` |
 | `wing` | enum | `umum` (DP*) atau `muslimah` (MW*) |
 | `tier` | int | `1` Pusat, `2` Wilayah, `3` Daerah, `4` Cabang, `5` Ranting |
 | `name` | string | Nama wilayah, mis. `"Sulawesi Tenggara"` |
