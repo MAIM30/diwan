@@ -56,13 +56,37 @@ class DashboardModel {
 
     // Pengurus aktif per tingkat (1=Pusat .. 5=Ranting). Orang yang menjabat di lebih dari satu
     // tingkat dihitung di tiap tingkatnya, jadi jumlah irisan bisa melebihi jumlah orang unik.
+    // Lembaga Tinggi (Dewan Syura/Syariah/Pengawas Keuangan) DIKELUARKAN: mereka sejajar dengan DPP
+    // (tier 1 juga) tapi bukan bagian dari tangga Pusat->Ranting, jadi direkap sendiri lewat
+    // lembagaTinggi() -- kalau ikut di sini, "Pusat" akan melonjak tanpa penjelasan.
     public function byTier() {
         return $this->db->query("
             SELECT s.tier, COUNT(DISTINCT pl.person_id) AS c
             FROM placements pl
             JOIN terms t ON t.id = pl.term_id JOIN structures s ON s.id = pl.structure_id
             WHERE " . self::CURRENT . " AND " . $this->sc('s.id') . "
+              AND s.level NOT IN ('DSO', 'DSY', 'DPK')
             GROUP BY s.tier ORDER BY s.tier
+        ")->fetchAll();
+    }
+
+    // Rekap pengurus aktif di tiap Lembaga Tinggi (Dewan Syura, Dewan Syariah, Dewan Pengawas
+    // Keuangan) -- badan yang sejajar dengan DPP, bukan bagian dari tangga struktur biasa, jadi
+    // ditampilkan sebagai kartu tersendiri di dasbor (lihat catatan di byTier()). DPP (lembaga_tinggi
+    // id 1) dikeluarkan karena sudah terwakili di seluruh kartu dasbor yang lain.
+    public function lembagaTinggi() {
+        $cur = self::CURRENT;
+        return $this->db->query("
+            SELECT lt.id, lt.abbreviation, lt.name, s.id AS structure_id,
+                   COUNT(DISTINCT pl.person_id) AS pengurus_aktif
+            FROM lembaga_tinggi lt
+            JOIN structures s ON s.lembaga_tinggi_id = lt.id AND s.parent_id IS NULL AND s.deleted_at IS NULL
+            LEFT JOIN placements pl ON pl.structure_id = s.id
+            LEFT JOIN terms t ON t.id = pl.term_id
+            WHERE lt.id <> 1 AND " . $this->sc('s.id') . "
+              AND (pl.id IS NULL OR ($cur))
+            GROUP BY lt.id, s.id
+            ORDER BY lt.sort_order
         ")->fetchAll();
     }
 

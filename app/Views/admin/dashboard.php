@@ -94,7 +94,7 @@ $qa = array_slice($qa, 0, 4);
 
       <section class="card">
         <div class="card-head"><h2><?= Ui::icon('layers', 19) ?> Komposisi Pengurus</h2></div>
-        <p class="card-sub">Pengurus aktif per tingkat struktur.</p>
+        <p class="card-sub">Pengurus aktif per tingkat struktur (Pusat&ndash;Ranting).</p>
         <?= $tierDonut ?>
         <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
           <div class="small muted" style="margin-bottom:10px;font-weight:600">Jenis kelamin</div>
@@ -102,6 +102,21 @@ $qa = array_slice($qa, 0, 4);
         </div>
       </section>
     </div>
+
+    <?php if (!empty($lembagaTinggi)): ?>
+      <section class="card">
+        <div class="card-head"><h2><?= Ui::icon('shield', 19) ?> Lembaga Tinggi</h2></div>
+        <p class="card-sub">Sejajar dengan DPP, di luar tangga Pusat&ndash;Ranting &mdash; karena itu direkap tersendiri.</p>
+        <div class="stats recap">
+          <?php foreach ($lembagaTinggi as $lt): ?>
+            <a class="stat<?= $lt['tone'] ? ' ' . e($lt['tone']) : '' ?>" href="<?= e($lt['href']) ?>">
+              <div class="stat-top"><span class="chip-ic"><?= Ui::icon($lt['icon'], 18) ?></span><span class="lbl"><?= e($lt['label']) ?></span></div>
+              <div class="num"><?= Ui::n($lt['count']) ?></div>
+            </a>
+          <?php endforeach; ?>
+        </div>
+      </section>
+    <?php endif; ?>
 
     <div class="row2">
       <section class="card">

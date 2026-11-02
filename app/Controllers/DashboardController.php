@@ -7,6 +7,15 @@ class DashboardController extends Controller {
     // didefinisikan di app.css dan sudah divalidasi dengan validate_palette.js.
     private const GENDER_COLORS = ['L' => 'var(--viz-1)', 'P' => 'var(--viz-2)'];
 
+    // Ikon + corak kartu per Lembaga Tinggi, dikunci singkatannya (stabil, tidak berubah lewat data).
+    // 'message-circle' = musyawarah (Syura), 'shield' = penjaga kepatuhan syar'i, 'clipboard-check'
+    // = audit/pengawasan. Tone kosong = teal bawaan .stat.
+    private const LEMBAGA_TINGGI_STYLE = [
+        'DSO' => ['icon' => 'message-circle', 'tone' => ''],
+        'DSY' => ['icon' => 'shield', 'tone' => 't-violet'],
+        'DPK' => ['icon' => 'clipboard-check', 'tone' => 't-amber'],
+    ];
+
     public function index() {
         $this->requireLogin();
 
@@ -48,6 +57,19 @@ class DashboardController extends Controller {
         }
         $structBars = Chart::hbar($structRows, 'orang', 'Pengurus aktif per struktur');
 
+        // ---- Lembaga Tinggi: Dewan Syura, Dewan Syariah, Dewan Pengawas Keuangan ----
+        $lembagaTinggi = [];
+        foreach ($dash->lembagaTinggi() as $row) {
+            $style = self::LEMBAGA_TINGGI_STYLE[$row['abbreviation']] ?? ['icon' => 'network', 'tone' => ''];
+            $lembagaTinggi[] = [
+                'label' => $row['name'],
+                'count' => (int) $row['pengurus_aktif'],
+                'icon'  => $style['icon'],
+                'tone'  => $style['tone'],
+                'href'  => BASEURL . '/terms?structure=' . (int) $row['structure_id'],
+            ];
+        }
+
         // ---- Penempatan dicatat per bulan (area, satu seri) ----
         $areaChart = Chart::area($dash->monthlyPlacements(), 'penempatan', 'Penempatan yang dicatat per bulan, 12 bulan terakhir');
 
@@ -57,6 +79,7 @@ class DashboardController extends Controller {
             'tierDonut'    => $tierDonut,
             'genderBar'    => $genderBar,
             'structBars'   => $structBars,
+            'lembagaTinggi'=> $lembagaTinggi,
             'areaChart'    => $areaChart,
             'recentPeople' => $dash->recentPeople(6),
             'endings'      => $dash->termEndings(5),
