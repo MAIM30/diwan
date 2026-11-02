@@ -36,9 +36,32 @@ $pdo = new PDO("mysql:host=$host;dbname=$db;charset=utf8mb4", $user, $pass,
 
 if ($dry) echo "[DRY RUN — tidak ada yang diubah]\n\n";
 
-// ─── Konstanta dari migrasi 017 ───────────────────────────────────────────────
-$STRUCT = ['DSO' => 1143, 'DSY' => 1144, 'DPK' => 1145];
-$TERM   = ['DSO' => 523,  'DSY' => 524,  'DPK' => 525];
+// ─── Struktur & periode DSO/DSY/DPK, diresolve dari DATABASE YANG SEDANG TERHUBUNG ───
+// BUKAN id tetap: id auto_increment berbeda antar basis data (lokal vs produksi sudah
+// terbukti divergen berkali-kali di proyek ini -- lihat migrasi 017 yang memakai pola
+// sama). Hardcode id di sini pernah membuat skrip ini salah nempel 171 orang ke
+// structure_id yang sama sekali tak terkait kalau dijalankan di basis data lain.
+$STRUCT = []; $TERM = [];
+foreach (['DSO', 'DSY', 'DPK'] as $lvl) {
+    $sid = $pdo->prepare("SELECT id FROM structures WHERE level = :l AND parent_id IS NULL AND deleted_at IS NULL LIMIT 1");
+    $sid->execute([':l' => $lvl]);
+    $sid = $sid->fetchColumn();
+    if (!$sid) {
+        fwrite(STDERR, "FATAL: struktur $lvl tidak ditemukan. Jalankan database/migrate.php dulu (migrasi 017).\n");
+        exit(1);
+    }
+    $STRUCT[$lvl] = (int) $sid;
+
+    $tid = $pdo->prepare("SELECT id FROM terms WHERE structure_id = :s AND is_current = 1 AND deleted_at IS NULL LIMIT 1");
+    $tid->execute([':s' => $sid]);
+    $tid = $tid->fetchColumn();
+    if (!$tid) {
+        fwrite(STDERR, "FATAL: periode berjalan utk struktur $lvl (id=$sid) tidak ditemukan. Jalankan database/migrate.php dulu.\n");
+        exit(1);
+    }
+    $TERM[$lvl] = (int) $tid;
+    echo "  $lvl -> structure_id=$sid, term_id=$tid\n";
+}
 
 // ─── Jabatan → position_id ────────────────────────────────────────────────────
 $POS = [
