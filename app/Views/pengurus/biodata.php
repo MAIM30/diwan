@@ -20,6 +20,11 @@ $jabatanDefault = $existing['jabatan_text'] ?? ($placement['position_name'] ?? '
 $bidangDefault = $existing['bidang_text'] ?? ($placement ? ($placement['unit_name'] ?? trim(($placement['level'] ?? '') . ' ' . ($placement['structure_name'] ?? ''))) : '');
 $checkedList = is_array($existing['commitments'] ?? null) ? array_map('intval', $existing['commitments']) : array_keys($commitmentTexts);
 $nama = trim(($person['title_prefix'] ?? '') . ' ' . $person['name'] . ' ' . ($person['title_suffix'] ?? ''));
+// Domisili kasar (kelurahan..provinsi, tanpa alamat jalan) -- SAMA dengan /pengurus/data dan
+// BiodataPdf, bukan cuma kota: kalau tidak, kecamatan/kelurahan/provinsi yang sudah diisi di
+// /pengurus/ubah diam-diam tidak muncul di sini.
+$domisili = Ui::address(['village' => $person['village'] ?? null, 'district' => $person['district'] ?? null,
+                          'city' => $person['city'] ?? null, 'province' => $person['province'] ?? null]);
 $hasPhoto = !empty($existing['photo_gdrive_file_id']);
 ?>
 
@@ -71,7 +76,7 @@ $hasPhoto = !empty($existing['photo_gdrive_file_id']);
     <div class="grid-2">
       <div class="field"><label>Nama Lengkap dan Gelar</label><div class="static"><?= e($nama) ?></div></div>
       <div class="field"><label>Tempat, Tanggal Lahir</label><div class="static"><?= e(trim(($person['birth_place'] ?? '-') . ($person['birth_date'] ? ', ' . Ui::date($person['birth_date']) : ''))) ?></div></div>
-      <div class="field"><label>Domisili</label><div class="static"><?= e($person['city'] ?? '-') ?></div></div>
+      <div class="field"><label>Domisili</label><div class="static"><?= e($domisili !== '' ? $domisili : '-') ?></div></div>
       <div class="field"><label>Nomor HP/WhatsApp</label><div class="static"><?= e($person['phone'] ?? '-') ?></div></div>
       <div class="field"><label>Pekerjaan/Profesi</label><div class="static"><?= e($person['occupation'] ?? '-') ?></div></div>
       <div class="field"><label>No. HP Keluarga</label><div class="static"><?= e($person['family_phone'] ?? '-') ?></div></div>

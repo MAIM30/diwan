@@ -21,6 +21,11 @@ $gelar = Ui::titlesLine($person);
 
 $main = $current[0] ?? null;
 $life = $lives[0] ?? null;
+// SKUO = unit (Departemen/Lembaga/Biro) tempat jabatan ini berada; tanpa unit berarti jabatan
+// tingkat struktur, disebut "Pengurus Inti" di seluruh aplikasi ini (lihat PersonModel, formulir
+// penempatan). Ditampilkan di cincin progres supaya saat ada "+N jabatan lain" jelas cincin ini
+// mewakili jabatan di SKUO yang mana.
+$mainSkuo = $main ? ($main['unit_name'] ?: 'Pengurus Inti') : null;
 ?>
 
 <section class="home-id">
@@ -44,6 +49,7 @@ $life = $lives[0] ?? null;
   <div class="hw-main">
     <?php if ($main): ?>
       <div class="hw-role"><?= Ui::icon('briefcase', 16) ?> <?= e($main['position_name']) ?></div>
+      <div class="hw-skuo"><?= e($mainSkuo) ?></div>
       <p class="hw-note">
         <?= e($main['level'] . ' ' . $main['structure_name']) ?>
         <?= count($current) > 1 ? ' · +' . (count($current) - 1) . ' jabatan lain' : '' ?>

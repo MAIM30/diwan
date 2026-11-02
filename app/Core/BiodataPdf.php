@@ -167,7 +167,11 @@ class BiodataPdf {
 
         self::row($pdf, 1, 'Nama Lengkap dan Gelar', $nama);
         self::row($pdf, 2, 'Tempat, Tanggal Lahir', $ttl !== ',' ? $ttl : '');
-        self::row($pdf, 3, 'Domisili', $person['city'] ?? '');
+        // Domisili kasar (kelurahan..provinsi, tanpa alamat jalan) -- SAMA dengan yang dipakai
+        // /pengurus/data, supaya "Domisili" berarti satu hal yang sama di seluruh portal.
+        $domisili = Ui::address(['village' => $person['village'] ?? null, 'district' => $person['district'] ?? null,
+                                  'city' => $person['city'] ?? null, 'province' => $person['province'] ?? null]);
+        self::row($pdf, 3, 'Domisili', $domisili);
         self::row($pdf, 4, 'Nomor HP/WhatsApp', $person['phone'] ?? '');
         self::row($pdf, 5, 'Pekerjaan/Profesi', $person['occupation'] ?? '');
         self::row($pdf, 6, 'No. HP Keluarga', $person['family_phone'] ?? '');
