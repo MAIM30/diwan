@@ -10,6 +10,7 @@ class ApiClientModel {
         'people:read'      => 'Baca data orang (tanpa NIK)',
         'placements:read'  => 'Baca penempatan jabatan',
         'people:nik'       => 'Lookup orang berdasarkan NIK (data pribadi sensitif)',
+        'forums:read'      => 'Baca forum permusyawaratan & pesertanya',
     ];
 
     private $db;

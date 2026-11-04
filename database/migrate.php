@@ -13,7 +13,7 @@ if (PHP_SAPI !== 'cli') {
     die('Skrip ini hanya boleh dijalankan dari command line.');
 }
 
-$opts = getopt('', ['db::', 'host::', 'user::', 'pass::']);
+$opts = getopt('', ['db::', 'host::', 'user::', 'pass::', 'down::', 'force']);
 $host = $opts['host'] ?? 'localhost'; $user = $opts['user'] ?? 'root'; $pass = $opts['pass'] ?? '';
 $dbName = $opts['db'] ?? 'db_pengurus';
 if (!preg_match('/^[A-Za-z0-9_]+$/', $dbName)) { fwrite(STDERR, "Nama database hanya boleh huruf, angka, dan garis bawah.\n"); exit(1); }
@@ -39,8 +39,25 @@ foreach ([['003_pisah_nama.php', 'migrate_003_pisah_nama'], ['004_portal_penguru
           ['014_catatan_keputusan_impor.php', 'migrate_014_catatan_keputusan_impor'],
           ['015_struktur_dpln_mwra.php', 'migrate_015_struktur_dpln_mwra'],
           ['016_periode_bersama.php', 'migrate_016_periode_bersama'],
-          ['017_lembaga_tinggi.php', 'migrate_017_lembaga_tinggi']] as [$file, $fn]) {
+          ['017_lembaga_tinggi.php', 'migrate_017_lembaga_tinggi'],
+          ['018_forum_peserta.php', 'migrate_018_forum_peserta']] as [$file, $fn]) {
     require_once __DIR__ . '/' . $file;
     $fn($pdo, $say);
 }
+
+// Pembatalan migrasi: php database/migrate.php --db=db_pengurus --down=018 [--force]
+$down = $opts['down'] ?? null;
+if ($down !== null) {
+    $downMap = [
+        '018' => ['018_forum_peserta.php', 'migrate_018_forum_peserta_down'],
+    ];
+    if (!isset($downMap[$down])) {
+        fwrite(STDERR, "Tidak ada jalur pembatalan untuk migrasi $down.\n");
+        exit(1);
+    }
+    [$dFile, $dFn] = $downMap[$down];
+    require_once __DIR__ . '/' . $dFile;
+    $dFn($pdo, $say, isset($opts['force']));
+}
+
 echo "Selesai.\n";

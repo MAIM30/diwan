@@ -29,13 +29,18 @@ curl -H "Authorization: Bearer $TOKEN" https://diwan.wahdah.or.id/api/v1/whoami
 | 7 | `GET /people/by-phone/{phone}` | `people:read` | – | Cari orang lewat nomor HP/WA |
 | 8 | `GET /people/by-nik/{nik}` | **`people:nik`** | – | Cari orang lewat NIK 16 digit |
 | 9 | `GET /placements` | `placements:read` | ya | Penempatan jabatan (inti data kepengurusan) |
-| 10 | `GET /sync/full` | ketiga izin `*:read`¹ | ya | Tarikan awal untuk salinan lokal |
-| 11 | `GET /sync/changes` | ketiga izin `*:read`¹ | ya | Tarikan perubahan berkala, termasuk penghapusan |
+| 10 | `GET /forums` | `forums:read` | – | Forum permusyawaratan |
+| 11 | `GET /forums/{uuid}` | `forums:read` | – | Satu forum |
+| 12 | `GET /forums/{uuid}/participants` | `forums:read` | ya | Peserta forum |
+| 13 | `GET /sync/full` | ketiga izin `*:read`¹ | ya | Tarikan awal untuk salinan lokal |
+| 14 | `GET /sync/changes` | ketiga izin `*:read`¹ | ya | Tarikan perubahan berkala, termasuk penghapusan |
 
-¹ `structures:read` + `people:read` + `placements:read`, ketiganya sekaligus.
+¹ `structures:read` + `people:read` + `placements:read`, ketiganya sekaligus. Token yang juga
+  memiliki `forums:read` akan mendapat koleksi `forums` dan `forum_participants` di respons sync.
 
 Nama endpoint di luar daftar ini dijawab `404 unknown_resource`; versi selain `v1` dijawab
-`404 unknown_version`.
+`404 unknown_version`. Endpoint `forums` membutuhkan izin `forums:read` yang terpisah dari
+tiga izin dasar.
 
 ---
 
@@ -215,7 +220,65 @@ Field: `uuid`, `person_uuid`, `person_name`, `structure_uuid`, `structure` (labe
 
 ---
 
-### 10. `GET /sync/full`
+### 10. `GET /forums`
+
+```
+/forums
+/forums?since=1792497219
+/forums?include_deleted=1
+```
+
+Parameter: `since`, `include_deleted`. Tidak berhalaman — selalu lengkap dalam satu respons.
+
+Field: `uuid`, `name`, `type` (`mukernas` | `muktamar` | `musyawarah_wilayah` | `musyawarah_daerah` |
+`musyawarah_cabang` | `lainnya`), `organizer_structure_uuid`, `organizer_structure` (label),
+`start_date`, `end_date`, `status` (`draft` | `terbuka` | `dikunci` | `selesai`), `locked_at`,
+`decision_ref`, `updated_at`, `deleted`.
+
+Token dengan lingkup terbatas hanya melihat forum yang **penyelenggaranya** berada di subtree token.
+Forum di luar subtree dijawab `404 not_found`.
+
+---
+
+### 11. `GET /forums/{uuid}`
+
+```
+/forums/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+```
+
+Satu forum, field sama seperti di atas. `404 not_found` bila tidak ada, sudah dihapus, atau di
+luar lingkup token.
+
+---
+
+### 12. `GET /forums/{uuid}/participants`
+
+```
+/forums/{uuid}/participants?limit=1000
+/forums/{uuid}/participants?since=1792497219&include_deleted=1
+/forums/{uuid}/participants?status=ditetapkan
+```
+
+Peserta forum. **Berhalaman** dengan kursor.
+
+Parameter: `since`, `cursor`, `limit`, `include_deleted`, `status` (filter opsional: `ditetapkan`,
+`dicabut`, `diganti`).
+
+Field: `uuid`, `forum_uuid`, `person_uuid`, `person_name`, `category` (`peserta_penuh` | `undangan` |
+`peninjau`), `representing_structure_uuid`, `representing_structure` (label), `status` (`ditetapkan` |
+`dicabut` | `diganti`), `replaced_by_uuid`, `decision_ref`, `changed_after_lock`, `updated_at`,
+`deleted`.
+
+> **Peserta berstatus `dicabut` atau `diganti` bukan baris "terhapus".** Mereka tetap dikirim dalam
+> respons biasa (tanpa `include_deleted`). Untuk daftar aktif saja, saring `status = ditetapkan`
+> atau gunakan parameter `?status=ditetapkan`. Penanda `deleted: true` hanya muncul pada baris yang
+> benar-benar dihapus admin (kekeliruan entri sebelum forum dikunci).
+
+> **NIK tidak pernah ada di endpoint peserta forum.**
+
+---
+
+### 13. `GET /sync/full`
 
 ```
 /sync/full?limit=1000
@@ -229,9 +292,13 @@ lengkap di halaman pertama; di halaman lanjutan berupa **array kosong** (bukan b
 Ulangi dengan `cursor_placements=<meta.placements_next_cursor>` sampai `meta.has_more` bernilai `false`,
 lalu simpan `meta.sync_token`.
 
+**Token dengan `forums:read`:** respons juga menyertakan `forums` (lengkap di halaman pertama) dan
+`forum_participants` (berhalaman, kursor `cursor_forum_participants`). Token tanpa izin ini mendapat
+respons yang persis sama seperti sebelumnya.
+
 ---
 
-### 11. `GET /sync/changes`
+### 14. `GET /sync/changes`
 
 ```
 /sync/changes?since=2026-10-24T00:47:25%2B08:00&limit=1000
@@ -249,10 +316,14 @@ ulangi dengan `since` yang sama persis dan kursor yang belum habis:
 |---|---|
 | `people_next_cursor` | `cursor_people` |
 | `placements_next_cursor` | `cursor_placements` |
+| `forum_participants_next_cursor` | `cursor_forum_participants` |
 
 `meta.sync_token` baru **hanya terbit** saat `has_more` `false`; hanya nilai itu yang boleh dipakai
 sebagai `since` berikutnya. Penerapan harus *upsert* berdasarkan `uuid` (baris bisa terkirim dua kali).
-Urutan penerapan: structures → terms → people → placements.
+Urutan penerapan: structures → terms → people → forums → forum_participants → placements.
+
+**Token dengan `forums:read`:** respons juga menyertakan `forums` dan `forum_participants`
+(dengan penanda `deleted`). Token tanpa izin ini mendapat respons yang persis sama seperti sebelumnya.
 
 ---
 
@@ -300,6 +371,8 @@ Cek `error.code`, bukan `error.message`. Batas permintaan per token (bawaan 60/m
 | Daftar seluruh struktur / pohon organisasi | `/structures` |
 | Mengenali pengguna dari nomor WA-nya (login, verifikasi) | `/people/by-phone/{phone}` |
 | Mengenali orang dari NIK (hanya bila benar-benar perlu) | `/people/by-nik/{nik}` |
+| Daftar forum permusyawaratan yang ada | `/forums` |
+| Peserta aktif satu forum | `/forums/{uuid}/participants?status=ditetapkan` |
 | Membangun lalu menjaga salinan lokal | `/sync/full` sekali, lalu `/sync/changes` tiap 15–60 menit |
 
 ---

@@ -369,6 +369,124 @@ class SyncModel {
         ];
     }
 
+    // ---------- Forum ----------
+
+    public function forums($since = null, $includeDeleted = false) {
+        $params = [];
+        $where = [$this->scopeSql('f.organizer_structure_id'), $this->sinceClause($since, $params, 'f')];
+        if (!$includeDeleted) $where[] = 'f.deleted_at IS NULL';
+
+        $stmt = $this->db->prepare("
+            SELECT f.id, f.uuid, f.name, f.type, f.start_date, f.end_date, f.status,
+                   f.locked_at, f.decision_ref, f.updated_at, f.deleted_at,
+                   s.uuid AS organizer_structure_uuid, s.level, s.name AS structure_name
+            FROM forums f
+            JOIN structures s ON s.id = f.organizer_structure_id
+            WHERE " . implode(' AND ', $where) . "
+            ORDER BY f.start_date DESC, f.id
+        ");
+        $stmt->execute($params);
+        return array_map([$this, 'mapForum'], $stmt->fetchAll());
+    }
+
+    public function forumByUuid($uuid) {
+        if (!Uuid::isValid($uuid)) return null;
+        $stmt = $this->db->prepare("
+            SELECT f.id, f.uuid, f.name, f.type, f.start_date, f.end_date, f.status,
+                   f.locked_at, f.decision_ref, f.updated_at, f.deleted_at,
+                   s.uuid AS organizer_structure_uuid, s.level, s.name AS structure_name
+            FROM forums f
+            JOIN structures s ON s.id = f.organizer_structure_id
+            WHERE f.uuid = :u AND f.deleted_at IS NULL AND " . $this->scopeSql('f.organizer_structure_id')
+        );
+        $stmt->execute([':u' => $uuid]);
+        $row = $stmt->fetch();
+        return $row ? $this->mapForum($row) : null;
+    }
+
+    private function mapForum($r) {
+        return [
+            'uuid'                     => $r['uuid'],
+            'name'                     => $r['name'],
+            'type'                     => $r['type'],
+            'organizer_structure_uuid' => $r['organizer_structure_uuid'],
+            'organizer_structure'      => trim($r['level'] . ' ' . $r['structure_name']),
+            'start_date'               => $r['start_date'],
+            'end_date'                 => $r['end_date'],
+            'status'                   => $r['status'],
+            'locked_at'                => $this->iso($r['locked_at']),
+            'decision_ref'             => $r['decision_ref'],
+            'updated_at'               => $this->iso($r['updated_at']),
+            'deleted'                  => !empty($r['deleted_at']),
+        ];
+    }
+
+    // ---------- Peserta Forum ----------
+
+    public function forumParticipants($forumUuid = null, $since = null, $cursor = null, $limit = 200, $includeDeleted = false, $statusFilter = null) {
+        $params = [];
+        $where = [
+            $this->scopeSql('fo.organizer_structure_id'),
+            $this->sinceClause($since, $params, 't'),
+            $this->cursorClause($cursor, $params, 't'),
+        ];
+        if (!$includeDeleted) $where[] = 't.deleted_at IS NULL';
+
+        if ($forumUuid !== null && $forumUuid !== '') {
+            if (!Uuid::isValid($forumUuid)) {
+                throw new InvalidArgumentException('Parameter forum harus berupa UUID.');
+            }
+            $where[] = 'fo.uuid = :fuuid';
+            $params[':fuuid'] = $forumUuid;
+        }
+        if ($statusFilter !== null && $statusFilter !== '') {
+            $where[] = 't.status = :sfilt';
+            $params[':sfilt'] = $statusFilter;
+        }
+
+        $stmt = $this->db->prepare("
+            SELECT t.id, t.uuid, t.category, t.status, t.decision_ref, t.changed_after_lock,
+                   t.updated_at, t.deleted_at,
+                   fo.uuid AS forum_uuid,
+                   p.uuid AS person_uuid, p.full_name,
+                   s.uuid AS representing_structure_uuid, s.level AS repr_level, s.name AS repr_name,
+                   rb.uuid AS replaced_by_uuid
+            FROM forum_participants t
+            JOIN forums fo ON fo.id = t.forum_id
+            JOIN people p ON p.id = t.person_id
+            LEFT JOIN structures s ON s.id = t.representing_structure_id
+            LEFT JOIN forum_participants rb ON rb.id = t.replaced_by_id
+            WHERE " . implode(' AND ', $where) . "
+            ORDER BY t.updated_at, t.id
+            LIMIT :lim
+        ");
+        foreach ($params as $k => $v) $stmt->bindValue($k, $v);
+        $stmt->bindValue(':lim', (int) $limit + 1, PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $this->paginate($stmt->fetchAll(), $limit, [$this, 'mapForumParticipant']);
+    }
+
+    private function mapForumParticipant($r) {
+        return [
+            'uuid'                       => $r['uuid'],
+            'forum_uuid'                 => $r['forum_uuid'],
+            'person_uuid'                => $r['person_uuid'],
+            'person_name'                => $r['full_name'],
+            'category'                   => $r['category'],
+            'representing_structure_uuid'=> $r['representing_structure_uuid'],
+            'representing_structure'     => $r['representing_structure_uuid']
+                                              ? trim($r['repr_level'] . ' ' . $r['repr_name'])
+                                              : null,
+            'status'                     => $r['status'],
+            'replaced_by_uuid'           => $r['replaced_by_uuid'],
+            'decision_ref'               => $r['decision_ref'],
+            'changed_after_lock'         => (bool) $r['changed_after_lock'],
+            'updated_at'                 => $this->iso($r['updated_at']),
+            'deleted'                    => !empty($r['deleted_at']),
+        ];
+    }
+
     // ---------- Pembantu ----------
 
     // Memotong hasil ke $limit dan menyusun kursor halaman berikutnya dari baris terakhir yang

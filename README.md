@@ -528,7 +528,10 @@ mengubah data master dari jauh. Autentikasi: `Authorization: Bearer pgr_<prefix>
 | `GET /api/v1/people/{uuid}` | `people:read` | Satu orang |
 | `GET /api/v1/people/by-nik/{nik}` | `people:nik` | Lookup by NIK (lihat bagian NIK di atas) |
 | `GET /api/v1/placements` | `placements:read` | Berhalaman; saring `structure`, `term`, `person`, `current=1`, `core=1` |
-| `GET /api/v1/sync/full` | ketiganya | Tarikan awal |
+| `GET /api/v1/forums` | `forums:read` | Forum permusyawaratan |
+| `GET /api/v1/forums/{uuid}` | `forums:read` | Satu forum |
+| `GET /api/v1/forums/{uuid}/participants` | `forums:read` | Peserta forum, berhalaman; saring `status` |
+| `GET /api/v1/sync/full` | ketiganya | Tarikan awal; `forums:read` menambah koleksi `forums` & `forum_participants` |
 | `GET /api/v1/sync/changes?since=` | ketiganya | Tarikan inkremental, **termasuk penghapusan** |
 
 Parameter umum: `since` (ISO-8601 atau epoch detik), `cursor`, `limit` (bawaan 200, maksimum 1000),

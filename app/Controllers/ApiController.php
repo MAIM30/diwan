@@ -37,11 +37,12 @@ class ApiController extends Controller {
                 case 'terms':      $this->terms(); break;
                 case 'people':     $this->people($segments); break;
                 case 'placements': $this->placements(); break;
+                case 'forums':     $this->forums($segments); break;
                 case 'sync':       $this->sync($segments); break;
                 case 'whoami':     $this->whoami(); break;
                 default:
                     $this->api->fail(404, 'unknown_resource',
-                        'Endpoint tidak dikenal. Tersedia: structures, terms, people, placements, sync, whoami.');
+                        'Endpoint tidak dikenal. Tersedia: structures, terms, people, placements, forums, sync, whoami.');
             }
         } catch (InvalidArgumentException $e) {
             // Kesalahan parameter dari klien -> 400, dengan pesan yang menjelaskan cara benarnya.
@@ -185,6 +186,41 @@ class ApiController extends Controller {
         $this->api->ok($person);
     }
 
+    // GET /api/v1/forums
+    // GET /api/v1/forums/{uuid}
+    // GET /api/v1/forums/{uuid}/participants
+    private function forums(array $segments) {
+        $this->api->requireScope('forums:read');
+        $sync = $this->newSync();
+
+        $uuid = $segments[0] ?? '';
+        $sub  = $segments[1] ?? '';
+
+        if ($uuid !== '' && $sub === 'participants') {
+            $forum = $sync->forumByUuid($uuid);
+            if (!$forum) $this->api->fail(404, 'not_found', 'Forum tidak ditemukan.');
+
+            $result = $sync->forumParticipants(
+                $uuid,
+                $_GET['since'] ?? null,
+                $_GET['cursor'] ?? null,
+                $this->limit(),
+                $this->wantsDeleted(),
+                $_GET['status'] ?? null
+            );
+            $this->api->ok($result['rows'], ['next_cursor' => $result['next_cursor']]);
+        }
+
+        if ($uuid !== '') {
+            $row = $sync->forumByUuid($uuid);
+            if (!$row) $this->api->fail(404, 'not_found', 'Forum tidak ditemukan.');
+            $this->api->ok($row);
+        }
+
+        $rows = $sync->forums($_GET['since'] ?? null, $this->wantsDeleted());
+        $this->api->ok($rows);
+    }
+
     // GET /api/v1/placements?structure=&term=&person=&current=1&core=1&since=&cursor=&limit=
     private function placements() {
         $this->api->requireScope('placements:read');
@@ -230,27 +266,35 @@ class ApiController extends Controller {
         $this->api->requireScope('people:read');
         $this->api->requireScope('placements:read');
 
+        $hasForumsScope = $this->clientHasScope('forums:read');
+
         // Lihat aturan 1 di atas: diambil sebelum query apa pun.
         $syncToken = date('c');
         $sync = $this->newSync();
 
         if ($mode === 'full') {
-            // Penempatan diambil berhalaman supaya respons tidak membengkak tak terbatas; konsumen
-            // melanjutkan lewat placements_next_cursor di endpoint ini juga.
             $cursor = $_GET['cursor_placements'] ?? null;
+            $cursorFp = $hasForumsScope ? ($_GET['cursor_forum_participants'] ?? null) : null;
             $placements = $sync->placements(['current' => true], null, $cursor, $this->limit(), false);
 
-            // structures & terms tidak berhalaman -- halaman pertama sudah memuat semuanya. Di
-            // halaman lanjutan keduanya dikirim sebagai array kosong, bukan diulang: mengulang 1.100
-            // struktur di setiap putaran kursor penempatan hanya menghabiskan kuota dan bandwidth
-            // konsumen tanpa menambah satu baris baru pun.
-            $firstPage = ($cursor === null || $cursor === '');
+            $firstPage = ($cursor === null || $cursor === '')
+                      && ($cursorFp === null || $cursorFp === '');
 
-            $this->respondSync([
+            $data = [
                 'structures' => $firstPage ? $sync->structures() : [],
                 'terms'      => $firstPage ? $sync->terms() : [],
                 'placements' => $placements['rows'],
-            ], ['placements_next_cursor' => $placements['next_cursor']], $syncToken);
+            ];
+            $cursors = ['placements_next_cursor' => $placements['next_cursor']];
+
+            if ($hasForumsScope) {
+                $data['forums'] = $firstPage ? $sync->forums() : [];
+                $fp = $sync->forumParticipants(null, null, $cursorFp, $this->limit(), false);
+                $data['forum_participants'] = $fp['rows'];
+                $cursors['forum_participants_next_cursor'] = $fp['next_cursor'];
+            }
+
+            $this->respondSync($data, $cursors, $syncToken);
         }
 
         $since = $_GET['since'] ?? null;
@@ -258,20 +302,28 @@ class ApiController extends Controller {
             $this->api->fail(400, 'bad_request', 'Parameter "since" wajib. Pakai nilai sync_token dari /sync/full.');
         }
 
-        // includeDeleted = true: inilah inti endpoint ini. Baris yang dihapus muncul dengan
-        // "deleted": true supaya salinan lokal konsumen bisa ikut menghapusnya.
         $people = $sync->people($since, $_GET['cursor_people'] ?? null, $this->limit(), true);
         $placements = $sync->placements([], $since, $_GET['cursor_placements'] ?? null, $this->limit(), true);
 
-        $this->respondSync([
+        $data = [
             'structures' => $sync->structures($since, true),
             'terms'      => $sync->terms(null, $since, true),
             'people'     => $people['rows'],
             'placements' => $placements['rows'],
-        ], [
+        ];
+        $cursors = [
             'people_next_cursor'     => $people['next_cursor'],
             'placements_next_cursor' => $placements['next_cursor'],
-        ], $syncToken);
+        ];
+
+        if ($hasForumsScope) {
+            $data['forums'] = $sync->forums($since, true);
+            $fp = $sync->forumParticipants(null, $since, $_GET['cursor_forum_participants'] ?? null, $this->limit(), true);
+            $data['forum_participants'] = $fp['rows'];
+            $cursors['forum_participants_next_cursor'] = $fp['next_cursor'];
+        }
+
+        $this->respondSync($data, $cursors, $syncToken);
     }
 
     // Menyusun respons /sync/*: jumlah baris per koleksi (meta.count bawaan tidak berarti untuk
@@ -299,6 +351,11 @@ class ApiController extends Controller {
         }
 
         $this->api->ok($data, $meta);
+    }
+
+    private function clientHasScope($scope) {
+        $scopes = json_decode($this->api->client()['scopes'] ?? '[]', true);
+        return is_array($scopes) && in_array($scope, $scopes, true);
     }
 
     private function limit() {
