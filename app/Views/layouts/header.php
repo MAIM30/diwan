@@ -53,7 +53,6 @@ $nav = function ($key, $href, $icon, $label, $badge = 0) use ($navKey) {
       <?= $nav('structures', 'structures', 'network', 'Struktur') ?>
       <?= $nav('terms', 'terms', 'calendar-check', 'Periode') ?>
       <?= $nav('units-grouping', 'units/grouping', 'layers', 'Pengelompokan Unit') ?>
-      <?= $nav('forums', 'forums', 'calendar-check', 'Forum') ?>
 
       <!-- Master Data dipisah dari Data Kepengurusan karena isinya berbeda sifat: kosakata yang
            dipakai bersama lintas struktur dan jarang berubah, bukan data yang disusun ulang tiap

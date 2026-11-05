@@ -137,12 +137,9 @@ Token membawa daftar izin. Endpoint yang butuh izin yang tidak dimiliki menjawab
 | `people:read` | `/people`, `/people/{uuid}`, `/people/by-phone/{phone}` |
 | `placements:read` | `/placements` |
 | `people:nik` | `/people/by-nik/{nik}` |
-| `forums:read` | `/forums`, `/forums/{uuid}`, `/forums/{uuid}/participants` |
 
 `/sync/full` dan `/sync/changes` membutuhkan **ketiga** izin `structures:read`, `people:read`, dan
-`placements:read` sekaligus. Token yang juga memiliki `forums:read` akan mendapat koleksi `forums`
-dan `forum_participants` di respons sync; token tanpa izin tersebut mendapat respons yang persis sama
-seperti sebelumnya.
+`placements:read` sekaligus.
 
 > **`people:nik` sengaja dipisah dari `people:read`.** Token sinkronisasi harian tidak perlu membuka
 > nomor KTP, jadi sebaiknya tidak diberi izin itu. Mintalah `people:nik` hanya bila aplikasi Anda
@@ -309,37 +306,6 @@ tanpa perlu tahu nama periodenya.
 > Wakil Ketua adalah inti di DPW ke bawah, tetapi **bukan** di DPP/MWP. Jabatan di dalam unit
 > (Departemen/Lembaga/Biro) tidak pernah inti.
 
-### `GET /forums`
-
-Forum permusyawaratan (Mukernas, Muktamar, Musyawarah Wilayah/Daerah/Cabang). Butuh izin
-`forums:read`. Tidak berhalaman.
-
-| Parameter | Keterangan |
-|---|---|
-| `since` | Hanya yang berubah sejak waktu ini |
-| `include_deleted=1` | Sertakan baris terhapus |
-
-Token dengan lingkup terbatas hanya melihat forum yang **penyelenggaranya** berada di subtree-nya.
-
-### `GET /forums/{uuid}`
-
-Satu forum. `404` bila tidak ada, sudah dihapus, atau di luar lingkup token.
-
-### `GET /forums/{uuid}/participants`
-
-Peserta forum. **Berhalaman.**
-
-| Parameter | Keterangan |
-|---|---|
-| `since` | Hanya yang berubah sejak waktu ini |
-| `cursor` | Lanjutan halaman |
-| `limit` | 1–1000, bawaan 200 |
-| `include_deleted=1` | Sertakan baris terhapus |
-| `status` | Filter opsional: `ditetapkan`, `dicabut`, `diganti` |
-
-> **Peserta berstatus `dicabut` atau `diganti` bukan "terhapus".** Mereka tetap ada di respons biasa.
-> Untuk daftar aktif saja, pakai `?status=ditetapkan`. NIK tidak pernah ada di endpoint ini.
-
 ### `GET /sync/full` dan `GET /sync/changes`
 
 Lihat [bagian 9](#9-protokol-sinkronisasi) — ini perlu penjelasan tersendiri.
@@ -451,52 +417,11 @@ diperhalus redaksinya; kodenya tidak berubah.
 Satu orang bisa punya beberapa penempatan sekaligus (rangkap jabatan di beberapa struktur). Urutkan
 dengan `order` untuk menampilkan susunan pengurus sesuai hierarki jabatan.
 
-### Forum (`forums`)
-
-| Field | Tipe | Keterangan |
-|---|---|---|
-| `uuid` | string | |
-| `name` | string | Nama forum, mis. `"Mukernas XIX Wahdah Islamiyah"` |
-| `type` | enum | `mukernas` `muktamar` `musyawarah_wilayah` `musyawarah_daerah` `musyawarah_cabang` `lainnya` |
-| `organizer_structure_uuid` | string | Struktur penyelenggara |
-| `organizer_structure` | string | Label siap tampil, mis. `"DPP Wahdah Islamiyah"` |
-| `start_date` | date \| null | |
-| `end_date` | date \| null | |
-| `status` | enum | `draft` `terbuka` `dikunci` `selesai` |
-| `locked_at` | datetime \| null | Waktu forum dikunci |
-| `decision_ref` | string \| null | Nomor SK / referensi keputusan |
-| `updated_at` | datetime | |
-| `deleted` | bool | |
-
-Status maju satu arah: `draft` → `terbuka` → `dikunci` → `selesai`.
-
-### Peserta Forum (`forum_participants`)
-
-| Field | Tipe | Keterangan |
-|---|---|---|
-| `uuid` | string | |
-| `forum_uuid` | string | Relasi ke forum |
-| `person_uuid` | string | Relasi ke orang |
-| `person_name` | string | Nama lengkap, disalin demi kenyamanan |
-| `category` | enum | `peserta_penuh` `undangan` `peninjau` |
-| `representing_structure_uuid` | string \| null | Struktur yang diwakili |
-| `representing_structure` | string \| null | Label siap tampil |
-| `status` | enum | `ditetapkan` `dicabut` `diganti` |
-| `replaced_by_uuid` | string \| null | UUID peserta pengganti (hanya bila `status = diganti`) |
-| `decision_ref` | string \| null | |
-| `changed_after_lock` | bool | Diubah setelah forum dikunci |
-| `updated_at` | datetime | |
-| `deleted` | bool | |
-
-> **Peserta `dicabut`/`diganti` bukan baris terhapus.** Mereka tetap ada di respons biasa. Untuk
-> daftar peserta aktif, saring `status = ditetapkan`. `deleted: true` hanya untuk baris yang
-> dihapus admin karena kekeliruan entri.
-
 ---
 
 ## 8. Paginasi dengan kursor
 
-Endpoint `/people`, `/placements`, dan `/forums/{uuid}/participants` berhalaman. Polanya selalu sama:
+Endpoint `/people` dan `/placements` berhalaman. Polanya selalu sama:
 
 1. Panggil tanpa `cursor`.
 2. Baca `meta.next_cursor`.
@@ -586,8 +511,7 @@ Parameter `since` **wajib**; isinya `sync_token` yang Anda simpan. Ingat meng-*U
 `+` pada offset zona waktu menjadi `%2B` — kalau tidak, ia terbaca sebagai spasi dan zona waktunya
 meleset delapan jam.
 
-Response memuat empat koleksi (enam bila token punya `forums:read`) dan kursor terpisah per
-koleksi berhalaman:
+Response memuat empat koleksi dan **dua** kursor terpisah:
 
 ```json
 {
@@ -595,28 +519,21 @@ koleksi berhalaman:
     "structures": [ ... ],
     "terms": [ ... ],
     "people": [ ... ],
-    "placements": [ ... ],
-    "forums": [ ... ],
-    "forum_participants": [ ... ]
+    "placements": [ ... ]
   },
   "meta": {
-    "count": { "structures": 0, "terms": 0, "people": 2, "placements": 0, "forums": 0, "forum_participants": 0 },
+    "count": { "structures": 0, "terms": 0, "people": 2, "placements": 0 },
     "people_next_cursor": "1792773887890:1048",
     "placements_next_cursor": null,
-    "forum_participants_next_cursor": null,
     "has_more": true
   }
 }
 ```
 
-Koleksi `forums` dan `forum_participants` **hanya muncul** di response token yang memiliki izin
-`forums:read`. Token tanpa izin itu mendapat response dengan empat koleksi persis seperti sebelumnya.
-
 | Kursor di `meta` | Kirim balik sebagai |
 |---|---|
 | `people_next_cursor` | `cursor_people` |
 | `placements_next_cursor` | `cursor_placements` |
-| `forum_participants_next_cursor` | `cursor_forum_participants` |
 
 Selama `has_more: true`: ulangi dengan **`since` yang sama persis** ditambah kursor-kursor yang
 belum habis. Jangan ganti `since` di tengah pengurasan.
@@ -631,9 +548,7 @@ Terapkan dalam urutan ini supaya relasi tidak pernah menunjuk ke baris yang belu
 1. `structures` (sudah terurut induk-sebelum-anak)
 2. `terms`
 3. `people`
-4. `forums`
-5. `forum_participants`
-6. `placements`
+4. `placements`
 
 Penghapusan paling aman diterapkan dengan urutan kebalikannya, atau cukup dengan menonaktifkan
 pemeriksaan relasi saat menerapkan satu batch.
@@ -722,8 +637,6 @@ bila tidak perlu, jangan tulis ke log, jangan tampilkan tanpa alasan.
 | Mengulang `4xx` apa adanya | Membuang kuota tanpa pernah berhasil | Hanya ulangi `429` (sesuai `Retry-After`) dan `5xx` |
 | Membandingkan tanggal untuk cari periode berjalan | Salah saat periode diperpanjang | Pakai `is_current` / `current=1` |
 | Mengasumsikan `/people/by-phone/{phone}` selalu menemukan satu orang | Nomor bersama (mis. suami-istri) menjawab `404`, padahal "ada" di data | `phone` bukan kolom unik; `404` dari endpoint ini juga berarti "ambigu", bukan cuma "tidak ada" |
-| Mengasumsikan peserta `dicabut`/`diganti` sudah terhapus | Daftar peserta tampil tidak lengkap | `dicabut`/`diganti` bukan baris terhapus; untuk peserta aktif saring `status = ditetapkan` atau pakai `?status=ditetapkan` |
-| Tidak menambah `forums:read` ke token yang butuh data forum | Forum dan peserta tidak muncul di `/sync/*` | Tambahkan izin `forums:read` ke token di menu Token API |
 
 ---
 
@@ -772,18 +685,17 @@ function tarikPerubahan(string $since): string {
         terapkan('structures', $r['data']['structures']);
         terapkan('terms',      $r['data']['terms']);
         terapkan('people',     $r['data']['people']);
-        if (isset($r['data']['forums']))              terapkan('forums',              $r['data']['forums']);
-        if (isset($r['data']['forum_participants']))   terapkan('forum_participants',  $r['data']['forum_participants']);
         terapkan('placements', $r['data']['placements']);
 
         if (empty($r['meta']['has_more'])) {
+            // Hanya di sini sync_token ada. Inilah satu-satunya nilai yang boleh
+            // dipakai sebagai 'since' berikutnya.
             return $r['meta']['sync_token'];
         }
 
         $cursors = array_filter([
-            'cursor_people'               => $r['meta']['people_next_cursor']               ?? null,
-            'cursor_placements'           => $r['meta']['placements_next_cursor']           ?? null,
-            'cursor_forum_participants'   => $r['meta']['forum_participants_next_cursor']   ?? null,
+            'cursor_people'     => $r['meta']['people_next_cursor']     ?? null,
+            'cursor_placements' => $r['meta']['placements_next_cursor'] ?? null,
         ]);
     }
 }
@@ -902,7 +814,7 @@ Sebelum menyebut integrasi Anda siap produksi:
 - [ ] Seluruh kursor dikuras sampai `has_more: false` sebelum `sync_token` disimpan
 - [ ] `since` tidak pernah diisi dari jam lokal atau `server_time`
 - [ ] `+` pada `since` di-*encode* (`%2B`), atau memakai epoch detik
-- [ ] Urutan penerapan: structures → terms → people → forums → forum_participants → placements
+- [ ] Urutan penerapan: structures → terms → people → placements
 - [ ] `is_core` / `current=1` diambil dari server, bukan dihitung ulang
 - [ ] `position_code` dipakai untuk logika, `position_name` untuk tampilan
 
