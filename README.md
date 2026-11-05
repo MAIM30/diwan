@@ -447,12 +447,24 @@ Setiap penempatan masuk tepat satu simpul (yang tak terpetakan jatuh ke Pimpinan
 "N orang" menghitung orang yang masih menjabat (penempatan belum berakhir), satu orang dengan dua jabatan di satu simpul dihitung sekali; baris yang sudah berakhir
 tetap tampil dengan lencana "berakhir". Kolom Ubah/Akhiri tetap hanya untuk yang boleh mengubah data.
 
-**Data Pengurus: tampilan "Per Bidang".** Chip **Per Bidang** di halaman Data Pengurus (`/people?susun=bidang`) mengganti tabel A-Z dengan daftar yang sama: tiap
-struktur dalam lingkup yang punya periode berjalan menjadi satu simpul (mis. DPP, MWP, DPW Sultra), berisi Pengurus Inti, Bidang beserta Departemen dan Lembaganya, dst.
-(kerangka dan penyajiannya dipakai bersama halaman detail periode: `Susunan::arrange` dan `views/admin/_susunan.php`). Hanya penempatan yang masih berjalan
-yang ditampilkan, dan seorang pengurus yang merangkap muncul di setiap Bidangnya. Pencarian dan penyaringan (jenis kelamin, tanpa nomor WA, dst.) memakai himpunan orang
-yang SAMA dengan daftar A-Z (`PersonModel::idsInScope`); bila ada penyaringan, simpul kosong dibuang dan semua simpul dibuka. Orang yang cocok tetapi tak punya penempatan
-berjalan (belum ditempatkan, atau semua jabatannya sudah berakhir) tidak hilang: mereka ada di simpul "Belum menjabat di periode berjalan". Lingkup admin berlaku seperti biasa.
+**Data Pengurus: rekap dan dua tampilan.** Halaman `/people` punya baris **Jenjang** (DPP, DPW, DPD, MWP, MWW, MWD, DSO, DSY, DPK: jumlah orang yang sedang menjabat di jenjang itu; `?lv=DPW`),
+tiga kelompok kartu rekap, lalu satu dari dua tampilan (`?susun=struktur|daftar`):
+
+- **Rekap tiga kelompok** (`PersonModel::recapCounts`): *Status jabatan* (Menjabat, Rangkap, Tidak menjabat), *Kelengkapan data* (Data lengkap, Belum lengkap; definisi
+  `PersonModel::COMPLETE_SQL`), *Jenis kelamin*. Angkanya selalu saling cocok: Menjabat + Tidak menjabat = total, Rangkap + tunggal = Menjabat, Lengkap + Belum = total.
+  Rekap mengikuti **pencarian dan jenjang** yang dipilih, tetapi tidak mengikuti penyaring kartunya sendiri (jenis kelamin, kelengkapan, rangkap): kartu-kartu itu memecah himpunan
+  yang sama, kalau ikut menyaring maka memilih "Perempuan" akan menolkan kartu "Laki-laki". Lencana judul tetap total seluruh lingkup admin.
+- **Per Struktur** (bawaan bila tak ada pencarian atau penyaring daftar): jenjang, lalu struktur (DPD dikelompokkan di bawah DPW induknya, MWD di bawah MWW, selama induknya
+  dalam lingkup admin). Setiap baris punya kolom yang sama: Orang, **Inti** (kotak K·S·B: Ketua, Sekretaris, Bendahara terisi di tingkat struktur; kode jabatannya di
+  `PositionModel::INTI_*`; sifat struktur, tidak ikut penyaring), Data lengkap (bilah: hijau mulai 90%, kuning mulai 75%), dan L · P. Angka dihitung satu query per tingkat
+  (`PersonModel::overviewByStructure`) dan disusun `PeopleOverview::build`. Isi sebuah struktur (Pengurus Inti, Bidang beserta unitnya) **dimuat saat barisnya diketuk**
+  (`GET /people/struktur/{term_id}`, potongan HTML; kerangka dan penyajiannya dipakai bersama halaman detail periode: `Susunan::arrange` dan `views/admin/_susunan.php`).
+  Jenjang satu-struktur (DPP, MWP, DSO, DSY, DPK) tidak terbuka otomatis karena isinya berat. Tombol "Buka semua jenjang" hanya membuka jenjang dan kelompok induk, bukan
+  ratusan baris struktur. Pencarian dan penyaring ikut ke isi struktur (`PersonModel::idsInScope`), jadi isinya cocok dengan angka barisnya.
+- **Daftar** (bawaan bila ada pencarian, atau tautan dari luar seperti dasbor dan "Tanpa SKUO"): tabel A-Z dengan label jenjang, kolom Kontak (WA dan NIK), Kelengkapan
+  (menyebut apa yang kurang), dan aksi berupa ikon.
+
+Lingkup admin berlaku di semuanya; nama struktur induk di luar lingkup tidak pernah dibuka. `?susun=bidang` (tampilan lama "Per Bidang") dialihkan ke Per Struktur.
 
 **Pengelompokan Unit** (`/units/grouping`, menu samping "Pengelompokan Unit"; tombolnya juga ada di Katalog Unit dan di halaman Bidang & Unit tiap periode). Halaman tersendiri
 untuk menyusun DAN mengubah pengelompokan unit langsung di tempat, menurut STRUKTUR: tiap struktur dalam lingkup yang punya periode berjalan menjadi satu simpul (sayap umum dulu lalu

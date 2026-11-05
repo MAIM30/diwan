@@ -21,7 +21,7 @@ class PeopleController extends Controller {
     }
 
     const VALID_FILTERS = ['tanpa_hp', 'tanpa_nik', 'tanpa_penempatan', 'tanpa_unit', 'nonaktif',
-                           'lengkap', 'belum_lengkap', 'rangkap', 'tidak_rangkap'];
+                           'lengkap', 'belum_lengkap', 'rangkap', 'tidak_rangkap', 'tidak_menjabat'];
     const PER_PAGE_OPTIONS = [25, 50, 100];
 
     public function index() {
@@ -35,41 +35,59 @@ class PeopleController extends Controller {
         $perPage = in_array((int) ($_GET['per_page'] ?? 0), self::PER_PAGE_OPTIONS, true)
                  ? (int) $_GET['per_page'] : 25;
         $serving = !empty($_GET['menjabat']);
-        $filters = ['gender' => $gender, 'filter' => $filter, 'serving' => $serving];
-        $perBidang = ($_GET['susun'] ?? '') === 'bidang';
 
-        $geoTabs = $perBidang ? $this->geoTabs() : [];
-        $geoKey = $_GET['geo'] ?? '';
-        $geoTier = null;
-        foreach ($geoTabs as $tab) {
-            if ($tab['key'] === $geoKey) { $geoTier = $tab['tier']; break; }
+        // Jenjang (?lv=DPW): hanya jenjang yang punya orang dalam lingkup admin; nilai lain diabaikan.
+        $levelCounts = array_filter($people->levelCounts());
+        $lv = is_string($_GET['lv'] ?? '') ? ($_GET['lv'] ?? '') : '';
+        $level = isset($levelCounts[$lv]) ? $lv : '';
+
+        $filters = ['gender' => $gender, 'filter' => $filter, 'serving' => $serving, 'level' => $level];
+
+        // Tampilan (?susun=struktur|daftar). Tautan dari luar (dasbor, "Tanpa SKUO") tidak membawanya dan hampir selalu menginginkan
+        // daftar nama, jadi tanpa pilihan eksplisit "Per Struktur" hanya dipakai bila tak ada pencarian maupun penyaring daftar.
+        // 'bidang' adalah nilai lama, sebelum Per Bidang digabung ke Per Struktur.
+        $susun = $_GET['susun'] ?? '';
+        if ($susun === 'bidang') $susun = 'struktur';
+        if (!in_array($susun, ['struktur', 'daftar'], true)) {
+            $susun = ($keyword === '' && $filter === '' && !$serving) ? 'struktur' : 'daftar';
         }
+        $perStruktur = $susun === 'struktur';
 
         $levels = $this->model('StructureModel')->levelsInScope();
         $umum = ['DPP', 'DPW', 'DPLN', 'DPD', 'DPC', 'DPRa'];
         $musl = ['MWP', 'MWW', 'MWD', 'MWC', 'MWRa'];
-        $hasUmum = !empty(array_intersect($levels, $umum));
-        $hasMuslimah = !empty(array_intersect($levels, $musl));
 
-        $this->view('admin/people/index', [
-            'title'   => 'Data Pengurus',
-            'rows'    => $perBidang ? [] : $people->searchInScope($keyword, $perPage, ($page - 1) * $perPage, $filters),
-            'total'   => $people->countInScope($keyword, $filters),
-            'keyword' => $keyword,
-            'gender'  => $gender,
-            'filter'  => $filter,
-            'serving' => $serving,
-            'page'    => $page,
-            'perPage' => $perPage,
+        $data = [
+            'title'    => 'Data Pengurus',
+            'keyword'  => $keyword,
+            'gender'   => $gender,
+            'filter'   => $filter,
+            'serving'  => $serving,
+            'level'    => $level,
+            'levelCounts' => $levelCounts,
+            'perStruktur' => $perStruktur,
+            'totalAll' => $people->countInScope('', []),
+            'recap'    => $people->recapCounts($keyword, $level),
+            'showL'    => !empty(array_intersect($levels, $umum)),
+            'showP'    => !empty(array_intersect($levels, $musl)),
+            'page'     => $page,
+            'perPage'  => $perPage,
             'perPageOptions' => self::PER_PAGE_OPTIONS,
-            'perBidang' => $perBidang,
-            'groups'  => $perBidang ? $this->groupedByBidang($people, $keyword, $filters, $geoTier) : null,
-            'geoTabs' => $geoTabs,
-            'geoKey'  => $geoTier ? $geoKey : '',
-            'recap'   => $people->recapCounts(),
-            'showL'   => $hasUmum,
-            'showP'   => $hasMuslimah,
-        ]);
+            'rows'     => [],
+            'total'    => 0,
+            'blocks'   => [],
+            'openLevels' => [],
+        ];
+
+        if ($perStruktur) {
+            $data['blocks'] = PeopleOverview::build($people->overviewByStructure($keyword, $filters), $people->intiFlags());
+            $data['openLevels'] = PeopleOverview::defaultOpen($data['blocks'], $level);
+        } else {
+            $data['rows'] = $people->searchInScope($keyword, $perPage, ($page - 1) * $perPage, $filters);
+            $data['total'] = $people->countInScope($keyword, $filters);
+        }
+
+        $this->view('admin/people/index', $data);
     }
 
     public function deleted() {
@@ -99,109 +117,35 @@ class PeopleController extends Controller {
         $this->redirect('people/deleted');
     }
 
-    private function geoTabs() {
-        $levels = $this->model('StructureModel')->levelsInScope();
-        $tierOf = ['DPP' => 1, 'DPW' => 2, 'DPLN' => 2, 'DPD' => 3, 'DPC' => 4, 'DPRa' => 5,
-                   'MWP' => 1, 'MWW' => 2, 'MWD' => 3, 'MWC' => 4, 'MWRa' => 5];
-        $topTier = 5;
-        foreach ($levels as $l) {
-            $t = $tierOf[$l] ?? 5;
-            if ($t < $topTier) $topTier = $t;
-        }
+    // Isi satu struktur di tampilan "Per Struktur" (Pengurus Inti, Bidang, unit): potongan HTML yang dimuat saat barisnya dibuka, bukan
+    // halaman utuh. Pencarian dan penyaring daftar ikut lewat query string supaya isinya cocok dengan angka di baris itu.
+    public function struktur($termId) {
+        $this->requireLogin();
 
-        $defs = [
-            2 => ['key' => 'provinsi',  'label' => 'Per Provinsi'],
-            3 => ['key' => 'kabkota',   'label' => 'Per Kota/Kab.'],
-            4 => ['key' => 'kecamatan', 'label' => 'Per Kecamatan'],
-            5 => ['key' => 'kelurahan', 'label' => 'Per Kelurahan'],
-        ];
+        $term = $this->model('TermModel')->findById((int) $termId);
+        // Sama untuk "tidak ada" dan "di luar lingkup": jangan membocorkan keberadaan periode.
+        if (!$term || !AdminScope::allows($term['structure_id'])) $this->notFound('Struktur tidak ditemukan.');
 
-        $end = ($topTier === 1) ? $topTier + 2 : $topTier + 1;
-        $tabs = [];
-        for ($t = $topTier + 1; $t <= min($end, 5); $t++) {
-            if (isset($defs[$t])) $tabs[] = $defs[$t] + ['tier' => $t];
-        }
-        return $tabs;
-    }
+        $people = $this->model('PersonModel');
+        $keyword = trim((string) ($_GET['q'] ?? ''));
+        $gender = in_array($_GET['gender'] ?? '', ['L', 'P'], true) ? $_GET['gender'] : '';
+        $filter = in_array($_GET['filter'] ?? '', self::VALID_FILTERS, true) ? $_GET['filter'] : '';
+        $serving = !empty($_GET['menjabat']);
+        $facet = $keyword !== '' || $gender !== '' || $filter !== '' || $serving;
 
-    private function groupedByBidang(PersonModel $people, $keyword, array $filters, $geoTier = null) {
-        $filtered = $keyword !== '' || !empty($filters['gender']) || !empty($filters['filter']) || !empty($filters['serving']);
-        $ids = array_flip($people->idsInScope($keyword, $filters));
-        $placements = $this->model('PlacementModel');
-        $units = $this->model('UnitModel');
+        $ids = $facet ? array_flip($people->idsInScope($keyword, ['gender' => $gender, 'filter' => $filter, 'serving' => $serving])) : null;
         $today = date('Y-m-d');
+        $rows = array_values(array_filter($this->model('PlacementModel')->byTerm($term['id']), function ($r) use ($ids, $today) {
+            return ($ids === null || isset($ids[(int) $r['person_id']])) && (empty($r['end_date']) || $r['end_date'] >= $today);
+        }));
 
-        $terms = array_values(array_filter($this->model('TermModel')->allInScope(), function ($t) { return !empty($t['is_current']); }));
-        $termNodes = []; $placed = [];
-        foreach ($terms as $t) {
-            $rows = array_values(array_filter($placements->byTerm($t['id']), function ($r) use ($ids, $today) {
-                return isset($ids[(int) $r['person_id']]) && (empty($r['end_date']) || $r['end_date'] >= $today);
-            }));
-            foreach ($rows as $r) $placed[(int) $r['person_id']] = true;
-            $nodes = Susunan::arrange($rows, $units->groupsByTerm($t['id']), $units->unitsByTerm($t['id']));
-            if ($filtered) $nodes = Susunan::prune($nodes);
-            if (!$nodes) continue;
-            $termNodes[] = [
-                'term' => $t,
-                'node' => Susunan::wrap($t['level'] . ' ' . $t['structure_name'], $nodes, $t['name'], false),
-            ];
-        }
+        $units = $this->model('UnitModel');
+        $tree = Susunan::arrange($rows, $units->groupsByTerm($term['id']), $units->unitsByTerm($term['id']));
+        if ($facet) $tree = Susunan::prune($tree);
 
-        if ($geoTier) {
-            $tree = $this->groupByGeo($termNodes, $geoTier);
-        } else {
-            $tree = [];
-            foreach ($termNodes as $tn) {
-                $tn['node']['open'] = count($termNodes) === 1;
-                $tree[] = $tn['node'];
-            }
-        }
+        $flags = $people->intiFlags((int) $term['structure_id'])[(int) $term['structure_id']] ?? ['k' => false, 's' => false, 'b' => false];
 
-        if ($filtered) $tree = Susunan::openAll($tree);
-        return ['tree' => $tree, 'unplaced' => $people->byIds(array_keys(array_diff_key($ids, $placed)))];
-    }
-
-    private function groupByGeo(array $termNodes, int $geoTier) {
-        $allIds = [];
-        foreach ($termNodes as $tn) {
-            $path = $tn['term']['structure_path'] ?? '';
-            foreach (array_filter(array_map('intval', explode('/', trim($path, '/')))) as $pid)
-                $allIds[$pid] = true;
-        }
-
-        $ancestors = [];
-        if ($allIds) {
-            $in = implode(',', array_keys($allIds));
-            $db = Database::getInstance()->getConnection();
-            foreach ($db->query("SELECT id, level, name FROM structures WHERE id IN ($in) AND tier = " . (int) $geoTier . " AND deleted_at IS NULL")->fetchAll() as $r)
-                $ancestors[(int) $r['id']] = $r;
-        }
-
-        $groups = [];
-        $groupOrder = [];
-        $ungrouped = [];
-        foreach ($termNodes as $tn) {
-            $path = $tn['term']['structure_path'] ?? '';
-            $pathIds = array_filter(array_map('intval', explode('/', trim($path, '/'))));
-            $ancestorId = null;
-            foreach ($pathIds as $pid) {
-                if (isset($ancestors[$pid])) { $ancestorId = $pid; break; }
-            }
-            if ($ancestorId !== null) {
-                $groups[$ancestorId][] = $tn['node'];
-                if (!isset($groupOrder[$ancestorId])) $groupOrder[$ancestorId] = true;
-            } else {
-                $ungrouped[] = $tn['node'];
-            }
-        }
-
-        $tree = $ungrouped;
-        foreach (array_keys($groupOrder) as $aid) {
-            $a = $ancestors[$aid];
-            $open = count($groups) === 1 && empty($ungrouped);
-            $tree[] = Susunan::wrap($a['level'] . ' ' . $a['name'], $groups[$aid], null, $open);
-        }
-        return $tree;
+        $this->view('admin/people/_roster', ['term' => $term, 'tree' => $tree, 'flags' => $flags, 'facet' => $facet]);
     }
 
     public function detail($id) {
@@ -396,7 +340,7 @@ class PeopleController extends Controller {
 
         // Kembali ke daftar dengan penyaringan dan halaman yang sama; hanya kunci yang dikenal daftar yang dipakai ulang.
         parse_str((string) ($_POST['back'] ?? ''), $q);
-        $keep = array_filter(array_intersect_key((array) $q, array_flip(['q', 'gender', 'filter', 'menjabat', 'susun', 'geo', 'page', 'per_page'])), 'is_scalar');
+        $keep = array_filter(array_intersect_key((array) $q, array_flip(['q', 'gender', 'filter', 'menjabat', 'lv', 'susun', 'page', 'per_page'])), 'is_scalar');
         $back = 'people' . ($keep ? '?' . http_build_query($keep) : '');
 
         try {

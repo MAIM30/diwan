@@ -26,6 +26,12 @@ class PositionModel {
     // jabatan sendiri (Pusat, Divisi, Komisi, Lainnya) dan untuk tingkat struktur.
     const KETUA_UNIT_CODES = ['ketua_departemen', 'ketua_lembaga', 'ketua_biro', 'ketua_badan'];
 
+    // "Inti lengkap" di halaman Data Pengurus: struktur dianggap punya inti yang lengkap bila Ketua, Sekretaris, dan Bendahara-nya
+    // masing-masing dipegang seseorang di tingkat struktur (tanpa unit). Ketua DPC / DPRa kelak ditambahkan ke INTI_KETUA di sini.
+    const INTI_KETUA      = ['ketua_umum', 'ketua', 'ketua_dpw', 'ketua_dpd'];
+    const INTI_SEKRETARIS = ['sekretaris_jenderal', 'sekretaris'];
+    const INTI_BENDAHARA  = ['bendahara_umum', 'bendahara'];
+
     // Jenis unit (unit_catalog.kind) beserta labelnya. Satu-satunya daftar untuk batas jabatan per jenis unit (positions.unit_kinds).
     const UNIT_KINDS = ['departemen' => 'Departemen', 'lembaga' => 'Lembaga', 'biro' => 'Biro', 'badan' => 'Badan',
                         'pusat' => 'Pusat', 'divisi' => 'Divisi', 'komisi' => 'Komisi', 'lainnya' => 'Lainnya'];

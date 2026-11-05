@@ -1,36 +1,46 @@
 <?php
 // PATH LOKASI FILE: app/Views/admin/people/index.php
+// Data Pengurus: baris Jenjang, rekap tiga kelompok (Status jabatan, Kelengkapan data, Jenis kelamin), lalu satu dari dua tampilan:
+// "Per Struktur" (terkelompok jenjang -> struktur, untuk memantau) atau "Daftar" (tabel A-Z, untuk mencari satu orang).
+//
+// Dari controller: $keyword, $gender, $filter, $serving, $level (jenjang terpilih atau ''), $levelCounts (jenjang => orang),
+// $perStruktur, $totalAll (seluruh lingkup), $recap (PersonModel::recapCounts untuk pencarian + jenjang), $showL/$showP,
+// Daftar: $rows, $total, $page, $perPage, $perPageOptions. Per Struktur: $blocks (PeopleOverview::build), $openLevels.
 $this->view('layouts/header', ['title' => $title]);
 
 $pages = max(1, (int) ceil($total / $perPage));
 $perPageParam = $perPage !== 25 ? $perPage : '';
-$backQuery = http_build_query(array_filter([
-    'q' => $keyword, 'gender' => $gender, 'filter' => $filter,
-    'menjabat' => $serving ? 1 : '', 'susun' => $perBidang ? 'bidang' : '',
-    'geo' => $geoKey, 'page' => $page > 1 ? $page : '', 'per_page' => $perPageParam,
-], function ($v) { return $v !== '' && $v !== null; }));
 
-$qs = function (array $over = []) use ($keyword, $gender, $filter, $serving, $perBidang, $geoKey, $perPageParam) {
-    $p = array_merge(['q' => $keyword, 'gender' => $gender, 'filter' => $filter, 'menjabat' => $serving ? 1 : '', 'susun' => $perBidang ? 'bidang' : '', 'geo' => $geoKey, 'per_page' => $perPageParam], $over);
-    $p = array_filter($p, function ($v) { return $v !== '' && $v !== null; });
+// Satu-satunya tempat parameter halaman ini disusun: tiap tautan di halaman membawa semua pilihan yang sedang aktif, termasuk tampilannya.
+$base = ['q' => $keyword, 'gender' => $gender, 'filter' => $filter, 'menjabat' => $serving ? 1 : '', 'lv' => $level,
+         'susun' => $perStruktur ? 'struktur' : 'daftar', 'per_page' => $perPageParam];
+$keepEmpty = function ($v) { return $v !== '' && $v !== null; };
+$backQuery = http_build_query(array_filter($base + ['page' => $page > 1 ? $page : ''], $keepEmpty));
+$qs = function (array $over = []) use ($base, $keepEmpty) {
+    $p = array_filter(array_merge($base, $over), $keepEmpty);
     return BASEURL . '/people' . ($p ? '?' . http_build_query($p) : '');
 };
-$chip = function ($label, $on, $href, $icon = null) {
-    return '<a class="chip' . ($on ? ' on' : '') . '" href="' . e($href) . '"' . ($on ? ' aria-current="true"' : '') . '>'
-        . ($icon ? Ui::icon($icon, 14) : '') . e($label) . '</a>';
+// Pencarian dan penyaring daftar yang ikut ke isi tiap struktur (PeopleController::struktur), supaya isinya cocok dengan angka barisnya.
+$facetQuery = http_build_query(array_filter(['q' => $keyword, 'gender' => $gender, 'filter' => $filter, 'menjabat' => $serving ? 1 : ''], $keepEmpty));
+
+$chip = function ($label, $on, $href, $icon = null, $title = '') {
+    return '<a class="chip' . ($on ? ' on' : '') . '" href="' . e($href) . '"' . ($on ? ' aria-current="true"' : '')
+        . ($title !== '' ? ' title="' . e($title) . '"' : '') . '>' . ($icon ? Ui::icon($icon, 14) : '') . e($label) . '</a>';
 };
-$rc = function ($label, $count, $icon, $active, $href, $tone = '') {
-    $cls = 'stat' . ($tone ? ' ' . $tone : '') . ($active ? ' active' : '');
-    return '<a class="' . $cls . '" href="' . e($href) . '"' . ($active ? ' aria-current="true"' : '') . '>'
-        . '<div class="stat-top"><span class="chip-ic">' . Ui::icon($icon, 18) . '</span>'
-        . '<span class="lbl">' . e($label) . '</span></div>'
-        . '<div class="num">' . Ui::n($count) . '</div></a>';
+// Kartu rekap. $sub dan $extra sudah berupa HTML yang aman (dibangun di bawah dari angka dan teks tetap).
+$rk = function ($label, $count, $icon, $tone, $active, $href, $sub = '', $extra = '') {
+    return '<a class="rk-card ' . $tone . ($active ? ' active' : '') . '" href="' . e($href) . '"' . ($active ? ' aria-current="true"' : '') . '>'
+        . '<span class="rk-top"><span class="rk-ic">' . Ui::icon($icon, 15) . '</span><span class="rk-lbl">' . e($label) . '</span></span>'
+        . '<span class="rk-num">' . Ui::n($count) . '</span>'
+        . ($sub !== '' ? '<span class="rk-sub">' . $sub . '</span>' : '') . $extra . '</a>';
 };
+
+$chipGroups = PeopleOverview::chipGroups($levelCounts);
 ?>
 
 <div class="page-head">
   <h1>Data Pengurus</h1>
-  <span class="badge"><?= Ui::n($total) ?> orang</span>
+  <span class="badge"><?= Ui::n($totalAll) ?> orang</span>
   <div class="actions">
     <?php if (Auth::canEdit()): ?>
       <a class="btn secondary" href="<?= BASEURL ?>/people/deleted">Data Terhapus</a>
@@ -39,17 +49,77 @@ $rc = function ($label, $count, $icon, $active, $href, $tone = '') {
   </div>
 </div>
 
-<div class="stats recap">
-  <?php if ($showL): ?>
-    <?= $rc('Laki-laki', $recap['L'], 'users', $gender === 'L', $qs(['gender' => $gender === 'L' ? '' : 'L', 'page' => ''])) ?>
+<?php if ($chipGroups): ?>
+<div class="mon-strip" role="group" aria-label="Saring menurut jenjang">
+  <span class="mon-strip-l">Jenjang</span>
+  <?= $chip('Semua', $level === '', $qs(['lv' => '', 'page' => '']), null) ?>
+  <?php foreach ($chipGroups as $wing => $list): ?>
+    <span class="mon-sep" aria-hidden="true"></span>
+    <?php foreach ($list as $lv): $on = $level === $lv; ?>
+      <a class="chip<?= $on ? ' on' : '' ?>" href="<?= e($qs(['lv' => $on ? '' : $lv, 'page' => ''])) ?>"<?= $on ? ' aria-current="true"' : '' ?>
+         title="<?= e(PeopleOverview::LEVEL_NAMES[$lv] ?? $lv) ?>"><?= e($lv) ?> <span class="chip-n"><?= Ui::n($levelCounts[$lv]) ?></span></a>
+    <?php endforeach; ?>
+  <?php endforeach; ?>
+</div>
+<p class="mon-note">Satu orang bisa menjabat di beberapa jenjang, jadi jumlah di chip lebih besar dari total orang.</p>
+<?php endif; ?>
+
+<p class="mon-ctx">
+  <span>Menampilkan: <b><?= $level !== '' ? e($level) : 'semua pengurus di lingkup Anda' ?></b><?php if ($keyword !== ''): ?> &middot; pencarian &ldquo;<?= e($keyword) ?>&rdquo;<?php endif; ?> &middot; <?= Ui::n($recap['total']) ?> orang</span>
+  <?php if ($level !== '' || $keyword !== ''): ?>
+    <a href="<?= e($qs(['lv' => '', 'q' => '', 'page' => ''])) ?>">Hapus penyaringan</a>
+  <?php else: ?>
+    <span class="muted">Pilih jenjang di atas, kartu di bawah akan mengikuti.</span>
   <?php endif; ?>
-  <?php if ($showP): ?>
-    <?= $rc('Perempuan', $recap['P'], 'users', $gender === 'P', $qs(['gender' => $gender === 'P' ? '' : 'P', 'page' => '']), 't-rose') ?>
+</p>
+
+<div class="rk-clusters">
+  <section class="rk-cl" aria-label="Status jabatan">
+    <h2>Status jabatan</h2>
+    <div class="rk-cards">
+      <?= $rk('Menjabat', $recap['menjabat'], 'users', '', $serving, $qs(['menjabat' => $serving ? '' : 1, 'page' => '']),
+              Ui::pct($recap['menjabat'], $recap['total']) . ' dari ' . Ui::n($recap['total']) . ' orang') ?>
+      <?= $rk('Rangkap', $recap['rangkap'], 'grid', 't-violet', $filter === 'rangkap', $qs(['filter' => $filter === 'rangkap' ? '' : 'rangkap', 'page' => '']),
+              Ui::pct($recap['rangkap'], $recap['menjabat']) . ' dari yang menjabat &middot; tunggal ' . Ui::n($recap['tunggal'])) ?>
+      <?= $rk('Tidak menjabat', $recap['tidak_menjabat'], 'circle', 't-slate', $filter === 'tidak_menjabat', $qs(['filter' => $filter === 'tidak_menjabat' ? '' : 'tidak_menjabat', 'susun' => 'daftar', 'page' => '']),
+              $recap['tidak_menjabat'] > 0 ? 'belum ada penempatan berjalan' : 'tidak ada pada pilihan ini') ?>
+    </div>
+  </section>
+
+  <section class="rk-cl" aria-label="Kelengkapan data">
+    <h2>Kelengkapan data</h2>
+    <div class="rk-cards">
+      <?= $rk('Data lengkap', $recap['lengkap'], 'clipboard-check', 't-green', $filter === 'lengkap', $qs(['filter' => $filter === 'lengkap' ? '' : 'lengkap', 'page' => '']),
+              Ui::pct($recap['lengkap'], $recap['total']) . ' &middot; WA dan jenis kelamin',
+              '<span class="rk-meter"><i style="width:' . ($recap['total'] > 0 ? min(100, round($recap['lengkap'] / $recap['total'] * 100, 1)) : 0) . '%"></i></span>') ?>
+      <?= $rk('Belum lengkap', $recap['belum_lengkap'], 'alert', 't-amber', $filter === 'belum_lengkap', $qs(['filter' => $filter === 'belum_lengkap' ? '' : 'belum_lengkap', 'page' => '']),
+              Ui::pct($recap['belum_lengkap'], $recap['total']) . ' perlu dilengkapi') ?>
+    </div>
+  </section>
+
+  <?php if ($showL || $showP): $gTotal = ($showL ? $recap['L'] : 0) + ($showP ? $recap['P'] : 0); ?>
+  <section class="rk-cl" aria-label="Jenis kelamin">
+    <h2>Jenis kelamin</h2>
+    <div class="rk-card rk-gender">
+      <div class="rk-gcols">
+        <?php if ($showL): ?>
+          <a class="rk-gcol<?= $gender === 'L' ? ' active' : '' ?>" href="<?= e($qs(['gender' => $gender === 'L' ? '' : 'L', 'page' => ''])) ?>"<?= $gender === 'L' ? ' aria-current="true"' : '' ?>>
+            <small>Laki-laki</small><b><?= Ui::n($recap['L']) ?></b></a>
+        <?php endif; ?>
+        <?php if ($showP): ?>
+          <a class="rk-gcol p<?= $gender === 'P' ? ' active' : '' ?>" href="<?= e($qs(['gender' => $gender === 'P' ? '' : 'P', 'page' => ''])) ?>"<?= $gender === 'P' ? ' aria-current="true"' : '' ?>>
+            <small>Perempuan</small><b><?= Ui::n($recap['P']) ?></b></a>
+        <?php endif; ?>
+      </div>
+      <?php if ($showL && $showP && $gTotal > 0): $lPct = round($recap['L'] / $gTotal * 100, 1); ?>
+        <div class="rk-split" role="img" aria-label="Laki-laki <?= e(Ui::pct($recap['L'], $gTotal)) ?>, perempuan <?= e(Ui::pct($recap['P'], $gTotal)) ?>">
+          <i class="l" style="width:<?= $lPct ?>%"></i><i class="p" style="width:<?= 100 - $lPct ?>%"></i>
+        </div>
+        <span class="rk-sub"><?= e(Ui::pct($recap['L'], $gTotal)) ?> &middot; <?= e(Ui::pct($recap['P'], $gTotal)) ?></span>
+      <?php endif; ?>
+    </div>
+  </section>
   <?php endif; ?>
-  <?= $rc('Data Lengkap', $recap['lengkap'], 'clipboard-check', $filter === 'lengkap', $qs(['filter' => $filter === 'lengkap' ? '' : 'lengkap', 'page' => '']), 't-green') ?>
-  <?= $rc('Belum Lengkap', $recap['belum_lengkap'], 'alert', $filter === 'belum_lengkap', $qs(['filter' => $filter === 'belum_lengkap' ? '' : 'belum_lengkap', 'page' => '']), 't-amber') ?>
-  <?= $rc('Rangkap', $recap['rangkap'], 'grid', $filter === 'rangkap', $qs(['filter' => $filter === 'rangkap' ? '' : 'rangkap', 'page' => '']), 't-violet') ?>
-  <?= $rc('Tidak Rangkap', $recap['tidak_rangkap'], 'check', $filter === 'tidak_rangkap', $qs(['filter' => $filter === 'tidak_rangkap' ? '' : 'tidak_rangkap', 'page' => '']), 't-green') ?>
 </div>
 
 <div class="toolbar">
@@ -60,15 +130,22 @@ $rc = function ($label, $count, $icon, $active, $href, $tone = '') {
     <?php if ($gender): ?><input type="hidden" name="gender" value="<?= e($gender) ?>"><?php endif; ?>
     <?php if ($filter): ?><input type="hidden" name="filter" value="<?= e($filter) ?>"><?php endif; ?>
     <?php if ($serving): ?><input type="hidden" name="menjabat" value="1"><?php endif; ?>
-    <?php if ($perBidang): ?><input type="hidden" name="susun" value="bidang"><?php endif; ?>
-    <?php if ($geoKey): ?><input type="hidden" name="geo" value="<?= e($geoKey) ?>"><?php endif; ?>
+    <?php if ($level): ?><input type="hidden" name="lv" value="<?= e($level) ?>"><?php endif; ?>
   </form>
-  <div class="chips">
-    <?= $chip('Per Bidang', $perBidang, $qs(['susun' => $perBidang ? '' : 'bidang', 'geo' => '', 'page' => '']), 'layers') ?>
-    <?= $chip('Tanpa Unit Organisasi (SKUO)', $filter === 'tanpa_unit', $qs(['filter' => $filter === 'tanpa_unit' ? '' : 'tanpa_unit', 'susun' => '', 'geo' => '', 'page' => '']), 'users') ?>
+  <div class="view-seg" role="group" aria-label="Tampilan">
+    <a href="<?= e($qs(['susun' => 'struktur', 'page' => ''])) ?>" class="<?= $perStruktur ? 'on' : '' ?>"<?= $perStruktur ? ' aria-current="true"' : '' ?>>Per Struktur</a>
+    <a href="<?= e($qs(['susun' => 'daftar', 'page' => ''])) ?>" class="<?= !$perStruktur ? 'on' : '' ?>"<?= !$perStruktur ? ' aria-current="true"' : '' ?>>Daftar</a>
   </div>
-  <?php if (!$perBidang): ?>
-    <label class="per-page" style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted,#64748b)">
+  <div class="chips">
+    <?= $chip('Tanpa Unit Organisasi (SKUO)', $filter === 'tanpa_unit', $qs(['filter' => $filter === 'tanpa_unit' ? '' : 'tanpa_unit', 'susun' => 'daftar', 'page' => '']), 'users') ?>
+  </div>
+  <?php if ($perStruktur): ?>
+    <span class="mon-bulk">
+      <button type="button" class="btn small secondary" data-mon-tree="mon-tree" data-mon-all="open">Buka semua jenjang</button>
+      <button type="button" class="btn small secondary" data-mon-tree="mon-tree" data-mon-all="close">Tutup semua</button>
+    </span>
+  <?php else: ?>
+    <label class="per-page">
       Tampilkan
       <select onchange="window.location.href=this.value" aria-label="Jumlah baris per halaman">
         <?php foreach ($perPageOptions as $opt): ?>
@@ -85,92 +162,124 @@ $rc = function ($label, $count, $icon, $active, $href, $tone = '') {
   <div class="note">Daftar ini mencakup pengurus tanpa penempatan aktif di SKUO pada periode berjalan, termasuk yang hanya menjabat sebagai Pengurus Inti atau belum memiliki penempatan.</div>
 <?php endif; ?>
 
-<?php if ($perBidang && !empty($geoTabs)): ?>
-<div class="chips" style="margin-bottom:12px">
-  <?php foreach ($geoTabs as $tab): ?>
-    <?= $chip($tab['label'], $geoKey === $tab['key'], $qs(['geo' => $geoKey === $tab['key'] ? '' : $tab['key'], 'page' => '']), 'map-pin') ?>
-  <?php endforeach; ?>
+<?php if ($perStruktur): ?>
+<?php
+// ---------- Tampilan Per Struktur ----------
+$caret = Ui::icon('chevron-right', 16, 'caret');
+$cols = function (array $n, $inti) {
+    return '<span class="mon-n">' . Ui::n($n['orang']) . '</span><span class="mon-i">' . $inti . '</span>'
+         . '<span class="mon-b">' . Ui::meter($n['lengkap'], $n['orang']) . '</span>'
+         . '<span class="mon-lp">' . Ui::n($n['l']) . ' &middot; ' . Ui::n($n['p']) . '</span>';
+};
+$intiSum = function ($lengkap, $strukt) {
+    return '<span class="mon-intisum ' . ($lengkap === $strukt ? 'ok' : 'warn') . '"><b>' . Ui::n($lengkap) . '</b> dari ' . Ui::n($strukt) . ' lengkap</span>';
+};
+$rosterUrl = function ($termId) use ($facetQuery) {
+    return BASEURL . '/people/struktur/' . (int) $termId . ($facetQuery !== '' ? '?' . $facetQuery : '');
+};
+// Baris satu struktur; isinya (Pengurus Inti, Bidang, unit) dimuat saat dibuka. $d = kedalaman untuk indentasi.
+$structureRow = function (array $r, $d) use ($caret, $cols, $rosterUrl) {
+    ob_start(); ?>
+    <details class="mon-s" data-roster-url="<?= e($rosterUrl($r['term_id'])) ?>">
+      <summary class="mon-row" style="--d:<?= (int) $d ?>">
+        <span class="mon-t"><?= $caret ?><span class="mon-ttl"><b><?= e($r['name']) ?></b><?= $r['sub'] !== '' ? '<small>' . e($r['sub']) . '</small>' : '' ?></span></span>
+        <?= $cols($r['num'], Ui::ksb($r['flags'])) ?>
+      </summary>
+      <div class="mon-roster" style="--base:<?= (int) $d + 1 ?>"></div>
+    </details>
+    <?php return ob_get_clean();
+};
+?>
+<?php if ($filter === 'tidak_menjabat'): ?>
+  <div class="card"><div class="empty">
+    <?= Ui::icon('users', 28) ?>
+    <span>Orang yang tidak menjabat belum punya struktur, jadi tidak tampil di Per Struktur.</span>
+    <a class="btn small secondary" href="<?= e($qs(['susun' => 'daftar', 'page' => ''])) ?>">Lihat di Daftar</a>
+  </div></div>
+<?php elseif (empty($blocks)): ?>
+  <div class="card"><div class="empty">
+    <?= Ui::icon('users', 28) ?>
+    <span><?= ($keyword !== '' || $gender || $filter || $serving || $level)
+      ? 'Tidak ada pengurus yang cocok dengan penyaringan ini.' : 'Belum ada data pengurus di lingkup Anda.' ?></span>
+    <?php if ($keyword !== '' || $gender || $filter || $serving || $level): ?>
+      <a class="btn small secondary" href="<?= e($qs(['q' => '', 'gender' => '', 'filter' => '', 'menjabat' => '', 'lv' => '', 'page' => ''])) ?>">Hapus penyaringan</a>
+    <?php endif; ?>
+  </div></div>
+<?php else: ?>
+<div class="card mon-card">
+  <div class="mon-scroll">
+    <div class="mon-tree" id="mon-tree">
+      <div class="mon-head"><span>Kelompok</span><span>Orang</span><span>Inti (K &middot; S &middot; B)</span><span>Data lengkap</span><span>L &middot; P</span></div>
+
+      <?php foreach ($blocks as $b):
+        $open = in_array($b['level'], $openLevels, true);
+        $inti = $b['single'] ? Ui::ksb($b['flags']) : $intiSum($b['inti_lengkap'], $b['strukt']);
+      ?>
+        <details class="mon-g mon-lvl <?= e($b['wing']) ?>"<?= $open ? ' open' : '' ?><?= $b['single'] ? ' data-roster-url="' . e($rosterUrl($b['term_id'])) . '"' : '' ?>>
+          <summary class="mon-row" style="--d:0">
+            <span class="mon-t"><?= $caret ?><span class="mon-ttl"><b><?= e($b['level']) ?></b>
+              <small><?= e($b['name']) ?><?= $b['single'] ? '' : ' &middot; ' . Ui::n($b['strukt']) . ' struktur' ?></small></span></span>
+            <?= $cols($b['num'], $inti) ?>
+          </summary>
+
+          <?php if ($b['single']): ?>
+            <div class="mon-roster" style="--base:1"></div>
+          <?php else: ?>
+            <div class="mon-body">
+              <?php foreach ($b['rows'] as $r) echo $structureRow($r, 1); ?>
+              <?php foreach ($b['groups'] as $g): ?>
+                <details class="mon-g mon-grp"<?= count($b['groups']) === 1 && !$b['rows'] ? ' open' : '' ?>>
+                  <summary class="mon-row" style="--d:1">
+                    <span class="mon-t"><?= $caret ?><span class="mon-ttl"><b><?= e($g['title']) ?></b><small><?= Ui::n($g['strukt']) ?> <?= e($b['level']) ?></small></span></span>
+                    <?= $cols($g['num'], $intiSum($g['inti_lengkap'], $g['strukt'])) ?>
+                  </summary>
+                  <div class="mon-body">
+                    <?php foreach ($g['rows'] as $r) echo $structureRow($r, 2); ?>
+                  </div>
+                </details>
+              <?php endforeach; ?>
+            </div>
+          <?php endif; ?>
+        </details>
+      <?php endforeach; ?>
+    </div>
+  </div>
+  <div class="mon-legend">
+    <?= Ui::ksb(['k' => true, 's' => true, 'b' => false]) ?>
+    <span>K Ketua &middot; S Sekretaris &middot; B Bendahara. Merah putus-putus: belum ada pengurusnya di Pengurus Inti.</span>
+    <span>Data lengkap: WA dan jenis kelamin terisi. Hijau mulai 90%, kuning mulai 75%, merah di bawahnya.</span>
+  </div>
 </div>
 <?php endif; ?>
 
-<?php if ($perBidang): ?>
-<div class="card">
-  <?php if (empty($groups['tree']) && empty($groups['unplaced'])): ?>
-    <div class="empty">
-      <?= Ui::icon('users', 28) ?>
-      <span><?= ($keyword !== '' || $gender || $filter || $serving)
-        ? 'Tidak ada pengurus yang cocok dengan penyaringan ini.' : 'Belum ada data pengurus di lingkup Anda.' ?></span>
-      <?php if ($keyword !== '' || $gender || $filter || $serving): ?>
-        <a class="btn small secondary" href="<?= e($qs(['q' => '', 'gender' => '', 'filter' => '', 'menjabat' => ''])) ?>">Hapus penyaringan</a>
-      <?php endif; ?>
-    </div>
-  <?php else: ?>
-    <?php $this->view('admin/_susunan', ['tree' => $groups['tree'], 'treeId' => 'per-bidang']); ?>
-
-    <?php if (!empty($groups['unplaced'])): ?>
-      <ul class="stree" style="margin-top:6px">
-        <li class="sn">
-          <details>
-            <summary>
-              <?= Ui::icon('chevron-right', 16, 'caret') ?>
-              <span class="sn-main"><span class="sn-name">Belum menjabat di periode berjalan</span></span>
-              <span class="sn-n"><?= count($groups['unplaced']) ?> orang</span>
-            </summary>
-            <div class="sn-body sn-roster">
-              <div class="table-wrap">
-                <table>
-                  <thead><tr><th>Nama</th><th>Nomor WA</th><th>Status</th><th></th></tr></thead>
-                  <tbody>
-                  <?php foreach ($groups['unplaced'] as $r): ?>
-                    <tr>
-                      <td><a href="<?= BASEURL ?>/people/detail/<?= (int) $r['id'] ?>"><?= Ui::nameHtml($r) ?></a></td>
-                      <td class="mono"><?= e($r['phone'] ?: '—') ?></td>
-                      <td><span class="badge ended"><?= e($r['status'] === 'deceased' ? 'Wafat' : ($r['status'] === 'inactive' ? 'Nonaktif' : 'Tidak menjabat')) ?></span></td>
-                      <td class="nowrap">
-                        <?php if (Auth::canEdit()): ?>
-                          <a class="btn small secondary" href="<?= BASEURL ?>/people/form/<?= (int) $r['id'] ?>"><?= Ui::icon('edit', 14) ?> Ubah</a>
-                          <form class="inline" method="post" action="<?= BASEURL ?>/people/delete"
-                                onsubmit="return confirm(this.dataset.confirm)"
-                                data-confirm="Hapus <?= e($r['full_name']) ?> beserta seluruh riwayat penempatannya? Data dapat dipulihkan dari Data Terhapus. Penghapusan ditolak bila ada penempatan di luar lingkup Anda.">
-                            <?= Csrf::field() ?>
-                            <input type="hidden" name="id" value="<?= (int) $r['id'] ?>">
-                            <input type="hidden" name="with_placements" value="1">
-                            <input type="hidden" name="back" value="<?= e($backQuery) ?>">
-                            <button type="submit" class="btn small danger" title="Hapus pengurus"><?= Ui::icon('trash', 14) ?> Hapus</button>
-                          </form>
-                        <?php endif; ?>
-                      </td>
-                    </tr>
-                  <?php endforeach; ?>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </details>
-        </li>
-      </ul>
-    <?php endif; ?>
-  <?php endif; ?>
-</div>
 <?php else: ?>
+<?php
+// ---------- Tampilan Daftar ----------
+?>
 <div class="card">
   <?php if (empty($rows)): ?>
     <div class="empty">
       <?= Ui::icon('users', 28) ?>
-      <span><?= ($keyword !== '' || $gender || $filter || $serving)
+      <span><?= ($keyword !== '' || $gender || $filter || $serving || $level)
         ? 'Tidak ada pengurus yang cocok dengan penyaringan ini.' : 'Belum ada data pengurus di lingkup Anda.' ?></span>
-      <?php if ($keyword !== '' || $gender || $filter || $serving): ?>
-        <a class="btn small secondary" href="<?= BASEURL ?>/people">Hapus penyaringan</a>
+      <?php if ($keyword !== '' || $gender || $filter || $serving || $level): ?>
+        <a class="btn small secondary" href="<?= e($qs(['q' => '', 'gender' => '', 'filter' => '', 'menjabat' => '', 'lv' => '', 'page' => ''])) ?>">Hapus penyaringan</a>
       <?php endif; ?>
     </div>
   <?php else: ?>
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>Nama</th><th>Jabatan Terkini</th><th>Nomor WA</th><th>NIK</th><th>Status</th><th></th></tr>
+          <tr><th>Nama</th><th>Jabatan Terkini</th><th>Kontak</th><th>Kelengkapan</th><th>Status</th><th></th></tr>
         </thead>
         <tbody>
-        <?php foreach ($rows as $r): ?>
+        <?php foreach ($rows as $r):
+          // Struktur tersimpan sebagai "DPD Kab. Pinrang"; jenjangnya (kata pertama) dijadikan label tersendiri.
+          [$rowLevel, $rowStructure] = array_pad(explode(' ', (string) $r['structure_label'], 2), 2, '');
+          $missing = [];
+          if ((string) ($r['phone'] ?? '') === '') $missing[] = 'WA';
+          if ((string) ($r['gender'] ?? '') === '') $missing[] = 'jenis kelamin';
+        ?>
           <tr>
             <td>
               <a href="<?= BASEURL ?>/people/detail/<?= (int) $r['id'] ?>"><?= Ui::nameHtml($r) ?></a>
@@ -178,13 +287,19 @@ $rc = function ($label, $count, $icon, $active, $href, $tone = '') {
             <td class="small">
               <?php if ($r['position_name']): ?>
                 <strong><?= e($r['position_name']) ?></strong>
-                <div class="muted"><?= e($r['structure_label']) ?><?php $otherPlacementCount = max(0, (int) ($r['current_placement_count'] ?? 0) - 1); ?><?php if ($otherPlacementCount > 0): ?> · <button type="button" class="placement-more" data-placement-recap-url="<?= BASEURL ?>/people/other_placements/<?= (int) $r['id'] ?>?featured=<?= (int) ($r['current_placement_id'] ?? 0) ?>" data-person-name="<?= e(Ui::fullName($r)) ?>">+<?= $otherPlacementCount ?> lainnya</button><?php endif; ?></div>
+                <div class="muted"><span class="badge lv"><?= e($rowLevel) ?></span> <?= e(PeopleOverview::shortName($rowStructure)) ?><?php $otherPlacementCount = max(0, (int) ($r['current_placement_count'] ?? 0) - 1); ?><?php if ($otherPlacementCount > 0): ?> · <button type="button" class="placement-more" data-placement-recap-url="<?= BASEURL ?>/people/other_placements/<?= (int) $r['id'] ?>?featured=<?= (int) ($r['current_placement_id'] ?? 0) ?>" data-person-name="<?= e(Ui::fullName($r)) ?>">+<?= $otherPlacementCount ?> lainnya</button><?php endif; ?></div>
               <?php else: ?>
                 <span class="muted">Belum ditempatkan</span>
               <?php endif; ?>
             </td>
-            <td class="mono"><?= e($r['phone'] ?: '—') ?></td>
-            <td class="mono"><?= e($r['nik'] ?: '—') ?></td>
+            <td class="small nowrap">
+              <div class="mono"><?= e($r['phone'] ?: '—') ?></div>
+              <div class="mono muted">NIK <?= e($r['nik'] ?: '—') ?></div>
+            </td>
+            <td>
+              <?php if ($missing): ?><span class="badge warn">Kurang: <?= e(implode(', ', $missing)) ?></span>
+              <?php else: ?><span class="badge ok">Lengkap</span><?php endif; ?>
+            </td>
             <td>
               <?php if ($r['status'] === 'deceased'): ?><span class="badge ended">Wafat</span>
               <?php elseif ($r['status'] === 'inactive'): ?><span class="badge ended">Nonaktif</span>
@@ -193,16 +308,18 @@ $rc = function ($label, $count, $icon, $active, $href, $tone = '') {
             </td>
             <td class="nowrap">
               <?php if (Auth::canEdit()): ?>
-                <a class="btn small secondary" href="<?= BASEURL ?>/people/form/<?= (int) $r['id'] ?>"><?= Ui::icon('edit', 14) ?> Ubah</a>
-                <form class="inline" method="post" action="<?= BASEURL ?>/people/delete"
-                      onsubmit="return confirm(this.dataset.confirm)"
-                      data-confirm="Hapus <?= e($r['full_name']) ?> beserta <?= (int) $r['placement_count'] ?> penempatan dalam lingkup Anda? Semua riwayat akan disembunyikan dan dapat dipulihkan dari Data Terhapus. Penghapusan ditolak bila orang ini juga menjabat di luar lingkup Anda.">
-                  <?= Csrf::field() ?>
-                  <input type="hidden" name="id" value="<?= (int) $r['id'] ?>">
-                  <input type="hidden" name="with_placements" value="1">
-                  <input type="hidden" name="back" value="<?= e($backQuery) ?>">
-                  <button type="submit" class="btn small danger" title="Hapus pengurus"><?= Ui::icon('trash', 14) ?> Hapus</button>
-                </form>
+                <span class="row-actions">
+                  <a class="row-btn" href="<?= BASEURL ?>/people/form/<?= (int) $r['id'] ?>" title="Ubah" aria-label="Ubah <?= e(Ui::fullName($r)) ?>"><?= Ui::icon('edit', 15) ?></a>
+                  <form class="inline" method="post" action="<?= BASEURL ?>/people/delete"
+                        onsubmit="return confirm(this.dataset.confirm)"
+                        data-confirm="Hapus <?= e($r['full_name']) ?> beserta <?= (int) $r['placement_count'] ?> penempatan dalam lingkup Anda? Semua riwayat akan disembunyikan dan dapat dipulihkan dari Data Terhapus. Penghapusan ditolak bila orang ini juga menjabat di luar lingkup Anda.">
+                    <?= Csrf::field() ?>
+                    <input type="hidden" name="id" value="<?= (int) $r['id'] ?>">
+                    <input type="hidden" name="with_placements" value="1">
+                    <input type="hidden" name="back" value="<?= e($backQuery) ?>">
+                    <button type="submit" class="row-btn danger" title="Hapus pengurus" aria-label="Hapus <?= e(Ui::fullName($r)) ?>"><?= Ui::icon('trash', 15) ?></button>
+                  </form>
+                </span>
               <?php endif; ?>
             </td>
           </tr>
@@ -210,6 +327,8 @@ $rc = function ($label, $count, $icon, $active, $href, $tone = '') {
         </tbody>
       </table>
     </div>
+
+    <p class="mon-count">Menampilkan <?= Ui::n(($page - 1) * $perPage + 1) ?>&ndash;<?= Ui::n(min($total, $page * $perPage)) ?> dari <b><?= Ui::n($total) ?></b> orang</p>
 
     <?php if ($pages > 1): ?>
       <nav class="pager" aria-label="Halaman">

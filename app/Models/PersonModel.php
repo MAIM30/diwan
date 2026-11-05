@@ -10,6 +10,8 @@
 // Butir (b) ada karena orang yang baru dibuat belum punya penempatan: tanpanya ia tak terlihat oleh
 // admin yang baru saja membuatnya, dan tidak bisa dipilih saat menambahkan penempatan pertamanya.
 
+require_once ROOT_DIR . '/app/Models/PositionModel.php'; // PositionModel::INTI_*: kode jabatan penanda "inti lengkap"
+
 class PersonModel {
     // Filter cepat di daftar pengurus. Semuanya soal kelengkapan data -- itulah pekerjaan admin.
     const LIST_FILTERS = [
@@ -112,41 +114,150 @@ class PersonModel {
 
     // ---------- Daftar ----------
 
-    public function recapCounts() {
-        $scope = self::scopeSql('p');
+    // Rekap untuk kartu di atas daftar: orang yang cocok dengan pencarian ($keyword) dan jenjang ($level) yang dipilih. Penyaring milik
+    // kartu itu sendiri (jenis kelamin, kelengkapan, rangkap, ...) sengaja TIDAK ikut: kartu-kartu itu memecah himpunan ini, jadi kalau
+    // ikut menyaring, memilih "Perempuan" akan menolkan kartu "Laki-laki". Tanpa pencarian dan jenjang, angkanya seluruh lingkup admin.
+    // Selalu saling cocok: menjabat + tidak_menjabat = total, rangkap + tunggal = menjabat, lengkap + belum_lengkap = total.
+    public function recapCounts($keyword = '', $level = '') {
+        $params = [];
+        $where = $this->listWhere($keyword, ['level' => $level], $params);
         $inScope = AdminScope::sqlFilter('plr.structure_id');
 
-        $gender = $this->db->query("
-            SELECT p.gender, COUNT(*) AS cnt FROM people p
-            WHERE p.deleted_at IS NULL AND $scope GROUP BY p.gender
-        ")->fetchAll(PDO::FETCH_KEY_PAIR);
-
-        $row = $this->db->query("
-            SELECT SUM(" . self::COMPLETE_SQL . ") AS lengkap,
-                   SUM(NOT " . self::COMPLETE_SQL . ") AS belum_lengkap
-            FROM people p WHERE p.deleted_at IS NULL AND $scope
-        ")->fetch();
-
-        $dup = $this->db->query("
-            SELECT SUM(sc > 1) AS rangkap, SUM(sc <= 1) AS tidak_rangkap
-            FROM (
-                SELECT plr.person_id, COUNT(DISTINCT plr.structure_id) AS sc
+        $stmt = $this->db->prepare("
+            SELECT COUNT(*) AS total,
+                   COALESCE(SUM(p.gender = 'L'), 0) AS l, COALESCE(SUM(p.gender = 'P'), 0) AS pr,
+                   COALESCE(SUM(" . self::COMPLETE_SQL . "), 0) AS lengkap,
+                   COALESCE(SUM(sc.n >= 1), 0) AS menjabat, COALESCE(SUM(sc.n > 1), 0) AS rangkap
+            FROM people p
+            LEFT JOIN (
+                SELECT plr.person_id, COUNT(DISTINCT plr.structure_id) AS n
                 FROM placements plr
                 JOIN terms tr ON tr.id = plr.term_id AND tr.is_current = 1 AND tr.deleted_at IS NULL
-                JOIN people p ON p.id = plr.person_id AND p.deleted_at IS NULL AND $scope
                 WHERE plr.deleted_at IS NULL AND (plr.end_date IS NULL OR plr.end_date >= CURDATE()) AND $inScope
                 GROUP BY plr.person_id
-            ) sub
-        ")->fetch();
+            ) sc ON sc.person_id = p.id
+            WHERE " . implode(' AND ', $where));
+        $stmt->execute($params);
+        $r = $stmt->fetch();
 
+        $total = (int) $r['total'];
+        $menjabat = (int) $r['menjabat'];
+        $lengkap = (int) $r['lengkap'];
         return [
-            'L' => (int) ($gender['L'] ?? 0),
-            'P' => (int) ($gender['P'] ?? 0),
-            'lengkap' => (int) ($row['lengkap'] ?? 0),
-            'belum_lengkap' => (int) ($row['belum_lengkap'] ?? 0),
-            'rangkap' => (int) ($dup['rangkap'] ?? 0),
-            'tidak_rangkap' => (int) ($dup['tidak_rangkap'] ?? 0),
+            'total' => $total,
+            'L' => (int) $r['l'],
+            'P' => (int) $r['pr'],
+            'lengkap' => $lengkap,
+            'belum_lengkap' => $total - $lengkap,
+            'menjabat' => $menjabat,
+            'tidak_menjabat' => $total - $menjabat,
+            'rangkap' => (int) $r['rangkap'],
+            'tunggal' => $menjabat - (int) $r['rangkap'],
         ];
+    }
+
+    // Jumlah orang per jenjang (level struktur) tempat ia menjabat: periode berjalan, belum berakhir, dalam lingkup admin.
+    // Satu orang yang menjabat di dua jenjang dihitung di keduanya, jadi jumlahnya tak harus sama dengan total orang.
+    public function levelCounts() {
+        return array_map('intval', $this->db->query("
+            SELECT s.level, COUNT(DISTINCT pl.person_id)
+            FROM placements pl
+            JOIN terms tr ON tr.id = pl.term_id AND tr.is_current = 1 AND tr.deleted_at IS NULL
+            JOIN structures s ON s.id = pl.structure_id AND s.deleted_at IS NULL
+            JOIN people p ON p.id = pl.person_id AND p.deleted_at IS NULL AND " . self::scopeSql('p') . "
+            WHERE pl.deleted_at IS NULL AND (pl.end_date IS NULL OR pl.end_date >= CURDATE())
+              AND " . AdminScope::sqlFilter('pl.structure_id') . "
+            GROUP BY s.level
+        ")->fetchAll(PDO::FETCH_KEY_PAIR));
+    }
+
+    // Bahan tampilan "Per Struktur": angka per struktur, per jenjang, dan per induk, semuanya dari penempatan yang berlaku (periode
+    // berjalan, belum berakhir, dalam lingkup admin) milik orang yang cocok dengan pencarian dan penyaring yang sama dengan daftar.
+    // Baris penempatannya dibaca SEKALI (sekitar 4.500) lalu dikelompokkan di sini; tiga query COUNT(DISTINCT) terpisah untuk struktur,
+    // jenjang, dan induk terukur tiga kali lebih lambat. Orang dihitung sekali per kelompok walau rangkap di dalamnya. Hasil:
+    //   structures: id, term_id, level, name, parent_id / parent_level / parent_name (induk yang sendiri bukan akar dan masih dalam
+    //               lingkup, selain itu null), orang, lengkap, l, p; terurut nama
+    //   levels:     level => orang, lengkap, l, p
+    //   parents:    parent_id => orang, lengkap, l, p   (gabungan orang di struktur-struktur anaknya saja)
+    public function overviewByStructure($keyword = '', array $filters = []) {
+        $params = [];
+        $where = $this->listWhere($keyword, $filters, $params);
+        $cond = "WHERE pl.deleted_at IS NULL AND (pl.end_date IS NULL OR pl.end_date >= CURDATE())
+                   AND " . AdminScope::sqlFilter('pl.structure_id') . " AND " . implode(' AND ', $where);
+        // Jenjang terpilih membatasi ORANGNYA (listWhere), bukan tempatnya: orang DPW juga menjabat di DPP, DPD, dst. Pohon hanya boleh
+        // memuat jenjang yang dipilih, jadi penempatannya dibatasi juga (nilai sudah melalui quote, bukan placeholder: :f_level sudah terpakai).
+        if (!empty($filters['level'])) $cond .= " AND s.level = " . $this->db->quote($filters['level']);
+        // Induk hanya dipakai bila ia sendiri bukan akar (DPP/MWP tak dijadikan kelompok) dan masih di dalam lingkup admin:
+        // admin DPD tidak boleh melihat nama DPW di atasnya.
+        $parentOn = "sp.id = s.parent_id AND sp.deleted_at IS NULL AND sp.depth >= 1 AND " . AdminScope::sqlFilter('sp.id');
+
+        $stmt = $this->db->prepare("
+            SELECT pl.person_id, s.id AS structure_id, s.level, s.name, tr.id AS term_id,
+                   sp.id AS parent_id, sp.level AS parent_level, sp.name AS parent_name,
+                   p.gender, " . self::COMPLETE_SQL . " AS complete
+            FROM placements pl
+            JOIN terms tr ON tr.id = pl.term_id AND tr.is_current = 1 AND tr.deleted_at IS NULL
+            JOIN structures s ON s.id = pl.structure_id AND s.deleted_at IS NULL
+            JOIN people p ON p.id = pl.person_id
+            LEFT JOIN structures sp ON $parentOn
+            $cond
+            ORDER BY s.name, s.id
+        ");
+        $stmt->execute($params);
+
+        // Himpunan orang per kelompok (id orang => [jenis kelamin, data lengkap]); angkanya dibaca dari himpunan itu.
+        $count = function (array $people) {
+            $n = ['orang' => count($people), 'lengkap' => 0, 'l' => 0, 'p' => 0];
+            foreach ($people as [$gender, $complete]) {
+                if ($complete) $n['lengkap']++;
+                if ($gender === 'L') $n['l']++; elseif ($gender === 'P') $n['p']++;
+            }
+            return $n;
+        };
+
+        $structures = []; $byStructure = []; $byLevel = []; $byParent = [];
+        while ($r = $stmt->fetch()) {
+            $pid = (int) $r['person_id'];
+            $sid = (int) $r['structure_id'];
+            $who = [(string) $r['gender'], (bool) $r['complete']];
+            if (!isset($structures[$sid])) {
+                $structures[$sid] = ['id' => $sid, 'term_id' => (int) $r['term_id'], 'level' => $r['level'], 'name' => $r['name'],
+                                     'parent_id' => $r['parent_id'] !== null ? (int) $r['parent_id'] : null,
+                                     'parent_level' => $r['parent_level'], 'parent_name' => $r['parent_name']];
+            }
+            $byStructure[$sid][$pid] = $who;
+            $byLevel[$r['level']][$pid] = $who;
+            if ($r['parent_id'] !== null) $byParent[(int) $r['parent_id']][$pid] = $who;
+        }
+        foreach ($structures as $sid => &$s) $s += $count($byStructure[$sid]);
+        unset($s);
+
+        return ['structures' => array_values($structures), 'levels' => array_map($count, $byLevel), 'parents' => array_map($count, $byParent)];
+    }
+
+    // Apakah Ketua, Sekretaris, dan Bendahara sebuah struktur terisi (penempatan tingkat struktur, periode berjalan, belum berakhir).
+    // Sengaja TIDAK memakai penyaring daftar: kelengkapan inti adalah sifat strukturnya, bukan hasil pencarian. $structureId = satu
+    // struktur saja; null = semua struktur dalam lingkup. Hasil: structure_id => ['k' => bool, 's' => bool, 'b' => bool];
+    // struktur tanpa penempatan inti sama sekali tidak ada di hasil (anggap ketiganya kosong).
+    public function intiFlags($structureId = null) {
+        $in = function (array $codes) { return implode(',', array_map([$this->db, 'quote'], $codes)); };
+        $rows = $this->db->query("
+            SELECT pl.structure_id,
+                   MAX(po.code IN (" . $in(PositionModel::INTI_KETUA) . ")) AS k,
+                   MAX(po.code IN (" . $in(PositionModel::INTI_SEKRETARIS) . ")) AS s,
+                   MAX(po.code IN (" . $in(PositionModel::INTI_BENDAHARA) . ")) AS b
+            FROM placements pl
+            JOIN terms tr ON tr.id = pl.term_id AND tr.is_current = 1 AND tr.deleted_at IS NULL
+            JOIN positions po ON po.id = pl.position_id
+            JOIN people p ON p.id = pl.person_id AND p.deleted_at IS NULL
+            WHERE pl.deleted_at IS NULL AND (pl.end_date IS NULL OR pl.end_date >= CURDATE()) AND pl.structure_unit_id IS NULL
+              AND " . AdminScope::sqlFilter('pl.structure_id') . ($structureId !== null ? ' AND pl.structure_id = ' . (int) $structureId : '') . "
+            GROUP BY pl.structure_id
+        ")->fetchAll();
+
+        $out = [];
+        foreach ($rows as $r) $out[(int) $r['structure_id']] = ['k' => (bool) $r['k'], 's' => (bool) $r['s'], 'b' => (bool) $r['b']];
+        return $out;
     }
 
     // Klausa WHERE + parameter untuk daftar/hitung. Dipakai bersama supaya jumlah dan isi halaman
@@ -187,15 +298,26 @@ class PersonModel {
 
         // "Sedang menjabat" memakai definisi yang SAMA dengan dasbor (DashboardModel::CURRENT): periode
         // berjalan, belum berakhir, di dalam lingkup. Tautan dari dasbor menghitung himpunan yang sama.
-        if (!empty($filters['serving'])) {
-            $where[] = "EXISTS (SELECT 1 FROM placements pls JOIN terms ts ON ts.id = pls.term_id
-                                 WHERE pls.person_id = p.id AND pls.deleted_at IS NULL AND ts.deleted_at IS NULL
-                                   AND ts.is_current = 1 AND (pls.end_date IS NULL OR pls.end_date >= CURDATE())
-                                   AND " . AdminScope::sqlFilter('pls.structure_id') . ")";
+        $serving = "EXISTS (SELECT 1 FROM placements pls JOIN terms ts ON ts.id = pls.term_id
+                             WHERE pls.person_id = p.id AND pls.deleted_at IS NULL AND ts.deleted_at IS NULL
+                               AND ts.is_current = 1 AND (pls.end_date IS NULL OR pls.end_date >= CURDATE())
+                               AND " . AdminScope::sqlFilter('pls.structure_id') . ")";
+        if (!empty($filters['serving'])) $where[] = $serving;
+
+        // Jenjang: orang yang sedang menjabat (definisi yang sama) di struktur berjenjang itu, mis. 'DPW'.
+        if (!empty($filters['level'])) {
+            $where[] = "EXISTS (SELECT 1 FROM placements pll
+                                 JOIN terms tl ON tl.id = pll.term_id AND tl.is_current = 1 AND tl.deleted_at IS NULL
+                                 JOIN structures sl ON sl.id = pll.structure_id AND sl.deleted_at IS NULL
+                                 WHERE pll.person_id = p.id AND pll.deleted_at IS NULL
+                                   AND (pll.end_date IS NULL OR pll.end_date >= CURDATE()) AND sl.level = :f_level
+                                   AND " . AdminScope::sqlFilter('pll.structure_id') . ")";
+            $params[':f_level'] = $filters['level'];
         }
 
         $inScope = AdminScope::sqlFilter('plf.structure_id');
         switch ($filters['filter'] ?? '') {
+            case 'tidak_menjabat': $where[] = "NOT $serving"; break;
             case 'tanpa_hp':  $where[] = "(p.phone IS NULL OR p.phone = '')"; break;
             case 'tanpa_nik': $where[] = "p.nik IS NULL"; break;
             case 'nonaktif':  $where[] = "p.status <> 'active'"; break;
@@ -288,8 +410,8 @@ class PersonModel {
         return (int) $stmt->fetchColumn();
     }
 
-    // Id semua orang yang cocok dengan pencarian/penyaringan yang sama dengan daftar (tanpa halaman). Dipakai tampilan "per Bidang",
-    // yang menyaring penempatan menurut himpunan ini supaya cocok persis dengan daftar A-Z.
+    // Id semua orang yang cocok dengan pencarian/penyaringan yang sama dengan daftar (tanpa halaman). Dipakai isi tiap struktur di
+    // tampilan "Per Struktur", yang menyaring penempatan menurut himpunan ini supaya cocok persis dengan daftar A-Z.
     public function idsInScope($keyword = '', array $filters = []) {
         $params = [];
         $where = $this->listWhere($keyword, $filters, $params);
@@ -298,7 +420,6 @@ class PersonModel {
         return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
     }
 
-    // Baris orang menurut id (terurut nama), untuk orang yang tak punya penempatan berjalan di tampilan "per Bidang".
     public function byIds(array $ids) {
         $ids = array_values(array_unique(array_map('intval', $ids)));
         if (!$ids) return [];

@@ -1,9 +1,15 @@
 <?php
 // PATH LOKASI FILE: app/Views/admin/_susunan.php
-// Daftar bertingkat yang membuka isinya saat diketuk, dipakai halaman detail periode dan daftar pengurus "per Bidang".
-// Variabel: $tree (simpul dari Susunan::arrange / Susunan::wrap), $treeId (id elemen, sasaran tombol Buka semua / Tutup semua).
+// Daftar bertingkat yang membuka isinya saat diketuk, dipakai halaman detail periode dan isi tiap struktur di Data Pengurus > Per Struktur.
+// Variabel: $tree (simpul dari Susunan::arrange), $treeId (id elemen, sasaran tombol Buka semua / Tutup semua).
+// Opsional: $metrics (true = tiap simpul menampilkan kolom Orang / Inti / Data lengkap / L·P yang sejajar dengan baris Per Struktur,
+// bukan keterangan teks), $intiFlags (K/S/B terisi, ditampilkan pada simpul Pengurus Inti saat $metrics), $toolbar (false = tanpa tombol
+// Buka semua / Tutup semua).
 // Tautan Ubah memakai term_id milik barisnya sendiri, jadi satu daftar boleh memuat penempatan dari beberapa periode.
 $canEdit = Auth::canEdit();
+$metrics = !empty($metrics);
+$toolbar = !isset($toolbar) || $toolbar;
+$intiFlags = $intiFlags ?? null;
 
 $roster = function (array $n) use ($canEdit) {
     ?>
@@ -62,21 +68,31 @@ $roster = function (array $n) use ($canEdit) {
     <?php
 };
 
-$node = function (array $n) use (&$node, $roster) {
+$node = function (array $n, $depth = 0) use (&$node, $roster, $metrics, $intiFlags) {
     $meta = [];
     if ($n['children'] && $n['noun']) $meta[] = count($n['children']) . ' ' . $n['noun'];
     $meta[] = $n['count'] > 0 ? $n['count'] . ' orang' : ($n['rows'] !== null && !$n['rows'] ? 'belum ada pengurus' : '0 orang');
     ?>
     <li class="sn">
       <details<?= $n['open'] ? ' open' : '' ?>>
-        <summary>
+        <summary<?= $metrics ? ' class="mon-row" style="--d:' . (int) $depth . '"' : '' ?>>
+          <?php if ($metrics): ?><span class="mon-t"><?php endif; ?>
           <?= Ui::icon('chevron-right', 16, 'caret') ?>
           <span class="sn-main">
             <span class="sn-name"><?= e($n['title']) ?></span>
             <?php if ($n['badge']): ?><span class="badge"><?= e($n['badge']) ?></span><?php endif; ?>
             <?php if ($n['lead']): ?><span class="small muted"> &middot; <?= e($n['lead']) ?></span><?php endif; ?>
+            <?php if ($metrics && $n['children'] && $n['noun']): ?><span class="small muted"><?= count($n['children']) . ' ' . e($n['noun']) ?></span><?php endif; ?>
           </span>
-          <span class="sn-n"><?= e(implode(' · ', $meta)) ?></span>
+          <?php if ($metrics): ?></span><?php endif; ?>
+          <?php if ($metrics): ?>
+            <span class="mon-n"><?= Ui::n($n['m']['orang']) ?></span>
+            <span class="mon-i"><?= ($n['kind'] ?? null) === 'inti' && $intiFlags ? Ui::ksb($intiFlags) : '<span class="muted">&mdash;</span>' ?></span>
+            <span class="mon-b"><?= Ui::meter($n['m']['lengkap'], $n['m']['orang']) ?></span>
+            <span class="mon-lp"><?= Ui::n($n['m']['l']) ?> &middot; <?= Ui::n($n['m']['p']) ?></span>
+          <?php else: ?>
+            <span class="sn-n"><?= e(implode(' · ', $meta)) ?></span>
+          <?php endif; ?>
         </summary>
 
         <?php if ($n['rows'] !== null): ?>
@@ -89,7 +105,7 @@ $node = function (array $n) use (&$node, $roster) {
 
         <?php if ($n['children']): ?>
           <ul>
-            <?php foreach ($n['children'] as $c) $node($c); ?>
+            <?php foreach ($n['children'] as $c) $node($c, $depth + 1); ?>
           </ul>
         <?php elseif ($n['rows'] === null): ?>
           <div class="sn-body"><p class="muted small" style="margin:0"><?= e($n['empty']) ?></p></div>
@@ -99,10 +115,12 @@ $node = function (array $n) use (&$node, $roster) {
     <?php
 };
 ?>
+<?php if ($toolbar): ?>
 <div class="btn-row" style="margin:0 0 8px">
   <button type="button" class="btn small secondary" data-tree="<?= e($treeId) ?>" data-tree-all="open">Buka semua</button>
   <button type="button" class="btn small secondary" data-tree="<?= e($treeId) ?>" data-tree-all="close">Tutup semua</button>
 </div>
-<ul class="stree" id="<?= e($treeId) ?>">
+<?php endif; ?>
+<ul class="stree<?= $metrics ? ' mon' : '' ?>" id="<?= e($treeId) ?>">
   <?php foreach ($tree as $n) $node($n); ?>
 </ul>

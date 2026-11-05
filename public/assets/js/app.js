@@ -532,6 +532,39 @@
     $$('details:not(.sn-edit)', tree).forEach(function (d) { d.open = open; });
   });
 
+  /* ---------- Data Pengurus > Per Struktur: isi sebuah struktur dimuat saat barisnya dibuka ---------- */
+  function loadRoster(d) {
+    var box = d && d.querySelector(':scope > .mon-roster');
+    if (!box || d.getAttribute('data-roster-state')) return;
+    d.setAttribute('data-roster-state', 'loading');
+    box.innerHTML = '<p class="mon-empty">Memuat susunan…</p>';
+    fetch(d.getAttribute('data-roster-url'), { credentials: 'same-origin', headers: { 'X-Requested-With': 'fetch' } })
+      .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.text(); })
+      .then(function (html) { box.innerHTML = html; d.setAttribute('data-roster-state', 'done'); })
+      .catch(function () {
+        box.innerHTML = '<p class="mon-empty">Susunan gagal dimuat. <button type="button" class="mon-retry" data-roster-retry>Coba lagi</button></p>';
+        d.removeAttribute('data-roster-state');
+      });
+  }
+  // Peristiwa 'toggle' tidak menggelembung, jadi didengarkan di fase tangkap.
+  document.addEventListener('toggle', function (e) {
+    var d = e.target;
+    if (d.matches && d.matches('details[data-roster-url]') && d.open) loadRoster(d);
+  }, true);
+  // Baris yang sudah terbuka sejak halaman dimuat (mis. DPP) tidak memicu 'toggle'.
+  $$('details[data-roster-url][open]').forEach(loadRoster);
+  document.addEventListener('click', function (e) {
+    var retry = e.target.closest ? e.target.closest('[data-roster-retry]') : null;
+    if (retry) { loadRoster(retry.closest('details[data-roster-url]')); return; }
+    var b = e.target.closest ? e.target.closest('[data-mon-all]') : null;
+    var tree = b ? document.getElementById(b.getAttribute('data-mon-tree')) : null;
+    if (!tree) return;
+    var open = b.getAttribute('data-mon-all') === 'open';
+    // Dibuka: hanya jenjang dan kelompok induk. Baris struktur memuat isinya lewat jaringan dan dibuka satu per satu; kalau ikut
+    // dibuka semua, satu ketukan memicu ratusan permintaan. Ditutup: semuanya.
+    $$(open ? 'details.mon-g' : 'details', tree).forEach(function (d) { d.open = open; });
+  });
+
   /* ---------- Tooltip grafik ---------- */
   var tip = $('#tip');
   var tipTitle = tip && $('.tl', tip), tipVal = tip && $('.tv', tip), tipKey = tip && $('.key', tip);

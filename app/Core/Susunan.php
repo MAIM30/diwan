@@ -17,7 +17,8 @@ class Susunan {
 
     // $rows: PlacementModel::byTerm; $groups: UnitModel::groupsByTerm; $units: UnitModel::unitsByTerm.
     // Hasil: daftar simpul tingkat atas. Simpul: title, badge (jenis unit atau null), rows (penempatan, null bila hanya
-    // memuat anak), children, noun (sebutan anak, mis. "unit"), open, phone (tampilkan kolom kontak), empty, count (orang aktif).
+    // memuat anak), children, noun (sebutan anak, mis. "unit"), open, phone (tampilkan kolom kontak), empty, count (orang aktif),
+    // kind ('inti' untuk simpul Pengurus Inti, selain itu null), m (orang / lengkap / l / p yang masih berlaku di simpul beserta turunannya).
     public static function arrange(array $rows, array $groups, array $units) {
         $unitById = [];
         foreach ($units as $u) $unitById[(int) $u['id']] = $u;
@@ -69,7 +70,7 @@ class Susunan {
             else $lainGrup[] = $n;
         }
 
-        $out = [self::node('Pengurus Inti', ['rows' => $inti, 'open' => true, 'phone' => true, 'empty' => 'Belum ada pengurus inti.'])];
+        $out = [self::node('Pengurus Inti', ['rows' => $inti, 'open' => true, 'phone' => true, 'kind' => 'inti', 'empty' => 'Belum ada pengurus inti.'])];
         if ($lain) $out[] = self::node('Pimpinan Lainnya', ['rows' => $lain]);
         if ($bidang) $out[] = self::node('Bidang', ['children' => $bidang, 'noun' => 'bidang']);
         if ($subbidang) $out[] = self::node('Subbidang', ['children' => $subbidang, 'noun' => 'subbidang']);
@@ -100,6 +101,7 @@ class Susunan {
     }
 
     // Membuang simpul yang tak berisi penempatan sama sekali. Untuk hasil penyaringan: Bidang dan unit kosong hanya mengganggu di situ.
+    // Hanya membuang; 'count' dan 'm' dihitung dari isi simpul (tally), jadi tetap benar sesudah dibuang.
     public static function prune(array $nodes) {
         $out = [];
         foreach ($nodes as $n) {
@@ -127,17 +129,39 @@ class Susunan {
 
     private static function node($title, array $o = []) {
         return $o + ['title' => $title, 'badge' => null, 'lead' => null, 'rows' => null, 'children' => [], 'noun' => null,
-                     'open' => false, 'phone' => false, 'empty' => 'Belum ada pengurus.', 'count' => 0];
+                     'open' => false, 'phone' => false, 'empty' => 'Belum ada pengurus.', 'count' => 0, 'kind' => null,
+                     'm' => ['orang' => 0, 'lengkap' => 0, 'l' => 0, 'p' => 0]];
     }
 
-    // Mengisi 'count' = jumlah ORANG yang masih menjabat (penempatan belum berakhir) di simpul beserta turunannya;
-    // satu orang dengan dua jabatan di dalamnya dihitung sekali. Mengembalikan himpunan id orang untuk induknya.
+    // Mengisi dua ringkasan simpul beserta turunannya; satu orang dengan dua jabatan di dalamnya dihitung sekali.
+    //   'count' = jumlah ORANG yang masih menjabat (penempatan belum punya tanggal akhir).
+    //   'm'     = orang yang penempatannya masih berlaku hari ini (tanpa tanggal akhir, atau berakhir hari ini ke depan), berapa yang
+    //             datanya lengkap (definisi PersonModel::COMPLETE_SQL: WA dan jenis kelamin terisi), dan berapa L / P.
+    // Mengembalikan [himpunan id 'count', id orang => [gender, lengkap]] untuk simpul induknya.
     private static function tally(array &$node) {
-        $ids = [];
-        foreach ($node['rows'] ?? [] as $r) if (empty($r['end_date'])) $ids[(int) $r['person_id']] = true;
-        foreach ($node['children'] as &$c) $ids += self::tally($c);
+        $ids = []; $people = [];
+        $today = date('Y-m-d');
+        foreach ($node['rows'] ?? [] as $r) {
+            $pid = (int) $r['person_id'];
+            if (empty($r['end_date'])) $ids[$pid] = true;
+            if (empty($r['end_date']) || $r['end_date'] >= $today) {
+                $gender = (string) ($r['gender'] ?? '');
+                $people[$pid] = [$gender, (string) ($r['phone'] ?? '') !== '' && $gender !== ''];
+            }
+        }
+        foreach ($node['children'] as &$c) {
+            [$cIds, $cPeople] = self::tally($c);
+            $ids += $cIds;
+            $people += $cPeople;
+        }
         unset($c);
         $node['count'] = count($ids);
-        return $ids;
+        $node['m'] = [
+            'orang'   => count($people),
+            'lengkap' => count(array_filter($people, function ($x) { return $x[1]; })),
+            'l'       => count(array_filter($people, function ($x) { return $x[0] === 'L'; })),
+            'p'       => count(array_filter($people, function ($x) { return $x[0] === 'P'; })),
+        ];
+        return [$ids, $people];
     }
 }

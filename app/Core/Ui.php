@@ -190,6 +190,32 @@ class Ui {
         return number_format((float) $x, 0, ',', '.');
     }
 
+    // "81,5%" dari $part terhadap $whole; "—" bila $whole nol.
+    public static function pct($part, $whole) {
+        return $whole > 0 ? number_format($part / $whole * 100, 1, ',', '.') . '%' : '—';
+    }
+
+    // Bilah kelengkapan beserta persennya. Warna menurut ambang: hijau mulai 90%, kuning mulai 75%, di bawahnya merah.
+    // Tanpa data ($whole nol): garis strip.
+    public static function meter($part, $whole) {
+        if ($whole <= 0) return '<span class="muted">&mdash;</span>';
+        $v = $part / $whole * 100;
+        $tone = $v >= 90 ? 'ok' : ($v >= 75 ? 'warn' : 'bad');
+        return '<span class="mon-meter ' . $tone . '" role="img" aria-label="' . e(self::pct($part, $whole)) . ' data lengkap"><i style="width:' . min(100, round($v, 1)) . '%"></i></span>'
+             . '<span class="mon-pct">' . e(self::pct($part, $whole)) . '</span>';
+    }
+
+    // Tiga kotak K / S / B: Ketua, Sekretaris, Bendahara terisi (hijau) atau belum ada pengurusnya (merah putus-putus).
+    // $flags = ['k' => bool, 's' => bool, 'b' => bool] (PersonModel::intiFlags).
+    public static function ksb(array $flags) {
+        $out = '';
+        foreach (['k' => ['K', 'Ketua'], 's' => ['S', 'Sekretaris'], 'b' => ['B', 'Bendahara']] as $key => [$letter, $name]) {
+            $ok = !empty($flags[$key]);
+            $out .= '<b class="' . ($ok ? 'y' : 'n') . '" title="' . $name . ($ok ? ' terisi' : ' belum ada pengurusnya') . '">' . $letter . '</b>';
+        }
+        return '<span class="mon-ksb">' . $out . '</span>';
+    }
+
     // Durasi singkat dari jumlah hari: "2 th 4 bln", "9 bln", "12 hr". Bulan dihitung 30 hari --
     // cukup untuk sisa masa jabatan, bukan untuk akuntansi tanggal.
     public static function span($days) {

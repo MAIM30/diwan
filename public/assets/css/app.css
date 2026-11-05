@@ -1124,3 +1124,139 @@ a.hbar-row:hover, .hbar-row:hover, .hbar-row:focus { background: var(--primer-pu
 .autocomplete-item:last-child { border-bottom: 0; }
 .autocomplete-item:hover, .autocomplete-item.is-active { background: var(--primer-pucat); }
 .field:has(.autocomplete-list) { position: relative; }
+
+/* =========================================================================================
+   DATA PENGURUS: jenjang, rekap berkelompok, tampilan Per Struktur
+   ========================================================================================= */
+
+/* ---- Baris jenjang + keterangan konteks rekap ---- */
+.mon-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 6px; }
+.mon-strip-l { font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.mon-sep { width: 1px; height: 20px; background: var(--border); }
+.mon-strip .chip { padding: 5px 11px; font-size: 12.5px; }
+.mon-note { margin: 0 0 12px; font-size: 12.5px; color: var(--muted); }
+.mon-ctx {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 0 0 14px; padding: 8px 12px;
+  font-size: 13px; background: #fff; border: 1px solid var(--border); border-radius: var(--radius-sm);
+}
+.mon-ctx b { color: var(--primer-gelap); }
+
+/* ---- Rekap tiga kelompok ---- */
+.rk-clusters { display: flex; flex-wrap: wrap; gap: 14px 22px; margin-bottom: 20px; }
+.rk-cl { flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; }
+.rk-cl:nth-child(1) { flex: 3 1 440px; }
+.rk-cl:nth-child(2) { flex: 2 1 290px; }
+.rk-cl:nth-child(3) { flex: 1.4 1 230px; }
+.rk-cl h2 { margin: 0 0 8px; font-size: 11.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.rk-cards { flex: 1; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 12px; }
+.rk-card {
+  --t-bg: var(--t-teal-bg); --t-fg: var(--t-teal-fg); --t-line: var(--t-teal-line);
+  display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 12px 14px; color: inherit;
+  background: var(--t-bg); border: 1px solid var(--t-line); border-radius: var(--radius);
+  transition: box-shadow .15s ease, transform .15s ease;
+}
+.rk-card.t-green  { --t-bg: var(--t-green-bg);  --t-fg: var(--t-green-fg);  --t-line: var(--t-green-line); }
+.rk-card.t-amber  { --t-bg: var(--t-amber-bg);  --t-fg: var(--t-amber-fg);  --t-line: var(--t-amber-line); }
+.rk-card.t-violet { --t-bg: var(--t-violet-bg); --t-fg: var(--t-violet-fg); --t-line: var(--t-violet-line); }
+.rk-card.t-slate  { --t-bg: var(--t-slate-bg);  --t-fg: var(--t-slate-fg);  --t-line: var(--t-slate-line); }
+a.rk-card:hover { text-decoration: none; box-shadow: var(--shadow); transform: translateY(-1px); }
+a.rk-card.active { outline: 2.5px solid var(--primer-tua); outline-offset: -2px; }
+.rk-top { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.rk-ic { width: 24px; height: 24px; border-radius: 7px; background: #fff; color: var(--t-fg); display: grid; place-items: center; flex: none; box-shadow: 0 1px 2px rgba(7, 84, 106, .1); }
+.rk-lbl { font-size: 13px; font-weight: 500; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rk-num { margin-top: 6px; font-size: 28px; font-weight: 700; line-height: 1.1; letter-spacing: -.02em; color: var(--primer-gelap); font-variant-numeric: tabular-nums; }
+.rk-sub { font-size: 12px; color: var(--t-fg); }
+.rk-meter { height: 6px; margin-top: 7px; border-radius: 4px; background: rgba(255, 255, 255, .75); overflow: hidden; }
+.rk-meter i { display: block; height: 100%; background: var(--t-fg); border-radius: 4px; }
+.rk-gender { flex: 1; }
+.rk-gcols { display: flex; justify-content: space-between; gap: 10px; }
+.rk-gcol { display: flex; flex-direction: column; color: inherit; border-radius: 8px; padding: 2px 6px; margin: -2px -6px; }
+.rk-gcol.p { text-align: right; }
+.rk-gcol:hover { text-decoration: none; background: rgba(255, 255, 255, .6); }
+.rk-gcol.active { outline: 2px solid var(--primer-tua); }
+.rk-gcol small { font-size: 12px; color: var(--muted); }
+.rk-gcol b { font-size: 22px; color: var(--primer-gelap); font-variant-numeric: tabular-nums; }
+.rk-split { display: flex; height: 8px; margin-top: 10px; border-radius: 4px; overflow: hidden; background: #fff; }
+.rk-split i { display: block; height: 100%; }
+.rk-split .l { background: var(--t-teal-fg); }
+.rk-split .p { background: #c2576a; }
+@media (max-width: 640px) { .rk-cards { grid-auto-flow: row; } }
+
+/* ---- Pilihan tampilan ---- */
+.view-seg { display: inline-flex; padding: 3px; gap: 2px; background: #fff; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.view-seg a { padding: 6px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.view-seg a:hover { text-decoration: none; background: var(--primer-pucat); }
+.view-seg a.on { background: var(--primer-muda); color: var(--primer-gelap); }
+.mon-bulk { margin-left: auto; display: inline-flex; gap: 8px; }
+
+/* ---- Tampilan Per Struktur: jenjang -> kelompok induk -> struktur -> isi struktur ---- */
+.card.mon-card { padding: 0; overflow: hidden; }
+.mon-scroll { overflow-x: auto; }
+.mon-tree { min-width: 860px; }
+.mon-head, .mon-row, .stree.mon .sn > details > summary.mon-row {
+  display: grid; grid-template-columns: minmax(250px, 1fr) 74px 156px 168px 98px; gap: 12px; align-items: center;
+}
+.mon-head {
+  padding: 9px 16px; background: var(--primer-pucat); border-bottom: 1px solid var(--border);
+  font-size: 11.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted);
+}
+.mon-head span:nth-child(2), .mon-head span:last-child { text-align: right; }
+.mon-row { padding: 10px 16px; border-bottom: 1px solid var(--border); cursor: pointer; list-style: none; }
+.mon-row::-webkit-details-marker { display: none; }
+.mon-row:hover { background: var(--primer-pucat); }
+.mon-row:focus-visible { outline: 2px solid var(--primer-terang); outline-offset: -2px; }
+/* Kolom pertama: caret + nama. Indentasi = (kedalaman baris + dasar isi struktur) x 22px; --d dari baris, --base dari wadah isinya. */
+.mon-t { display: flex; align-items: center; gap: 8px; min-width: 0; padding-left: calc((var(--base, 0) + var(--d, 0)) * 22px); }
+.mon-t .caret { flex: none; color: var(--primer-tua); transition: transform .15s; }
+details[open] > .mon-row .caret { transform: rotate(90deg); }
+.mon-ttl { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
+.mon-ttl small { color: var(--muted); font-size: 12px; }
+.mon-n { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.mon-lp { text-align: right; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.mon-b { display: flex; align-items: center; gap: 8px; }
+.mon-lvl { --stripe: var(--primer); }
+.mon-lvl.musl { --stripe: #8a55a8; }
+.mon-lvl.dewan { --stripe: #6b8691; }
+.mon-lvl > .mon-row { padding-top: 12px; padding-bottom: 12px; border-left: 4px solid var(--stripe); background: linear-gradient(90deg, var(--primer-pucat), #fff 60%); }
+.mon-lvl > .mon-row b { font-size: 14.5px; color: var(--primer-gelap); }
+.mon-grp > .mon-row { background: #fafdfe; }
+
+/* Isi struktur (potongan dari PeopleController::struktur): pohon Susunan dengan kolom yang sama. */
+.mon-roster .stree.mon, .mon-roster .stree.mon ul { margin: 0; padding: 0; border: 0; }
+.stree.mon .sn > details > summary.mon-row { min-height: 0; padding: 9px 16px; border-radius: 0; border-bottom: 1px solid var(--border); }
+.stree.mon .sn > details[open] > summary.mon-row { background: var(--primer-pucat); }
+.stree.mon .sn-body, .stree.mon .sn-body.sn-roster { padding: 2px 16px 12px calc((var(--base, 0) + 1) * 22px + 16px); }
+.mon-empty { margin: 0; padding: 10px 16px 10px calc((var(--base, 0) + 1) * 22px + 16px); font-size: 13px; color: var(--muted); border-bottom: 1px solid var(--border); background: #fbfdfe; }
+.mon-gap {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 9px 16px 9px calc((var(--base, 0) + 1) * 22px + 16px);
+  background: var(--danger-bg); color: var(--danger); font-size: 13px; border-bottom: 1px solid var(--danger-line);
+}
+.mon-gap a { font-weight: 600; color: var(--danger); text-decoration: underline; }
+.mon-retry { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: var(--primer-tua); text-decoration: underline; cursor: pointer; }
+
+/* Bilah kelengkapan, kotak Ketua/Sekretaris/Bendahara, ringkasan inti */
+.mon-meter { width: 72px; height: 7px; border-radius: 4px; background: var(--t-slate-bg); overflow: hidden; flex: none; }
+.mon-meter i { display: block; height: 100%; border-radius: 4px; }
+.mon-meter.ok i { background: #2f9e6a; }
+.mon-meter.warn i { background: #d99a1c; }
+.mon-meter.bad i { background: #cf4a4f; }
+.mon-pct { min-width: 44px; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.mon-ksb { display: inline-flex; gap: 3px; }
+.mon-ksb b { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; font-size: 11px; font-weight: 700; }
+.mon-ksb b.y { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok-line); }
+.mon-ksb b.n { background: var(--danger-bg); color: var(--danger); border: 1px dashed var(--danger); }
+.mon-intisum { font-size: 12.5px; }
+.mon-intisum.ok { color: var(--ok); }
+.mon-intisum.warn { color: var(--warn); }
+.mon-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; padding: 10px 16px; font-size: 12.5px; color: var(--muted); background: var(--primer-pucat); }
+.mon-legend .mon-ksb b { width: 18px; height: 18px; font-size: 10px; }
+
+/* ---- Tampilan Daftar ---- */
+.mon-count { margin: 12px 0 0; font-size: 13px; color: var(--muted); }
+.row-actions { display: inline-flex; gap: 6px; align-items: center; }
+.row-actions form { margin: 0; }
+.row-btn { width: 32px; height: 32px; border-radius: 9px; border: 1px solid var(--border); background: #fff; color: var(--primer-tua); display: inline-grid; place-items: center; cursor: pointer; }
+.row-btn:hover { background: var(--primer-pucat); text-decoration: none; }
+.row-btn.danger:hover { background: var(--danger-bg); color: var(--danger); border-color: var(--danger-line); }
+.badge.lv { background: var(--primer-muda); color: var(--primer-gelap); font-weight: 700; letter-spacing: .02em; }
+.badge.warn { background: var(--warn-bg); color: var(--warn); }
