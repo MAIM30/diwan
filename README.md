@@ -19,9 +19,15 @@ dirawat bersama. Target MySQL 8.0+ (memakai generated column dan composite forei
    `users.role` dipaksa mewakili dua sumbu: posisi di organisasi dan hak akses teknis.
 3. **Jabatan adalah katalog.** `positions` menggantikan `position_name` VARCHAR bebas. Kolom
    `positions.is_core` menggantikan seluruh `CASE WHEN` di `app/Core/PengurusInti.php` syuro:
-   Pengurus Inti kini = `placements.structure_unit_id IS NULL AND positions.is_core = 1`, ditambah satu kekecualian per tingkat:
-   `positions.core_from_tier` (migrasi 007) menandai jabatan yang baru inti mulai tier tertentu. Wakil Ketua bernilai 2, jadi ia inti di DPW/DPLN/DPD/DPC/DPRa dan
-   MWW/MWD/MWC/MWRa tetapi tidak di DPP/MWP. Aturannya satu tempat: `PositionModel::CORE_SQL` (dan padanannya `PositionModel::isCoreAt`).
+   Pengurus Inti kini = `placements.structure_unit_id IS NULL AND positions.is_core = 1`. Aturannya satu tempat:
+   `PositionModel::CORE_SQL`. Jabatan dibedakan menurut tempatnya: **Ketua DPW** dan **Ketua DPD**, **Wakil Ketua DPW** dan
+   **Wakil Ketua DPD** (tingkat Wilayah dan Daerah), **Ketua Bidang** dan **Wakil Ketua Bidang** (Pengurus Inti DPP, migrasi 020;
+   urutan resmi SKUO diatur lewat `sort_order`), **Ketua** / **Wakil Ketua** polos (tingkat struktur lain seperti MWP, selalu inti), dan
+   **Wakil Ketua Departemen/Lembaga** (di dalam unit, tak pernah inti). Kepala unit dibedakan menurut jenis unitnya:
+   **Ketua Departemen**, **Ketua Lembaga**, **Ketua Biro**, **Ketua Badan** (migrasi 021). `positions.unit_kinds` membatasi
+   jenis unit tempat sebuah jabatan boleh dipegang, dan `PositionModel::mismatch()` menolak penempatan yang tak cocok di setiap
+   jalur penulisan (formulir, persetujuan pendaftaran, pemindahan struktur). Dulu ada kekecualian per tingkat (`positions.core_from_tier`,
+   "Inti mulai jenjang"); migrasi 019 menghapusnya karena sudah setara "selalu inti".
 4. **Bidang adalah tabel, dan terikat periode.** `organization_units.bidang` di syuro adalah VARCHAR
    bebas (21 nilai berbeda sudah beredar tanpa penjaga typo). Di sini `unit_groups` terikat ke
    (struktur + periode), karena susunan Bidang berubah antar SK.
@@ -74,8 +80,16 @@ database/
   install.php                 pemasangan + migrasi (CLI)
   005_data_diri.php           migrasi: people.occupation (pekerjaan) + people.family_phone (HP keluarga)
   006_alamat_dan_sandi.php    migrasi: people.village/district (kelurahan, kecamatan) + accounts.must_change_password
-  007_inti_wakil_ketua.php    migrasi: positions.core_from_tier (Wakil Ketua = Pengurus Inti mulai tier Wilayah)
+  007_inti_wakil_ketua.php    migrasi: positions.core_from_tier (riwayat; kolomnya dihapus migrasi 019)
   008-016_*.php               migrasi lanjutan: gateway WA, OTP, biodata, audit, SKUO, catatan tinjauan impor, tingkat DPLN/MWRa, acuan periode bersama
+  018_ketua_dpw_dpd.php       migrasi: jabatan "Ketua DPW" dan "Ketua DPD" (pucuk pimpinan Wilayah dan Daerah)
+  019_wakil_ketua_spesifik.php  migrasi: Wakil Ketua DPW / DPD / Departemen-Lembaga; menghapus positions.core_from_tier
+  020_ketua_bidang_inti_dpp.php migrasi: Ketua Bidang / Wakil Ketua Bidang di Pengurus Inti DPP + urutan resmi Pengurus Inti DPP
+  021_ketua_menurut_jenis_unit.php  migrasi: Ketua Departemen / Lembaga / Biro / Badan + positions.unit_kinds (batas jenis unit)
+  022_katalog_unit_per_sayap.php    migrasi: katalog Unit Organisasi dipisah per sayap (unit_catalog.wing: Umum / Muslimah), nama unik per sayap
+  sinkron_ketua_dpw_dpd.php   memasukkan Ketua DPW/DPD dari tab DPW dan DPD di Google Sheet pengurus (CLI; dry-run bawaan, --commit untuk menyimpan)
+  sinkron_sheet_dpp.php       menyamakan penempatan satu struktur dengan tab-nya di Google Sheet pengurus: --tab=DPP (bawaan) atau --tab=MWP;
+                              pilihan --rinci, --mirip, --buat-unit, --buat-orang untuk sheet tanpa nomor HP (CLI; dry-run bawaan, --commit untuk menyimpan)
   migrate.php                 menerapkan migrasi bernomor pada basis data yang SUDAH terpasang (idempoten; jalankan setiap kali kode diperbarui)
   migrate_syuro.php           migrasi satu kali dari db_syuro (CLI; dry-run bawaan)
   provision_admins.php        satu admin_struktur per struktur yang belum punya (CLI; dry-run bawaan)
@@ -423,7 +437,7 @@ yang sama dengan halaman Struktur, lengkap dengan Buka semua / Tutup semua), dik
 
 | Simpul | Isinya |
 |---|---|
-| **Pengurus Inti** | jabatan tingkat struktur (tanpa unit) yang di katalog jabatan inti bagi struktur itu: bertanda `is_core`, atau `core_from_tier` sama/lebih kecil dari tier-nya (Wakil Ketua di DPW/DPLN/DPD/DPC/DPRa dan MWW/MWD/MWC/MWRa); terbuka sejak awal, dengan kolom Kontak |
+| **Pengurus Inti** | jabatan tingkat struktur (tanpa unit) yang di katalog jabatan inti bagi struktur itu: bertanda `is_core`; terbuka sejak awal, dengan kolom Kontak |
 | **Pimpinan Lainnya** | jabatan tingkat struktur yang bukan inti (mis. Wakil Ketua di DPP/MWP, Pengarah); hanya tampil bila ada |
 | **Bidang** → tiap Bidang → unit | tiap Bidang memuat unit yang dinaunginya: **Departemen dulu, lalu Lembaga**, lalu jenis lain (Biro, Badan, Pusat, Divisi); sayap Muslimah berlabel **Subbidang** |
 | kelompok lain (Pusat-Pusat, Badan-Badan, Biro-Biro) | kelompok bukan-Bidang milik periode itu, memakai namanya sendiri |

@@ -7,10 +7,13 @@
 //   - unit: Ubah (nama tampil, urutan) / Hapus; pemilih Bidang di tiap unit disimpan sekaligus per struktur (units/grouping_save)
 // Pemilih memakai atribut form="regroup-<periode>" supaya tak bersarang di formulir lain; panel Ubah dan Tambah adalah <details>.
 // Variabel: $entries (struktur + periode berjalan + Bidang + unit), $without (struktur tanpa periode berjalan),
-// $openTerm (id periode yang dibuka), $catalog (nama katalog, untuk saran isian).
+// $openTerm (id periode yang dibuka), $catalog (nama katalog beserta sayapnya, untuk saran isian).
 $this->view('layouts/header', ['title' => $title]);
 
 $canEdit = Auth::canEdit();
+// Saran nama pada "Tambah unit" mengikuti SAYAP struktur: unit Muslimah dipilih dari katalog Muslimah, bukan katalog DPP (UnitModel::WINGS).
+$wingOfTerm = [];
+foreach ($entries as $e0) $wingOfTerm[(int) $e0['term']['id']] = $e0['structure']['wing'];
 $groupRank = ['bidang' => 0, 'subbidang' => 1];
 $unitKinds = ['departemen' => 'Departemen', 'lembaga' => 'Lembaga', 'biro' => 'Biro', 'badan' => 'Badan', 'pusat' => 'Pusat', 'divisi' => 'Divisi', 'lainnya' => 'Lainnya'];
 $groupKinds = ['bidang' => 'Bidang', 'subbidang' => 'Subbidang (sayap Muslimah)', 'grup' => 'Kelompok lain (mis. Pengurus Harian, Biro-Biro, Pusat-Pusat)'];
@@ -33,7 +36,7 @@ $options = function (array $map, $selected) {
 // Satu Bidang/kelompok (atau "Unit tanpa Bidang", $g = null) beserta unit-unitnya. $pick = Bidang yang bisa dipilih di tiap unit
 // (kosong = tanpa pemilih), $formId = formulir simpan pengelompokan periode ini.
 // $coords = calon Ketua Bidang periode ini (UnitModel::coordinatorCandidates); hanya dipakai pada Bidang/Subbidang, bukan kelompok biasa.
-$bucket = function ($title, array $list, array $pick, $empty, $g, $tid, $formId, array $coords = []) use ($canEdit, $unitKinds, $groupKinds, $defaultUnitKind, $nextId, $ctx, $options) {
+$bucket = function ($title, array $list, array $pick, $empty, $g, $tid, $formId, array $coords = []) use ($canEdit, $unitKinds, $groupKinds, $defaultUnitKind, $nextId, $ctx, $options, $wingOfTerm) {
     $list = Susunan::sortUnits($list);
     $hasLead = $g && $g['kind'] !== 'grup';
     $leadWord = $g && $g['kind'] === 'subbidang' ? 'Subbidang' : 'Bidang';
@@ -59,7 +62,7 @@ $bucket = function ($title, array $list, array $pick, $empty, $g, $tid, $formId,
                     <div class="sn-form">
                       <?php $a = $nextId(); $b = $nextId(); ?>
                       <div class="field"><label for="<?= $a ?>">Nama unit</label>
-                        <input type="text" id="<?= $a ?>" name="new_name" list="katalog-unit" required maxlength="200" autocomplete="off" placeholder="Pilih dari katalog atau ketik nama baru"></div>
+                        <input type="text" id="<?= $a ?>" name="new_name" list="katalog-unit-<?= e($wingOfTerm[(int) $tid] ?? 'umum') ?>" required maxlength="200" autocomplete="off" placeholder="Pilih dari katalog atau ketik nama baru"></div>
                       <div class="field"><label for="<?= $b ?>">Jenis (bila nama baru)</label>
                         <select id="<?= $b ?>" name="new_kind"><?= $options($unitKinds, $defaultUnitKind($g['name'])) ?></select></div>
                       <button type="submit" class="btn">Tambah</button>
@@ -313,9 +316,11 @@ $structureNode = function (array $e) use ($bucket, $canEdit, $groupRank, $openTe
 </div>
 
 <?php if ($canEdit && $catalog): ?>
-  <datalist id="katalog-unit">
-    <?php foreach ($catalog as $c): ?><option value="<?= e($c['name']) ?>"><?php endforeach; ?>
-  </datalist>
+  <?php foreach (array_keys(UnitModel::WINGS) as $w): ?>
+    <datalist id="katalog-unit-<?= $w ?>">
+      <?php foreach ($catalog as $c): if ($c['wing'] !== $w) continue; ?><option value="<?= e($c['name']) ?>"><?php endforeach; ?>
+    </datalist>
+  <?php endforeach; ?>
 <?php endif; ?>
 
 <?php $this->view('layouts/footer'); ?>

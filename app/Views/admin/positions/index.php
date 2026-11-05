@@ -11,15 +11,53 @@ $atLabels = ['structure' => 'Struktur', 'unit' => 'Unit', 'both' => 'Keduanya'];
 $atIcon   = ['structure' => 'network', 'unit' => 'grid', 'both' => 'layers'];
 $atTone   = ['structure' => 't-teal', 'unit' => 't-violet', 'both' => 't-green'];
 
-$tierLabels = [1 => 'Pusat (DPP/MWP)', 2 => 'Wilayah (DPW/MWW)', 3 => 'Daerah (DPD/MWD)'];
-
-$total   = array_sum($counts);
+$total  = array_sum($counts);
 $canEdit = Auth::isSuperAdmin();
 
-$qs = function (array $over = []) use ($appliesTo, $keyword) {
-    $p = array_merge(['at' => $appliesTo, 'q' => $keyword], $over);
+// Saringan struktur: $structure = pilihan yang sah (['abbr' => 'DPP', 'level' => 'DPW'|''] ) atau null; $structureFilters = tombolnya.
+$stAbbr  = $structure['abbr'] ?? '';
+$stLevel = $structure['level'] ?? '';
+$stQuery = $stAbbr !== '' ? '?' . http_build_query(array_filter(['st' => $stAbbr, 'lv' => $stLevel], function ($v) { return $v !== ''; })) : '';
+// "DPP", atau "DPP › DPW" bila jenjangnya dipilih; "DPP saja" untuk jenjang pusatnya sendiri.
+$stLabel = $stAbbr === '' ? '' : ($stLevel === '' ? $stAbbr : ($stLevel === $stAbbr ? $stAbbr . ' saja' : $stAbbr . ' › ' . $stLevel));
+
+$qs = function (array $over = []) use ($appliesTo, $keyword, $stAbbr, $stLevel) {
+    $p = array_merge(['at' => $appliesTo, 'q' => $keyword, 'st' => $stAbbr, 'lv' => $stLevel], $over);
     $p = array_filter($p, function ($v) { return $v !== '' && $v !== null; });
     return BASEURL . '/positions' . ($p ? '?' . http_build_query($p) : '');
+};
+$chip = function ($label, $on, $href, $title = '') {
+    return '<a class="chip' . ($on ? ' on' : '') . '" href="' . e($href) . '"' . ($on ? ' aria-current="true"' : '')
+        . ($title !== '' ? ' title="' . e($title) . '"' : '') . '>' . e($label) . '</a>';
+};
+// Judul kartu + tombol penyaring struktur di sampingnya: Semua · DSO · DSY · DPK · DPP. Tombol DPP membuka baris jenjang di
+// bawahnya (DPP saja, DPW, DPD, MWP, MWW, MWD) untuk mempersempit lagi. Menekan tombol yang sedang aktif membatalkannya.
+$cardHead = function ($count) use ($atLabels, $appliesTo, $keyword, $stAbbr, $stLevel, $stLabel, $structureFilters, $qs, $chip) {
+    ob_start(); ?>
+    <div class="card-head" style="flex-wrap:wrap;gap:10px 18px">
+      <h2 style="font-weight:700">
+        <?= (int) $count ?> jabatan
+        <?php if ($appliesTo !== ''): ?><span class="hint">&mdash; <?= e($atLabels[$appliesTo] ?? $appliesTo) ?></span><?php endif; ?>
+        <?php if ($keyword !== ''): ?><span class="hint">&mdash; &ldquo;<?= e($keyword) ?>&rdquo;</span><?php endif; ?>
+        <?php if ($stAbbr !== ''): ?><span class="hint">&mdash; dipakai di <?= e($stLabel) ?></span><?php endif; ?>
+      </h2>
+      <div class="chips" role="group" aria-label="Saring menurut struktur">
+        <?= $chip('Semua', $stAbbr === '', $qs(['st' => '', 'lv' => ''])) ?>
+        <?php foreach ($structureFilters as $f): $on = $stAbbr === $f['abbr']; ?>
+          <?= $chip($f['abbr'], $on, $on && $stLevel === '' ? $qs(['st' => '', 'lv' => '']) : $qs(['st' => $f['abbr'], 'lv' => '']), $f['name']) ?>
+        <?php endforeach; ?>
+      </div>
+    </div>
+    <?php foreach ($structureFilters as $f): if ($stAbbr !== $f['abbr'] || count($f['levels']) < 2) continue; ?>
+      <div class="chips" role="group" aria-label="Jenjang di bawah <?= e($f['abbr']) ?>"
+           style="margin:-4px 0 16px 6px;padding-left:12px;border-left:3px solid var(--primer-terang);align-items:center">
+        <span class="small muted">Jenjang:</span>
+        <?php foreach ($f['levels'] as $lv): $lon = $stLevel === $lv; ?>
+          <?= $chip($lv === $f['abbr'] ? $lv . ' saja' : $lv, $lon, $qs(['lv' => $lon ? '' : $lv]), $lv === $f['abbr'] ? 'Hanya struktur ' . $lv . ' sendiri, tanpa jenjang di bawahnya' : 'Hanya struktur berjenjang ' . $lv) ?>
+        <?php endforeach; ?>
+      </div>
+    <?php endforeach;
+    return ob_get_clean();
 };
 $rc = function ($label, $count, $icon, $active, $href, $tone = '') {
     $cls = 'stat' . ($tone ? ' ' . $tone : '') . ($active ? ' active' : '');
@@ -53,8 +91,10 @@ $rc = function ($label, $count, $icon, $active, $href, $tone = '') {
     <input type="search" name="q" value="<?= e($keyword) ?>" aria-label="Cari jabatan"
            placeholder="Cari nama atau kode jabatan">
     <?php if ($appliesTo): ?><input type="hidden" name="at" value="<?= e($appliesTo) ?>"><?php endif; ?>
+    <?php if ($stAbbr !== ''): ?><input type="hidden" name="st" value="<?= e($stAbbr) ?>"><?php endif; ?>
+    <?php if ($stLevel !== ''): ?><input type="hidden" name="lv" value="<?= e($stLevel) ?>"><?php endif; ?>
   </form>
-  <?php if ($appliesTo !== '' || $keyword !== ''): ?>
+  <?php if ($appliesTo !== '' || $keyword !== '' || $stAbbr !== ''): ?>
     <a class="btn small secondary" href="<?= BASEURL ?>/positions">Tampilkan semua</a>
   <?php endif; ?>
   <label class="per-page">
@@ -73,7 +113,7 @@ $rc = function ($label, $count, $icon, $active, $href, $tone = '') {
   <form method="post" action="<?= BASEURL ?>/positions/save">
     <?= Csrf::field() ?>
     <input type="hidden" name="at_filter" value="<?= e($appliesTo) ?>">
-    <input type="hidden" name="q_filter" value="<?= e($keyword) ?>">
+    <input type="hidden" name="q_filter" value="<?= e($keyword) ?>"><input type="hidden" name="st_filter" value="<?= e($stAbbr) ?>"><input type="hidden" name="lv_filter" value="<?= e($stLevel) ?>">
     <div class="grid-3">
       <div class="field">
         <label for="name">Nama Jabatan</label>
@@ -102,18 +142,18 @@ $rc = function ($label, $count, $icon, $active, $href, $tone = '') {
         <label>Pengurus Inti</label>
         <label class="check">
           <input type="checkbox" name="is_core" value="1">
-          <span>Selalu inti di semua jenjang</span>
+          <span>Termasuk Pengurus Inti</span>
         </label>
+        <div class="help">Berlaku bila jabatan dipegang di tingkat struktur. Di dalam unit tidak pernah dihitung inti.</div>
       </div>
       <div class="field">
-        <label for="new_cft">Inti mulai jenjang</label>
-        <select id="new_cft" name="core_from_tier">
-          <option value="">— tidak —</option>
-          <?php foreach ($tierLabels as $t => $tl): ?>
-            <option value="<?= $t ?>"><?= e($tl) ?></option>
+        <label>Jenis unit</label>
+        <div style="display:flex;flex-wrap:wrap;gap:2px 14px">
+          <?php foreach (PositionModel::UNIT_KINDS as $k => $kl): ?>
+            <label class="check"><input type="checkbox" name="unit_kinds[]" value="<?= e($k) ?>"><span><?= e($kl) ?></span></label>
           <?php endforeach; ?>
-        </select>
-        <div class="help">Inti hanya di jenjang ini dan di bawahnya (bukan di atasnya).</div>
+        </div>
+        <div class="help">Untuk jabatan yang berlaku di unit: pilih jenis unit tempatnya (mis. &ldquo;Ketua Biro&rdquo; hanya Biro). Kosong = semua jenis unit.</div>
       </div>
     </div>
     <input type="hidden" name="is_active" value="1">
@@ -123,20 +163,19 @@ $rc = function ($label, $count, $icon, $active, $href, $tone = '') {
 <?php endif; ?>
 
 <?php if (empty($rows)): ?>
-  <div class="card"><p class="muted" style="margin:0">
-    <?= $keyword !== '' ? 'Tidak ada jabatan yang cocok dengan pencarian itu.' : 'Belum ada jabatan.' ?>
-  </p></div>
+  <div class="card">
+    <?= $cardHead(0) ?>
+    <p class="muted" style="margin:0">
+      <?php if ($stAbbr !== ''): ?>
+        Tidak ada jabatan<?= ($keyword !== '' || $appliesTo !== '') ? ' yang cocok dengan saringan itu' : '' ?> yang dipakai di <?= e($stLabel) ?>.
+      <?php else: ?>
+        <?= $keyword !== '' ? 'Tidak ada jabatan yang cocok dengan pencarian itu.' : 'Belum ada jabatan.' ?>
+      <?php endif; ?>
+    </p>
+  </div>
 <?php else: ?>
   <div class="card">
-    <h2>
-      <?= count($rows) ?> jabatan
-      <?php if ($appliesTo !== ''): ?>
-        <span class="hint">&mdash; <?= e($atLabels[$appliesTo] ?? $appliesTo) ?></span>
-      <?php endif; ?>
-      <?php if ($keyword !== ''): ?>
-        <span class="hint">&mdash; &ldquo;<?= e($keyword) ?>&rdquo;</span>
-      <?php endif; ?>
-    </h2>
+    <?= $cardHead(count($rows)) ?>
     <div class="table-wrap">
       <table id="pos-table">
         <thead>
@@ -148,7 +187,7 @@ $rc = function ($label, $count, $icon, $active, $href, $tone = '') {
             <th class="num">Urutan</th>
             <th class="num">Dipakai</th>
             <th>Status</th>
-            <?php if ($canEdit): ?><th></th><?php endif; ?>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -156,14 +195,15 @@ $rc = function ($label, $count, $icon, $active, $href, $tone = '') {
           <tr>
             <td><strong><?= e($r['name']) ?></strong></td>
             <td class="small mono"><?= e($r['code']) ?></td>
-            <td><span class="badge"><?= e($atLabels[$r['applies_to']] ?? $r['applies_to']) ?></span></td>
+            <td>
+              <span class="badge"><?= e($atLabels[$r['applies_to']] ?? $r['applies_to']) ?></span>
+              <?php if ($r['applies_to'] !== 'structure' && ($kindsText = PositionModel::kindsLabel($r['unit_kinds'] ?? '')) !== ''): ?>
+                <div class="small muted" title="Jenis unit tempat jabatan ini berlaku" style="margin-top:3px"><?= e($kindsText) ?></div>
+              <?php endif; ?>
+            </td>
             <td>
               <?php if ($r['is_core']): ?>
-                <span class="badge ok">Selalu</span>
-              <?php elseif ($r['core_from_tier'] !== null): ?>
-                <span class="badge" title="Inti mulai <?= e($tierLabels[(int) $r['core_from_tier']] ?? 'tier ' . $r['core_from_tier']) ?>">
-                  &ge; <?= e($tierLabels[(int) $r['core_from_tier']] ?? 'Tier ' . $r['core_from_tier']) ?>
-                </span>
+                <span class="badge ok">Inti</span>
               <?php else: ?>
                 <span class="muted">&mdash;</span>
               <?php endif; ?>
@@ -175,7 +215,7 @@ $rc = function ($label, $count, $icon, $active, $href, $tone = '') {
               <?php else: ?>
                 <strong><?= Ui::n($usedPl) ?></strong>
                 <span class="small muted">di <?= (int) $r['used_structures'] ?> struktur</span>
-                <?php if ($usedHead > 0): ?>
+                <?php if ($usedHead > 0 && $stAbbr === ''): /* kepala unit ditetapkan per jenis unit, bukan per struktur: tak ikut disaring */ ?>
                   <br><span class="small muted">kepala <?= $usedHead ?> jenis unit</span>
                 <?php endif; ?>
               <?php endif; ?>
@@ -184,19 +224,28 @@ $rc = function ($label, $count, $icon, $active, $href, $tone = '') {
               <?php if ($r['is_active']): ?><span class="badge ok">aktif</span>
               <?php else: ?><span class="badge">nonaktif</span><?php endif; ?>
             </td>
-            <?php if ($canEdit): ?>
-              <td class="nowrap">
-                <button type="button" class="icon-btn" data-toggle-edit="pos-<?= $id ?>" title="Ubah"><?= Ui::icon('edit', 16) ?></button>
-                <form method="post" action="<?= BASEURL ?>/positions/delete" style="display:inline"
-                      data-confirm="Hapus jabatan &ldquo;<?= e($r['name']) ?>&rdquo;?">
-                  <?= Csrf::field() ?>
-                  <input type="hidden" name="id" value="<?= $id ?>">
-                  <input type="hidden" name="at_filter" value="<?= e($appliesTo) ?>">
-                  <input type="hidden" name="q_filter" value="<?= e($keyword) ?>">
-                  <button type="submit" class="icon-btn" title="Hapus"><?= Ui::icon('trash', 16) ?></button>
-                </form>
-              </td>
-            <?php endif; ?>
+            <td class="nowrap">
+              <div style="display:flex;gap:6px;align-items:center">
+                <?php if ($usedPl > 0): ?>
+                  <a class="icon-btn" href="<?= BASEURL ?>/positions/members/<?= $id ?><?= e($stQuery) ?>"
+                     title="Lihat pengurus yang memegang jabatan ini" aria-label="Lihat pengurus yang memegang jabatan <?= e($r['name']) ?>"><?= Ui::icon('eye', 16) ?></a>
+                <?php else: ?>
+                  <?php /* Ikon redup, bukan dihilangkan: menjaga ikon Ubah/Hapus tetap sejajar antar baris. */ ?>
+                  <span class="icon-btn" aria-hidden="true" style="opacity:.35;cursor:default" title="Belum dipakai penempatan mana pun"><?= Ui::icon('eye', 16) ?></span>
+                <?php endif; ?>
+                <?php if ($canEdit): ?>
+                  <button type="button" class="icon-btn" data-toggle-edit="pos-<?= $id ?>" title="Ubah"><?= Ui::icon('edit', 16) ?></button>
+                  <form method="post" action="<?= BASEURL ?>/positions/delete"
+                        data-confirm="Hapus jabatan &ldquo;<?= e($r['name']) ?>&rdquo;?">
+                    <?= Csrf::field() ?>
+                    <input type="hidden" name="id" value="<?= $id ?>">
+                    <input type="hidden" name="at_filter" value="<?= e($appliesTo) ?>">
+                    <input type="hidden" name="q_filter" value="<?= e($keyword) ?>"><input type="hidden" name="st_filter" value="<?= e($stAbbr) ?>"><input type="hidden" name="lv_filter" value="<?= e($stLevel) ?>">
+                    <button type="submit" class="icon-btn" title="Hapus"><?= Ui::icon('trash', 16) ?></button>
+                  </form>
+                <?php endif; ?>
+              </div>
+            </td>
           </tr>
           <?php if ($canEdit): ?>
             <tr id="pos-<?= $id ?>" hidden>
@@ -205,7 +254,7 @@ $rc = function ($label, $count, $icon, $active, $href, $tone = '') {
                   <?= Csrf::field() ?>
                   <input type="hidden" name="id" value="<?= $id ?>">
                   <input type="hidden" name="at_filter" value="<?= e($appliesTo) ?>">
-                  <input type="hidden" name="q_filter" value="<?= e($keyword) ?>">
+                  <input type="hidden" name="q_filter" value="<?= e($keyword) ?>"><input type="hidden" name="st_filter" value="<?= e($stAbbr) ?>"><input type="hidden" name="lv_filter" value="<?= e($stLevel) ?>">
                   <div class="grid-3">
                     <div class="field">
                       <label for="n<?= $id ?>">Nama Jabatan</label>
@@ -233,17 +282,19 @@ $rc = function ($label, $count, $icon, $active, $href, $tone = '') {
                       <label>Pengurus Inti</label>
                       <label class="check">
                         <input type="checkbox" name="is_core" value="1" <?= $r['is_core'] ? 'checked' : '' ?>>
-                        <span>Selalu inti di semua jenjang</span>
+                        <span>Termasuk Pengurus Inti</span>
                       </label>
+                      <div class="help">Berlaku bila jabatan dipegang di tingkat struktur. Di dalam unit tidak pernah dihitung inti.</div>
                     </div>
                     <div class="field">
-                      <label for="cft<?= $id ?>">Inti mulai jenjang</label>
-                      <select id="cft<?= $id ?>" name="core_from_tier">
-                        <option value="">— tidak —</option>
-                        <?php foreach ($tierLabels as $t => $tl): ?>
-                          <option value="<?= $t ?>" <?= (int) $r['core_from_tier'] === $t && $r['core_from_tier'] !== null ? 'selected' : '' ?>><?= e($tl) ?></option>
+                      <label>Jenis unit</label>
+                      <?php $rowKinds = PositionModel::kindList($r['unit_kinds'] ?? ''); ?>
+                      <div style="display:flex;flex-wrap:wrap;gap:2px 14px">
+                        <?php foreach (PositionModel::UNIT_KINDS as $k => $kl): ?>
+                          <label class="check"><input type="checkbox" name="unit_kinds[]" value="<?= e($k) ?>" <?= in_array($k, $rowKinds, true) ? 'checked' : '' ?>><span><?= e($kl) ?></span></label>
                         <?php endforeach; ?>
-                      </select>
+                      </div>
+                      <div class="help">Untuk jabatan yang berlaku di unit. Kosong = semua jenis unit.</div>
                     </div>
                   </div>
                   <label class="check">

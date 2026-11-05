@@ -179,10 +179,15 @@ $akhiriPanel = function ($h, $prefix) use ($endReasons) {
 
   function refreshPositions() {
     var context = unit.value ? 'unit' : 'structure';
+    // Jenis unit yang dipilih menyaring jabatan yang dikhususkan pada jenis lain ("Ketua Biro" tak tampil di Departemen);
+    // aturan yang sama dijaga ulang di server (PositionModel::mismatch).
+    var kind = unit.selectedOptions[0] ? (unit.selectedOptions[0].getAttribute('data-kind') || '') : '';
     Array.prototype.forEach.call(position.options, function (option) {
       if (!option.value) return;
       var appliesTo = option.getAttribute('data-applies-to');
-      option.hidden = appliesTo !== 'both' && appliesTo !== context;
+      var kinds = (option.getAttribute('data-unit-kinds') || '').split(',').filter(Boolean);
+      option.hidden = !((appliesTo === 'both' || appliesTo === context)
+        && (context !== 'unit' || !kinds.length || kinds.indexOf(kind) !== -1));
       option.disabled = option.hidden;
     });
     if (position.selectedOptions[0] && position.selectedOptions[0].disabled) position.value = '';
@@ -207,6 +212,7 @@ $akhiriPanel = function ($h, $prefix) use ($endReasons) {
       data.units.forEach(function (item) {
         var option = document.createElement('option');
         option.value = item.id;
+        option.setAttribute('data-kind', item.kind || '');
         option.textContent = (item.group_name ? item.group_name + ' — ' : '') + (item.display_name || item.catalog_name);
         unit.appendChild(option);
       });
@@ -215,6 +221,7 @@ $akhiriPanel = function ($h, $prefix) use ($endReasons) {
         var option = document.createElement('option');
         option.value = item.id;
         option.setAttribute('data-applies-to', item.applies_to);
+        option.setAttribute('data-unit-kinds', item.unit_kinds || '');
         option.textContent = item.name;
         position.appendChild(option);
       });

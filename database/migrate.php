@@ -39,7 +39,12 @@ foreach ([['003_pisah_nama.php', 'migrate_003_pisah_nama'], ['004_portal_penguru
           ['014_catatan_keputusan_impor.php', 'migrate_014_catatan_keputusan_impor'],
           ['015_struktur_dpln_mwra.php', 'migrate_015_struktur_dpln_mwra'],
           ['016_periode_bersama.php', 'migrate_016_periode_bersama'],
-          ['017_lembaga_tinggi.php', 'migrate_017_lembaga_tinggi']] as [$file, $fn]) {
+          ['017_lembaga_tinggi.php', 'migrate_017_lembaga_tinggi'],
+          ['018_ketua_dpw_dpd.php', 'migrate_018_ketua_dpw_dpd'],
+          ['019_wakil_ketua_spesifik.php', 'migrate_019_wakil_ketua_spesifik'],
+          ['020_ketua_bidang_inti_dpp.php', 'migrate_020_ketua_bidang_inti_dpp'],
+          ['021_ketua_menurut_jenis_unit.php', 'migrate_021_ketua_menurut_jenis_unit'],
+          ['022_katalog_unit_per_sayap.php', 'migrate_022_katalog_unit_per_sayap']] as [$file, $fn]) {
     require_once __DIR__ . '/' . $file;
     $fn($pdo, $say);
 }

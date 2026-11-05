@@ -216,6 +216,7 @@ h1, h2, h3 { color: var(--primer-gelap); }
 .card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
 .card-head h2 { font-size: 15.5px; margin: 0; display: flex; align-items: center; gap: 9px; }
 .card-head h2 .ic { color: var(--primer-tua); }
+.card-head h2 .hint { font-weight: 400; color: var(--muted); font-size: 13px; }
 .card-head .more { margin-left: auto; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; }
 .card-sub { margin: -10px 0 14px; font-size: 13px; color: var(--muted); }
 

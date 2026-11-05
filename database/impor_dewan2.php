@@ -129,7 +129,7 @@ function findOrCreateUnit(PDO $pdo, int $structureId, int $termId, string $unitN
     if (isset($unitCache[$key])) return $unitCache[$key];
 
     // Cari di unit_catalog
-    $ucId = $pdo->prepare("SELECT id FROM unit_catalog WHERE name = :n LIMIT 1");
+    $ucId = $pdo->prepare("SELECT id FROM unit_catalog WHERE name = :n AND wing = 'umum' LIMIT 1");   // DSO/DSY/DPK = sayap Umum (migrasi 022)
     $ucId->execute([':n' => $unitName]);
     $ucId = $ucId->fetchColumn();
     if (!$ucId) {
@@ -325,6 +325,13 @@ foreach ($rows as $r) {
         // Tentukan kind: semua Komisi → 'komisi'; Anggota Pleno → 'lainnya'
         $kind = (stripos($r['bagian'], 'Komisi') !== false) ? 'komisi' : 'lainnya';
         $unitId = findOrCreateUnit($pdo, $structureId, $termId, $r['bagian'], $kind, $dry);
+    }
+
+    // Di dalam unit, "Wakil Ketua" adalah jabatan tersendiri (migrasi 019); yang polos khusus tingkat struktur.
+    if ($unitId && $posId === $POS['wakil ketua']) {
+        $wk = $pdo->prepare("SELECT id FROM positions WHERE code = 'wakil_ketua_departemen_lembaga'");
+        $wk->execute();
+        $posId = (int) ($wk->fetchColumn() ?: $posId);
     }
 
     $label = "{$r['nama']} sebagai {$r['jabatan']} di {$r['bagian']} ($lemKode)";

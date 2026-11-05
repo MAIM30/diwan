@@ -22,6 +22,7 @@ class PeopleController extends Controller {
 
     const VALID_FILTERS = ['tanpa_hp', 'tanpa_nik', 'tanpa_penempatan', 'tanpa_unit', 'nonaktif',
                            'lengkap', 'belum_lengkap', 'rangkap', 'tidak_rangkap'];
+    const PER_PAGE_OPTIONS = [25, 50, 100];
 
     public function index() {
         $this->requireLogin();
@@ -31,7 +32,8 @@ class PeopleController extends Controller {
         $gender = in_array($_GET['gender'] ?? '', ['L', 'P'], true) ? $_GET['gender'] : '';
         $filter = in_array($_GET['filter'] ?? '', self::VALID_FILTERS, true) ? $_GET['filter'] : '';
         $page = max(1, (int) ($_GET['page'] ?? 1));
-        $perPage = 25;
+        $perPage = in_array((int) ($_GET['per_page'] ?? 0), self::PER_PAGE_OPTIONS, true)
+                 ? (int) $_GET['per_page'] : 25;
         $serving = !empty($_GET['menjabat']);
         $filters = ['gender' => $gender, 'filter' => $filter, 'serving' => $serving];
         $perBidang = ($_GET['susun'] ?? '') === 'bidang';
@@ -59,6 +61,7 @@ class PeopleController extends Controller {
             'serving' => $serving,
             'page'    => $page,
             'perPage' => $perPage,
+            'perPageOptions' => self::PER_PAGE_OPTIONS,
             'perBidang' => $perBidang,
             'groups'  => $perBidang ? $this->groupedByBidang($people, $keyword, $filters, $geoTier) : null,
             'geoTabs' => $geoTabs,
@@ -393,7 +396,7 @@ class PeopleController extends Controller {
 
         // Kembali ke daftar dengan penyaringan dan halaman yang sama; hanya kunci yang dikenal daftar yang dipakai ulang.
         parse_str((string) ($_POST['back'] ?? ''), $q);
-        $keep = array_filter(array_intersect_key((array) $q, array_flip(['q', 'gender', 'filter', 'menjabat', 'susun', 'geo', 'page'])), 'is_scalar');
+        $keep = array_filter(array_intersect_key((array) $q, array_flip(['q', 'gender', 'filter', 'menjabat', 'susun', 'geo', 'page', 'per_page'])), 'is_scalar');
         $back = 'people' . ($keep ? '?' . http_build_query($keep) : '');
 
         try {

@@ -3,7 +3,7 @@
 // Mengelompokkan penempatan satu periode menjadi kategori bertingkat untuk halaman detail periode:
 //
 //   Pengurus Inti                        jabatan tingkat struktur yang inti bagi struktur ini menurut katalog jabatan (baris is_core dari PositionModel::CORE_SQL)
-//   Pimpinan Lainnya                     jabatan tingkat struktur yang bukan inti (mis. Wakil Ketua di DPP/MWP)
+//   Pimpinan Lainnya                     jabatan tingkat struktur yang bukan inti (mis. Pengarah, Tim Pakar, Anggota)
 //   Bidang  ->  Bidang X  ->  unit       tiap Bidang memuat Departemen, lalu Lembaga, lalu jenis unit lain
 //   <kelompok lain>                      kelompok bukan-Bidang milik periode itu (Pusat-Pusat, Badan-Badan, Biro-Biro)
 //   Unit tanpa Bidang                    unit yang belum dinaungi Bidang mana pun
@@ -59,7 +59,10 @@ class Susunan {
 
         $bidang = []; $subbidang = []; $lainGrup = [];
         foreach ($groups as $g) {
-            $lead = (!empty($g['coordinator_name']) && $g['kind'] !== 'grup') ? ($g['coordinator_position'] ?: 'Ketua') . ' ' . ($g['kind'] === 'subbidang' ? 'Subbidang' : 'Bidang') . ': ' . $g['coordinator_name'] : null;
+            // Nama jabatan Pengurus Inti DPP sudah memuat "Bidang" ("Ketua Bidang"): dibuang dulu agar tak terbaca "Ketua Bidang Bidang".
+            $lead = (!empty($g['coordinator_name']) && $g['kind'] !== 'grup')
+                ? preg_replace('/\s+Bidang$/u', '', $g['coordinator_position'] ?: 'Ketua') . ' ' . ($g['kind'] === 'subbidang' ? 'Subbidang' : 'Bidang') . ': ' . $g['coordinator_name']
+                : null;
             $n = self::node($g['name'], ['lead' => $lead, 'children' => $unitNodes($unitsOf[(int) $g['id']] ?? []), 'noun' => 'unit', 'empty' => 'Belum ada unit di sini.']);
             if ($g['kind'] === 'bidang') $bidang[] = $n;
             elseif ($g['kind'] === 'subbidang') $subbidang[] = $n;

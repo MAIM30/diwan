@@ -72,7 +72,7 @@ class WaNotify {
             JOIN people p ON p.id = pl.person_id
             JOIN positions pos ON pos.id = pl.position_id
             WHERE pl.structure_id = :sid AND pl.deleted_at IS NULL
-              AND (pos.is_core = 1 OR pos.core_from_tier IS NOT NULL)
+              AND pos.is_core = 1
               AND p.phone IS NOT NULL AND p.phone != ''
         ");
         $stmt->execute([':sid' => (int) $structureId]);

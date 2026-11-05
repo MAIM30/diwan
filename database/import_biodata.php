@@ -39,6 +39,7 @@ require_once ROOT_DIR . '/app/Core/Text.php';
 require_once ROOT_DIR . '/app/Core/Uuid.php';
 require_once ROOT_DIR . '/app/Core/Photo.php';
 require_once ROOT_DIR . '/app/Core/BiodataMatcher.php';
+require_once ROOT_DIR . '/app/Models/PositionModel.php';   // konstanta kode jabatan Ketua / Wakil Ketua
 require_once __DIR__ . '/005_data_diri.php';
 
 $opts = getopt('', ['db::', 'host::', 'user::', 'pass::', 'json:', 'gender::', 'commit', 'no-photos', 'verbose']);
@@ -137,16 +138,24 @@ foreach (q($pdo, "SELECT id, uuid, full_name, gender, phone, family_phone, occup
     $p['units'] = []; $p['groups'] = []; $p['pucuk'] = []; $p['pl'] = [];
     $people[(int) $p['id']] = $p;
 }
-foreach (q($pdo, "SELECT pl.person_id, po.name pos, uc.name unit, g.name grp, s.level
+// Formulir hanya menulis "Ketua" / "Wakil Ketua". Jabatan yang dikhususkan menurut tempatnya (Ketua DPD, Wakil Ketua
+// Departemen/Lembaga, ...) dibandingkan sebagai jabatan polosnya, kalau tidak setiap pengurus itu terbaca "jabatan beda".
+$basePos = function ($code, $name) {
+    if (in_array($code, PositionModel::KETUA_CODES, true) || in_array($code, PositionModel::KETUA_UNIT_CODES, true)) return 'Ketua';
+    if (in_array($code, PositionModel::WAKIL_KETUA_CODES, true) || $code === PositionModel::WAKIL_KETUA_UNIT) return 'Wakil Ketua';
+    return $name;
+};
+foreach (q($pdo, "SELECT pl.person_id, po.name pos, po.code poscode, uc.name unit, g.name grp, s.level
                   FROM placements pl JOIN terms t ON t.id = pl.term_id AND t.is_current = 1 AND t.deleted_at IS NULL
                   JOIN positions po ON po.id = pl.position_id JOIN structures s ON s.id = pl.structure_id
                   LEFT JOIN structure_units su ON su.id = pl.structure_unit_id LEFT JOIN unit_catalog uc ON uc.id = su.unit_catalog_id
                   LEFT JOIN unit_groups g ON g.id = su.unit_group_id
                   WHERE pl.deleted_at IS NULL AND (pl.end_date IS NULL OR pl.end_date >= CURDATE())") as $r) {
     $id = (int) $r['person_id']; if (!isset($people[$id])) continue;
-    $people[$id]['pl'][] = [$r['pos'], $r['unit']];
+    $pos = $basePos($r['poscode'], $r['pos']);
+    $people[$id]['pl'][] = [$pos, $r['unit']];
     if ($r['unit'] !== null) { $people[$id]['units'][$r['unit']] = true; if ($r['grp'] !== null) $people[$id]['groups'][$r['grp']] = true; }
-    else $people[$id]['pucuk'][$r['pos']] = true;
+    else $people[$id]['pucuk'][$pos] = true;
 }
 $byBaseDb = [];
 foreach ($people as $id => $p) $byBaseDb[implode(' ', $p['np']['base'])][] = $id;

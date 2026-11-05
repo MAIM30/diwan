@@ -52,7 +52,7 @@ class BroadcastController extends Controller {
             }
         } elseif ($mode === 'unit') {
             $stmt = $db->prepare("
-                SELECT uc.id, uc.name AS label, uc.kind,
+                SELECT uc.id, uc.name AS label, uc.kind, uc.wing,
                        (SELECT COUNT(DISTINCT pl.person_id) FROM structure_units su
                         JOIN placements pl ON pl.structure_unit_id = su.id AND pl.deleted_at IS NULL
                         WHERE su.unit_catalog_id = uc.id AND su.deleted_at IS NULL) AS cnt
@@ -63,7 +63,7 @@ class BroadcastController extends Controller {
             ");
             $stmt->execute([':q' => $like, ':q2' => $like]);
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                $rows[] = ['id' => 'u:' . $r['id'], 'label' => $r['label'], 'hint' => ucfirst($r['kind']) . ' · ' . $r['cnt'] . ' pengurus', 'type' => 'unit'];
+                $rows[] = ['id' => 'u:' . $r['id'], 'label' => $r['label'], 'hint' => ucfirst($r['kind']) . ($r['wing'] === 'muslimah' ? ' Muslimah' : '') . ' · ' . $r['cnt'] . ' pengurus', 'type' => 'unit'];   // nama sama bisa ada di dua sayap (migrasi 022)
             }
         } elseif ($mode === 'person') {
             $stmt = $db->prepare("

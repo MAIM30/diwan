@@ -108,6 +108,16 @@ require_once __DIR__ . '/015_struktur_dpln_mwra.php';
 migrate_015_struktur_dpln_mwra($pdo, 'say');
 require_once __DIR__ . '/016_periode_bersama.php';
 migrate_016_periode_bersama($pdo, 'say');
+require_once __DIR__ . '/018_ketua_dpw_dpd.php';
+migrate_018_ketua_dpw_dpd($pdo, 'say');
+require_once __DIR__ . '/019_wakil_ketua_spesifik.php';
+migrate_019_wakil_ketua_spesifik($pdo, 'say');
+require_once __DIR__ . '/020_ketua_bidang_inti_dpp.php';
+migrate_020_ketua_bidang_inti_dpp($pdo, 'say');
+require_once __DIR__ . '/021_ketua_menurut_jenis_unit.php';
+migrate_021_ketua_menurut_jenis_unit($pdo, 'say');
+require_once __DIR__ . '/022_katalog_unit_per_sayap.php';
+migrate_022_katalog_unit_per_sayap($pdo, 'say');
 
 // ---------- Struktur akar ----------
 // DPP dibuat sebagai akar, MWP sebagai anaknya. Inilah yang membuat lingkup "Nasional" (akar)

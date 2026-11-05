@@ -414,6 +414,22 @@ jebakan (`"M."` di data Indonesia hampir selalu "Muhammad", bukan "Magister").
 Pakai `position_code` untuk percabangan logika dan `position_name` untuk ditampilkan. Nama bisa
 diperhalus redaksinya; kodenya tidak berubah.
 
+Beberapa jabatan dibedakan menurut tempatnya dan punya kode sendiri:
+
+| Dulu | Kini |
+|---|---|
+| `ketua` di DPW / DPD | `ketua_dpw` / `ketua_dpd` |
+| `wakil_ketua` di DPW / DPD (tingkat struktur) | `wakil_ketua_dpw` / `wakil_ketua_dpd` |
+| `wakil_ketua` di dalam unit | `wakil_ketua_departemen_lembaga` |
+| `ketua` di Pengurus Inti DPP (tanpa unit) | `ketua_bidang` |
+| `wakil_ketua` di Pengurus Inti DPP (tanpa unit) | `wakil_ketua_bidang` |
+| `ketua` di dalam unit berjenis Departemen / Lembaga / Biro / Badan | `ketua_departemen` / `ketua_lembaga` / `ketua_biro` / `ketua_badan` |
+
+`ketua` tetap untuk tingkat struktur lain (MWP, MWW, MWD, ...) dan untuk kepala unit berjenis Pusat, Divisi, Komisi,
+atau Lainnya; `wakil_ketua` tetap untuk Wakil Ketua tingkat struktur selain DPW/DPD/DPP (mis. MWP).
+Himpunan kode jabatan bisa bertambah (kelak `ketua_dpc`,
+`ketua_dpra`), jadi perlakukan kode yang tak dikenal sebagai jabatan biasa, jangan sebagai galat.
+
 Satu orang bisa punya beberapa penempatan sekaligus (rangkap jabatan di beberapa struktur). Urutkan
 dengan `order` untuk menampilkan susunan pengurus sesuai hierarki jabatan.
 

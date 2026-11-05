@@ -3,14 +3,15 @@
 $this->view('layouts/header', ['title' => $title]);
 
 $pages = max(1, (int) ceil($total / $perPage));
+$perPageParam = $perPage !== 25 ? $perPage : '';
 $backQuery = http_build_query(array_filter([
     'q' => $keyword, 'gender' => $gender, 'filter' => $filter,
     'menjabat' => $serving ? 1 : '', 'susun' => $perBidang ? 'bidang' : '',
-    'geo' => $geoKey, 'page' => $page > 1 ? $page : '',
+    'geo' => $geoKey, 'page' => $page > 1 ? $page : '', 'per_page' => $perPageParam,
 ], function ($v) { return $v !== '' && $v !== null; }));
 
-$qs = function (array $over = []) use ($keyword, $gender, $filter, $serving, $perBidang, $geoKey) {
-    $p = array_merge(['q' => $keyword, 'gender' => $gender, 'filter' => $filter, 'menjabat' => $serving ? 1 : '', 'susun' => $perBidang ? 'bidang' : '', 'geo' => $geoKey], $over);
+$qs = function (array $over = []) use ($keyword, $gender, $filter, $serving, $perBidang, $geoKey, $perPageParam) {
+    $p = array_merge(['q' => $keyword, 'gender' => $gender, 'filter' => $filter, 'menjabat' => $serving ? 1 : '', 'susun' => $perBidang ? 'bidang' : '', 'geo' => $geoKey, 'per_page' => $perPageParam], $over);
     $p = array_filter($p, function ($v) { return $v !== '' && $v !== null; });
     return BASEURL . '/people' . ($p ? '?' . http_build_query($p) : '');
 };
@@ -66,6 +67,18 @@ $rc = function ($label, $count, $icon, $active, $href, $tone = '') {
     <?= $chip('Per Bidang', $perBidang, $qs(['susun' => $perBidang ? '' : 'bidang', 'geo' => '', 'page' => '']), 'layers') ?>
     <?= $chip('Tanpa Unit Organisasi (SKUO)', $filter === 'tanpa_unit', $qs(['filter' => $filter === 'tanpa_unit' ? '' : 'tanpa_unit', 'susun' => '', 'geo' => '', 'page' => '']), 'users') ?>
   </div>
+  <?php if (!$perBidang): ?>
+    <label class="per-page" style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted,#64748b)">
+      Tampilkan
+      <select onchange="window.location.href=this.value" aria-label="Jumlah baris per halaman">
+        <?php foreach ($perPageOptions as $opt): ?>
+          <option value="<?= e($qs(['per_page' => $opt === 25 ? '' : $opt, 'page' => ''])) ?>" <?= $perPage === $opt ? 'selected' : '' ?>>
+            <?= (int) $opt ?> baris
+          </option>
+        <?php endforeach; ?>
+      </select>
+    </label>
+  <?php endif; ?>
 </div>
 
 <?php if ($filter === 'tanpa_unit'): ?>

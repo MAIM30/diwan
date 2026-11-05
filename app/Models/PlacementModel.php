@@ -61,8 +61,8 @@ class PlacementModel {
 
     // Penempatan satu periode, terurut protokoler: pucuk pimpinan dulu (unit NULL), lalu
     // per Bidang, lalu per unit, lalu per urutan jabatan di dalam unit. Pengelompokan per kategori ada di Susunan::arrange.
-    // "Pengurus Inti" = jabatan tingkat struktur (structure_unit_id IS NULL) yang di katalog jabatan inti bagi struktur ini:
-    // is_core = 1, atau core_from_tier <= tier struktur (PositionModel::CORE_SQL); tak ada daftar nama jabatan yang dipatri di kode.
+    // "Pengurus Inti" = jabatan tingkat struktur (structure_unit_id IS NULL) yang di katalog jabatan bertanda inti:
+    // is_core = 1 (PositionModel::CORE_SQL); tak ada daftar nama jabatan yang dipatri di kode.
     public function byTerm($termId, $unitId = null) {
         $sql = "
             SELECT pl.*, p.full_name, p.title_prefix, p.name, p.title_suffix, p.photo_path, p.uuid AS person_uuid, p.gender, p.phone,
@@ -121,6 +121,7 @@ class PlacementModel {
     public function create(array $data) {
         $structureId = (int) $data['structure_id'];
         $termId = (int) $data['term_id'];
+        $this->assertPositionFits($data['position_id'], $data['structure_unit_id'] ?? null);
 
         try {
             $stmt = $this->db->prepare("
@@ -159,6 +160,7 @@ class PlacementModel {
         $id = (int) $id;
         $before = $this->findById($id);
         if (!$before) return false;
+        $this->assertPositionFits($data['position_id'], $data['structure_unit_id'] ?? null, $before['position_id']);
 
         try {
             $stmt = $this->db->prepare("
@@ -192,6 +194,7 @@ class PlacementModel {
         $id = (int) $id;
         $before = $this->findById($id);
         if (!$before) return false;
+        $this->assertPositionFits($data['position_id'], $data['structure_unit_id'] ?? null, $before['position_id']);
 
         try {
             $stmt = $this->db->prepare("UPDATE placements
@@ -241,6 +244,30 @@ class PlacementModel {
         $this->db->prepare("UPDATE placements SET deleted_at = NOW(3) WHERE id = :id")->execute([':id' => $id]);
         Audit::log('placements', $id, 'delete', $before, null);
         return true;
+    }
+
+    // Jabatan harus cocok dengan tempatnya: tingkat struktur atau di dalam unit, dan -- bila jabatannya dibatasi -- jenis unitnya
+    // ("Ketua Biro" hanya di Biro). Dipanggil di setiap jalur yang menulis jabatan (tambah, ubah, pindah struktur), termasuk
+    // persetujuan pendaftaran, sehingga aturannya tak bergantung pada formulir yang dipakai. Aturannya: PositionModel::mismatch.
+    // $currentPositionId = jabatan penempatan itu sekarang (saat menyunting): jabatan yang sudah nonaktif tetap boleh dipertahankan,
+    // tetapi tak boleh dipilih untuk penempatan baru atau sebagai pengganti.
+    private function assertPositionFits($positionId, $unitId, $currentPositionId = null) {
+        $position = (new PositionModel())->findById((int) $positionId);
+        if (!$position) throw new RuntimeException('Jabatan tidak ditemukan.');
+        if (!$position['is_active'] && (int) $positionId !== (int) $currentPositionId) {
+            throw new RuntimeException("Jabatan \"{$position['name']}\" sudah nonaktif dan tidak bisa dipakai untuk penempatan baru.");
+        }
+
+        $kind = null;
+        if (!empty($unitId)) {
+            $stmt = $this->db->prepare("SELECT c.kind FROM structure_units su JOIN unit_catalog c ON c.id = su.unit_catalog_id WHERE su.id = :id");
+            $stmt->execute([':id' => (int) $unitId]);
+            $kind = $stmt->fetchColumn();
+            if ($kind === false) throw new RuntimeException('Unit Organisasi (SKUO) tidak ditemukan.');
+        }
+
+        $problem = PositionModel::mismatch($position, $kind);
+        if ($problem !== null) throw new RuntimeException($problem);
     }
 
     private function explainDbError(PDOException $e) {

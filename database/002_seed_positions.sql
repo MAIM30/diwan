@@ -4,13 +4,15 @@
 --
 -- Cara membaca `is_core`: 1 berarti jabatan ini termasuk Pengurus Inti KETIKA dipegang di level
 -- struktur (placements.structure_unit_id IS NULL). Label polos "Ketua"/"Sekretaris"/"Bendahara"
--- dipakai di dua tempat sekaligus -- pucuk pimpinan DPW/DPD/DPC/MW* maupun kepala Departemen di DPP --
--- dan pembedanya tetap structure_unit_id, bukan nama jabatannya. Jadi:
+-- dipakai di dua tempat sekaligus -- pucuk pimpinan DPC/MW* maupun kepala Pusat/Divisi/Komisi di DPP --
+-- dan pembedanya tetap structure_unit_id, bukan nama jabatannya. (Ketua DPW, Ketua DPD, Ketua/Wakil Ketua Bidang di Pengurus
+-- Inti DPP, dan Ketua Departemen/Lembaga/Biro/Badan kini jabatan tersendiri lewat migrasi 018, 020, dan 021, bukan bagian
+-- seed ini.) Jadi:
 --   pengurus inti = JOIN positions p ON p.id = pl.position_id
 --                   WHERE pl.structure_unit_id IS NULL AND p.is_core = 1
 -- Itu menggantikan seluruh PengurusInti::sqlCaseFragment() di syuro.
--- Satu tambahan: 'wakil_ketua' berstatus is_core = 0 di sini, tetapi migrasi 007 memberinya core_from_tier = 2, sehingga ia inti
--- di DPW/DPLN/DPD/DPC/DPRa dan MWW/MWD/MWC/MWRa (tier 2 ke bawah) namun tidak di DPP/MWP (PositionModel::CORE_SQL).
+-- Satu tambahan: 'wakil_ketua' berstatus is_core = 0 dan 'both' di sini, tetapi migrasi 019 menjadikannya khusus tingkat
+-- struktur dan is_core = 1, lalu memisahkan Wakil Ketua DPW, Wakil Ketua DPD, dan Wakil Ketua Departemen/Lembaga darinya.
 --
 -- `applies_to` hanya pemandu UI/validasi saat entri (jabatan mana yang wajar ditawarkan di konteks
 -- mana), bukan batasan keras di tingkat database.
@@ -24,7 +26,8 @@ INSERT INTO positions (code, name, applies_to, is_core, sort_order) VALUES
   ('bendahara_umum',            'Bendahara Umum',            'structure', 1,  50),
   ('wakil_bendahara_umum',      'Wakil Bendahara Umum',      'structure', 1,  60),
 
-  -- Istilah polos: pucuk pimpinan tingkat bawah dan MWP/MWW/MWD/MWC/MWRa, SEKALIGUS kepala unit SKUO.
+  -- Istilah polos: pucuk pimpinan DPC/DPRa dan MWP/MWW/MWD/MWC/MWRa, SEKALIGUS kepala unit SKUO (kini hanya Pusat, Divisi,
+  -- Komisi, Lainnya; Departemen/Lembaga/Biro/Badan punya jabatan sendiri sejak migrasi 021).
   ('ketua',                     'Ketua',                     'both',      1,  11),
   ('wakil_ketua',               'Wakil Ketua',               'both',      0,  21),
   ('sekretaris',                'Sekretaris',                'both',      1,  31),

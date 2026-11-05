@@ -162,15 +162,8 @@ class PlacementsController extends Controller {
             }
         }
 
-        // Jabatan tingkat struktur dan jabatan di dalam SKUO dibedakan oleh konteks katalog.
-        // Validasi di server tetap diperlukan meskipun pilihan formulir juga difilter di browser.
-        $context = $data['structure_unit_id'] ? 'unit' : 'structure';
-        $allowedPositionIds = array_map('intval', array_column($this->model('PositionModel')->forContext($context), 'id'));
-        if (!in_array($data['position_id'], $allowedPositionIds, true)) {
-            Flash::set('error', 'Jabatan tidak sesuai dengan konteks penempatan pada struktur/SKUO yang dipilih.');
-            $returnTo();
-        }
-
+        // Kecocokan jabatan dengan tempatnya (tingkat struktur / di dalam SKUO / jenis unitnya) dijaga PlacementModel, di setiap jalur
+        // penulisan, jadi tak bergantung pada pilihan yang difilter di browser. Penolakannya tiba sebagai RuntimeException di bawah.
         try {
             if ($id) {
                 if ($termId !== $baseTermId) $placements->updateWithinGovernancePeriod($id, $data);

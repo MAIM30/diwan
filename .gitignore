@@ -6,10 +6,11 @@ wa-gateway/auth_state*/
 .env
 config/config.local.php
 
-# Data pribadi pengurus (dokumen SK, foto, hasil analisis ad-hoc) -- jangan pernah ikut repo
+# Data pribadi pengurus (dokumen SK, foto, hasil analisis ad-hoc, CSV impor) -- jangan pernah ikut repo
 storage/sk/
 public/uploads/people/
 deploy/dump/
+database/data_dewan2.csv
 
 # Dump basis data mentah di root (data produksi/legacy, besar & sensitif)
 /db_fruwit.sql

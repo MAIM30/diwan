@@ -11,14 +11,21 @@
 //
 // Nilai awalnya hanya dipasang saat kolom ini BARU dibuat, supaya menjalankan ulang migrasi tidak menimpa pengaturan
 // yang kelak diubah dengan sengaja.
+//
+// RIWAYAT: kolom ini dihapus oleh migrasi 019 (aturannya dilebur ke positions.is_core). Migrasi ini tetap ada agar
+// basis data baru melewati urutan yang sama, tetapi tidak menambahkan kolom itu lagi pada basis data yang sudah
+// melewati 019 (Wakil Ketua di sana sudah is_core = 1).
 
 function migrate_007_inti_wakil_ketua(PDO $pdo, callable $say) {
     $say("Migrasi 007: Wakil Ketua sebagai Pengurus Inti mulai tingkat Wilayah...");
 
     $has = (int) $pdo->query("SELECT COUNT(*) FROM information_schema.columns
                               WHERE table_schema = DATABASE() AND table_name = 'positions' AND column_name = 'core_from_tier'")->fetchColumn();
+    $folded = (int) $pdo->query("SELECT COUNT(*) FROM positions WHERE code = 'wakil_ketua' AND is_core = 1")->fetchColumn();
     if ($has) {
         $say("  positions.core_from_tier sudah ada, dilewati.");
+    } elseif ($folded) {
+        $say("  aturan jenjang sudah dilebur ke positions.is_core (migrasi 019), dilewati.");
     } else {
         $pdo->exec("ALTER TABLE positions ADD COLUMN core_from_tier TINYINT UNSIGNED NULL AFTER is_core");
         $n = $pdo->exec("UPDATE positions SET core_from_tier = 2 WHERE code = 'wakil_ketua' AND is_core = 0");

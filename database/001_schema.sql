@@ -229,9 +229,15 @@ CREATE TABLE people (
 --
 -- `is_core` + `structure_unit_id IS NULL` di `placements` kini mereproduksi aturan itu sebagai DATA:
 --   pengurus inti = placements.structure_unit_id IS NULL AND positions.is_core = 1
--- (ditambah satu kekecualian per tier lewat positions.core_from_tier, migrasi 007: Wakil Ketua inti di DPW ke bawah, bukan di DPP/MWP.)
--- Label "Ketua"/"Sekretaris"/"Bendahara" yang polos tetap dipakai dua-duanya (pucuk pimpinan DPW
+-- (Wakil Ketua: migrasi 007/013 sempat memberinya kekecualian per tier lewat positions.core_from_tier; migrasi 019
+-- menghapus kolom itu dan menjadikan Wakil Ketua is_core = 1.)
+-- Label "Ketua"/"Sekretaris"/"Bendahara" yang polos dipakai dua-duanya (pucuk pimpinan MWW/MWD/...
 -- maupun kepala Departemen di DPP) -- pembedanya structure_unit_id, sama seperti di syuro.
+-- Kekecualian: Ketua DPW dan Ketua DPD punya jabatan sendiri (migrasi 018), dan Wakil Ketua dipisah menjadi
+-- Wakil Ketua (tingkat struktur), Wakil Ketua DPW, Wakil Ketua DPD, dan Wakil Ketua Departemen/Lembaga (migrasi 019).
+-- Di Pengurus Inti DPP, Ketua dan Wakil Ketua adalah Ketua Bidang dan Wakil Ketua Bidang (migrasi 020), dan kepala unit
+-- berjenis Departemen / Lembaga / Biro / Badan adalah Ketua Departemen / Lembaga / Biro / Badan (migrasi 021, yang juga menambah
+-- kolom positions.unit_kinds: jenis unit tempat sebuah jabatan boleh dipegang).
 CREATE TABLE positions (
   id           SMALLINT UNSIGNED NOT NULL AUTO_INCREMENT,
   code         VARCHAR(40)  NOT NULL,

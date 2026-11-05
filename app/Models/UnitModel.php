@@ -16,25 +16,45 @@ class UnitModel {
     // ke FIELD() di dalam SQL.
     const KIND_ORDER = ['departemen', 'lembaga', 'biro', 'badan', 'pusat', 'divisi', 'lainnya'];
 
+    // Sayap katalog (migrasi 022). Mengikuti structures.wing: struktur Muslimah (MWP, MWW, MWD, MWC, MWRa) memakai katalog
+    // 'muslimah', yang lain 'umum'. Nama unit unik per sayap, bukan di seluruh katalog.
+    const WINGS = ['umum' => 'Umum', 'muslimah' => 'Muslimah'];
+
     private $db;
 
     public function __construct() {
         $this->db = Database::getInstance()->getConnection();
     }
 
-    // ---------- Katalog unit (lintas struktur) ----------
+    // ---------- Katalog unit (dibagi per sayap: Umum dan Muslimah) ----------
 
-    public function catalogAll($activeOnly = false) {
-        $sql = "SELECT * FROM unit_catalog" . ($activeOnly ? " WHERE is_active = 1" : "") . " ORDER BY name";
-        return $this->db->query($sql)->fetchAll();
+    // $wing: 'umum' / 'muslimah' = hanya katalog sayap itu; kosong = keduanya.
+    public function catalogAll($activeOnly = false, $wing = '') {
+        $where = [];
+        if ($activeOnly) $where[] = 'is_active = 1';
+        if (isset(self::WINGS[$wing])) $where[] = 'wing = ' . $this->db->quote($wing);
+        return $this->db->query("SELECT * FROM unit_catalog" . ($where ? ' WHERE ' . implode(' AND ', $where) : '') . " ORDER BY name")->fetchAll();
     }
 
-    // Jumlah entri katalog per jenis, untuk kartu rekap. Tidak ikut difilter: kartu harus tetap
-    // menunjukkan seluruh isi katalog walau daftarnya sedang disaring, kalau tidak angkanya
-    // berubah setiap kali disaring dan tidak bisa dipakai membandingkan.
-    public function catalogCountsByKind() {
-        return $this->db->query("SELECT kind, COUNT(*) FROM unit_catalog GROUP BY kind")
+    // Jumlah entri katalog per jenis, untuk kartu rekap. Tidak ikut difilter menurut jenis atau pencarian: kartu harus tetap
+    // menunjukkan seluruh isi katalog walau daftarnya sedang disaring, kalau tidak angkanya berubah setiap kali disaring dan tidak
+    // bisa dipakai membandingkan. Sayap memang membatasinya: ia memilih katalog mana yang sedang dilihat.
+    public function catalogCountsByKind($wing = '') {
+        $where = isset(self::WINGS[$wing]) ? ' WHERE wing = ' . $this->db->quote($wing) : '';
+        return $this->db->query("SELECT kind, COUNT(*) FROM unit_catalog$where GROUP BY kind")
                         ->fetchAll(PDO::FETCH_KEY_PAIR);
+    }
+
+    public function catalogCountsByWing() {
+        return $this->db->query("SELECT wing, COUNT(*) FROM unit_catalog GROUP BY wing")->fetchAll(PDO::FETCH_KEY_PAIR);
+    }
+
+    // Sayap katalog yang boleh dipakai sebuah struktur: mengikuti structures.wing.
+    public function wingOfStructure($structureId) {
+        $stmt = $this->db->prepare("SELECT wing FROM structures WHERE id = :id");
+        $stmt->execute([':id' => (int) $structureId]);
+        $w = $stmt->fetchColumn();
+        return isset(self::WINGS[$w]) ? $w : 'umum';
     }
 
     // Katalog beserta JUMLAH PEMAKAIANNYA. "Dipakai" adalah satu-satunya angka yang menjawab
@@ -43,13 +63,17 @@ class UnitModel {
     //   used_count      = berapa penempatan unit (structure_units) menunjuk entri ini
     //   used_structures = di berapa struktur berbeda
     // $flat = true: satu daftar menurut urutan resmi SKUO (sort_order), bukan dipecah per jenis.
-    public function catalogList($kind = '', $keyword = '', $flat = false) {
+    public function catalogList($kind = '', $keyword = '', $flat = false, $wing = '') {
         $where = [];
         $params = [];
 
         if ($kind !== '' && in_array($kind, self::KIND_ORDER, true)) {
             $where[] = 'c.kind = :kind';
             $params[':kind'] = $kind;
+        }
+        if (isset(self::WINGS[$wing])) {
+            $where[] = 'c.wing = :wing';
+            $params[':wing'] = $wing;
         }
 
         // LIKE: % _ \ dari pengguna dinetralkan, kalau tidak "50%" cocok dengan semuanya.
@@ -72,7 +96,7 @@ class UnitModel {
             FROM unit_catalog c
             LEFT JOIN positions p ON p.id = c.default_head_position_id
             " . ($where ? 'WHERE ' . implode(' AND ', $where) : '') . "
-            ORDER BY $order, c.name
+            ORDER BY $order, c.wing, c.name
         ");
         $stmt->execute($params);
         return $stmt->fetchAll();
@@ -84,36 +108,39 @@ class UnitModel {
         return $stmt->fetch() ?: null;
     }
 
-    // Katalog dipakai bersama, jadi nama yang sudah ada DIPAKAI ULANG, tidak diduplikasi.
-    public function catalogFindOrCreate($name, $kind = 'lainnya', $abbreviation = null) {
+    // Nama yang sudah ada DI SAYAP ITU dipakai ulang, tidak diduplikasi. (Nama yang sama di sayap lain adalah entri lain.)
+    public function catalogFindOrCreate($name, $kind = 'lainnya', $abbreviation = null, $wing = 'umum') {
         $name = trim($name);
-        $stmt = $this->db->prepare("SELECT * FROM unit_catalog WHERE name = :n LIMIT 1");
-        $stmt->execute([':n' => $name]);
+        $wing = isset(self::WINGS[$wing]) ? $wing : 'umum';
+        $stmt = $this->db->prepare("SELECT * FROM unit_catalog WHERE name = :n AND wing = :w LIMIT 1");
+        $stmt->execute([':n' => $name, ':w' => $wing]);
         if ($row = $stmt->fetch()) {
             return (int) $row['id'];
         }
 
         $ins = $this->db->prepare("
-            INSERT INTO unit_catalog (uuid, name, abbreviation, kind, default_head_position_id)
-            VALUES (:uuid, :name, :abbr, :kind, :head)
+            INSERT INTO unit_catalog (uuid, name, abbreviation, kind, wing, default_head_position_id)
+            VALUES (:uuid, :name, :abbr, :kind, :wing, :head)
         ");
         $ins->execute([
             ':uuid' => Uuid::v4(),
             ':name' => $name,
             ':abbr' => $abbreviation ?: null,
             ':kind' => $kind,
+            ':wing' => $wing,
             ':head' => $this->defaultHeadPositionId($kind),
         ]);
         return (int) $this->db->lastInsertId();
     }
 
-    // Untuk isian "ketik nama unit" (halaman Pengelompokan Unit): nama yang sudah ada di katalog dipakai ulang (jenisnya tidak
-    // diubah), yang belum ada dibuat dan dicatat. Mengembalikan [id katalog, apakah baru dibuat].
-    public function catalogEnsure($name, $kind) {
-        $stmt = $this->db->prepare("SELECT id FROM unit_catalog WHERE name = :n LIMIT 1");
-        $stmt->execute([':n' => trim($name)]);
+    // Untuk isian "ketik nama unit" (halaman Pengelompokan Unit): nama yang sudah ada di katalog SAYAP struktur itu dipakai ulang
+    // (jenisnya tidak diubah), yang belum ada dibuat di sayap itu dan dicatat. Mengembalikan [id katalog, apakah baru dibuat].
+    public function catalogEnsure($name, $kind, $wing = 'umum') {
+        $wing = isset(self::WINGS[$wing]) ? $wing : 'umum';
+        $stmt = $this->db->prepare("SELECT id FROM unit_catalog WHERE name = :n AND wing = :w LIMIT 1");
+        $stmt->execute([':n' => trim($name), ':w' => $wing]);
         if ($id = $stmt->fetchColumn()) return [(int) $id, false];
-        return [$this->catalogSave(null, ['name' => $name, 'abbreviation' => '', 'kind' => $kind, 'is_active' => true]), true];
+        return [$this->catalogSave(null, ['name' => $name, 'abbreviation' => '', 'kind' => $kind, 'wing' => $wing, 'is_active' => true]), true];
     }
 
     // Nomor urut berikutnya di urutan resmi SKUO: kelipatan 10 di atas yang terbesar, melewati 500 (500 = "belum diurutkan").
@@ -123,14 +150,72 @@ class UnitModel {
         return $next === 500 ? 510 : min($next, 65535);
     }
 
+    // Mengganti jenis sebuah unit ditolak selama masih ada penempatan hidup di unit itu yang jabatannya tak berlaku di jenis barunya
+    // (mis. "Ketua Biro" di unit yang hendak dijadikan Departemen): penempatan itu akan jadi tak sah dan gagal disunting.
+    private function assertKindKeepsPlacements($catalogId, $newKind) {
+        $stmt = $this->db->prepare("
+            SELECT po.name, po.unit_kinds, COUNT(*) AS n
+            FROM placements pl
+            JOIN structure_units su ON su.id = pl.structure_unit_id
+            JOIN positions po ON po.id = pl.position_id
+            WHERE su.unit_catalog_id = :id AND pl.deleted_at IS NULL AND po.unit_kinds IS NOT NULL AND po.unit_kinds <> ''
+            GROUP BY po.id, po.name, po.unit_kinds
+        ");
+        $stmt->execute([':id' => (int) $catalogId]);
+        $bad = [];
+        foreach ($stmt->fetchAll() as $r) {
+            if (!in_array($newKind, PositionModel::kindList($r['unit_kinds']), true)) $bad[] = $r['name'] . ' (' . $r['n'] . ')';
+        }
+        if ($bad) {
+            throw new RuntimeException('Jenis unit tidak bisa diubah ke ' . (PositionModel::UNIT_KINDS[$newKind] ?? $newKind)
+                . ': masih ada penempatan berjabatan ' . implode(', ', $bad) . ' di unit ini. Pindahkan penempatan itu ke jabatan yang sesuai lebih dulu.');
+        }
+    }
+
+    // Sebuah unit hanya boleh dipasang pada struktur yang sayapnya sama dengan sayap katalognya: unit MWP diambil dari katalog
+    // Muslimah, unit DPP dari katalog Umum. Dijaga di server karena pilihan di formulir hanyalah penyaring.
+    private function assertCatalogFitsStructure($catalogId, $structureId) {
+        $stmt = $this->db->prepare("
+            SELECT c.name, c.wing AS cwing, s.wing AS swing, s.level, s.name AS sname
+            FROM unit_catalog c, structures s WHERE c.id = :c AND s.id = :s
+        ");
+        $stmt->execute([':c' => (int) $catalogId, ':s' => (int) $structureId]);
+        $r = $stmt->fetch();
+        if (!$r) throw new RuntimeException('Unit atau struktur tidak ditemukan.');
+        if ($r['cwing'] !== $r['swing']) {
+            throw new RuntimeException('Unit "' . $r['name'] . '" ada di katalog sayap ' . self::WINGS[$r['cwing']] . ', sedangkan ' . $r['level'] . ' '
+                . $r['sname'] . ' sayap ' . self::WINGS[$r['swing']] . '. Pilih unit dari katalog sayap ' . self::WINGS[$r['swing']] . ', atau buat dulu di Unit Organisasi.');
+        }
+    }
+
+    // Mengganti sayap entri katalog ditolak selama masih ada unit (periode mana pun, yang masih hidup) pada struktur sayap lain:
+    // unit itu akan menunjuk katalog yang bukan sayapnya.
+    private function assertWingKeepsUnits($catalogId, $newWing) {
+        $stmt = $this->db->prepare("
+            SELECT COUNT(DISTINCT s.id) FROM structure_units su JOIN structures s ON s.id = su.structure_id
+            WHERE su.unit_catalog_id = :id AND su.deleted_at IS NULL AND s.wing <> :w
+        ");
+        $stmt->execute([':id' => (int) $catalogId, ':w' => $newWing]);
+        $n = (int) $stmt->fetchColumn();
+        if ($n > 0) {
+            throw new RuntimeException('Sayap unit tidak bisa diubah ke ' . self::WINGS[$newWing] . ': unit ini masih dipakai di ' . $n
+                . ' struktur sayap lain. Buat entri katalog di sayap itu untuk strukturnya, atau lepas unit ini dari struktur tersebut lebih dulu.');
+        }
+    }
+
     // $data['sort_order'] kosong/tak ada: entri baru memakai nomor urut berikutnya, entri lama tidak berubah urutannya.
+    // $data['wing']: sayap katalog (bawaan 'umum' untuk entri baru; pada entri lama hanya berubah bila dikirim).
     public function catalogSave($id, array $data) {
         $hasOrder = isset($data['sort_order']) && $data['sort_order'] !== '';
         $order = $hasOrder ? max(0, min(65535, (int) $data['sort_order'])) : null;
+        $wing = isset($data['wing']) && isset(self::WINGS[$data['wing']]) ? $data['wing'] : null;
 
         if ($id) {
+            $this->assertKindKeepsPlacements($id, $data['kind']);
+            $current = $this->catalogFindById($id);
+            if ($wing !== null && $current && $current['wing'] !== $wing) $this->assertWingKeepsUnits($id, $wing);
             $stmt = $this->db->prepare("
-                UPDATE unit_catalog SET name = :name, abbreviation = :abbr, kind = :kind,
+                UPDATE unit_catalog SET name = :name, abbreviation = :abbr, kind = :kind, wing = COALESCE(:wing, wing),
                        default_head_position_id = :head, is_active = :active, sort_order = COALESCE(:sort, sort_order)
                 WHERE id = :id
             ");
@@ -138,6 +223,7 @@ class UnitModel {
                 ':name'   => trim($data['name']),
                 ':abbr'   => $data['abbreviation'] !== '' ? $data['abbreviation'] : null,
                 ':kind'   => $data['kind'],
+                ':wing'   => $wing,
                 ':head'   => $this->defaultHeadPositionId($data['kind']),
                 ':active' => !empty($data['is_active']) ? 1 : 0,
                 ':sort'   => $order,
@@ -148,14 +234,15 @@ class UnitModel {
         }
 
         $stmt = $this->db->prepare("
-            INSERT INTO unit_catalog (uuid, name, abbreviation, kind, default_head_position_id, sort_order)
-            VALUES (:uuid, :name, :abbr, :kind, :head, :sort)
+            INSERT INTO unit_catalog (uuid, name, abbreviation, kind, wing, default_head_position_id, sort_order)
+            VALUES (:uuid, :name, :abbr, :kind, :wing, :head, :sort)
         ");
         $stmt->execute([
             ':uuid' => Uuid::v4(),
             ':name' => trim($data['name']),
             ':abbr' => $data['abbreviation'] !== '' ? $data['abbreviation'] : null,
             ':kind' => $data['kind'],
+            ':wing' => $wing ?? 'umum',
             ':head' => $this->defaultHeadPositionId($data['kind']),
             ':sort' => $order ?? $this->catalogNextOrder(),
         ]);
@@ -181,10 +268,12 @@ class UnitModel {
         return true;
     }
 
-    // Istilah kepala unit mengikuti JENIS unitnya: Pusat dipimpin "Kepala", Divisi oleh
-    // "Koordinator", sisanya oleh "Ketua". Ini default saat entri, bukan batasan keras.
+    // Istilah kepala unit mengikuti JENIS unitnya: Pusat dipimpin "Kepala", Divisi oleh "Koordinator", Departemen / Lembaga / Biro /
+    // Badan oleh "Ketua <jenisnya>" (migrasi 021), sisanya oleh "Ketua". Ini default saat entri; yang menjaganya adalah batas jenis
+    // unit pada jabatan (PositionModel::mismatch), mis. "Ketua Biro" hanya bisa ditempatkan di Biro.
     private function defaultHeadPositionId($kind) {
-        $code = $kind === 'pusat' ? 'kepala' : ($kind === 'divisi' ? 'koordinator' : 'ketua');
+        $code = $kind === 'pusat' ? 'kepala' : ($kind === 'divisi' ? 'koordinator'
+              : (in_array($kind, ['departemen', 'lembaga', 'biro', 'badan'], true) ? 'ketua_' . $kind : 'ketua'));
         $stmt = $this->db->prepare("SELECT id FROM positions WHERE code = :c LIMIT 1");
         $stmt->execute([':c' => $code]);
         $id = $stmt->fetchColumn();
@@ -213,9 +302,11 @@ class UnitModel {
         return $stmt->fetchAll();
     }
 
-    // Calon Ketua Bidang: penempatan tingkat struktur (tanpa unit) berjabatan Ketua / Wakil Ketua yang inti di struktur ini
-    // dan masih berlaku pada periode itu. Satu-satunya sumber pilihan di formulir, jadi isian lain tidak bisa dikirim.
+    // Calon Ketua Bidang: penempatan tingkat struktur (tanpa unit) berjabatan Ketua atau Wakil Ketua (termasuk yang khusus
+    // DPW / DPD) yang inti di struktur ini dan masih berlaku pada periode itu. Satu-satunya sumber pilihan di formulir,
+    // jadi isian lain tidak bisa dikirim.
     public function coordinatorCandidates($termId) {
+        $codes = "'" . implode("', '", array_merge(PositionModel::KETUA_CODES, PositionModel::WAKIL_KETUA_CODES)) . "'";
         $stmt = $this->db->prepare("
             SELECT pl.id, p.full_name, po.name AS position_name
             FROM placements pl
@@ -224,7 +315,7 @@ class UnitModel {
             JOIN structures s ON s.id = pl.structure_id
             WHERE pl.term_id = :t AND pl.deleted_at IS NULL AND pl.structure_unit_id IS NULL
               AND (pl.end_date IS NULL OR pl.end_date >= CURDATE())
-              AND po.code IN ('ketua', 'wakil_ketua') AND " . PositionModel::CORE_SQL . "
+              AND po.code IN ($codes) AND " . PositionModel::CORE_SQL . "
             ORDER BY po.sort_order, p.name
         ");
         $stmt->execute([':t' => (int) $termId]);
@@ -243,8 +334,8 @@ class UnitModel {
     // berjalan. Tidak disimpan di katalog -- inti tetap berupa penempatan tanpa unit, aturannya satu-satunya ada di PositionModel::CORE_SQL.
     public function intiInfo() {
         $positions = $this->db->query("
-            SELECT name, is_core, core_from_tier FROM positions
-            WHERE is_active = 1 AND (is_core = 1 OR core_from_tier IS NOT NULL) ORDER BY sort_order
+            SELECT name FROM positions
+            WHERE is_active = 1 AND is_core = 1 ORDER BY sort_order, name
         ")->fetchAll();
 
         $use = $this->db->query("
@@ -397,6 +488,8 @@ class UnitModel {
             Audit::log('structure_units', $id, 'update', null, $data);
             return (int) $id;
         }
+
+        $this->assertCatalogFitsStructure($data['unit_catalog_id'], $data['structure_id']);
 
         // Sama seperti Bidang: unit yang pernah dihapus dari periode ini dihidupkan kembali, bukan ditolak sebagai "sudah terdaftar".
         $dead = $this->db->prepare("SELECT id FROM structure_units WHERE term_id = :t AND unit_catalog_id = :c AND deleted_at IS NOT NULL LIMIT 1");

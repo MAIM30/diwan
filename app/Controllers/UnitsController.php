@@ -14,11 +14,14 @@ class UnitsController extends Controller {
         $kind    = in_array($_GET['kind'] ?? '', self::UNIT_KINDS, true) ? $_GET['kind'] : '';
         $keyword = trim($_GET['q'] ?? '');
         $urut    = ($_GET['urut'] ?? '') === 'skuo';   // satu daftar menurut urutan resmi SKUO, bukan per jenis
+        $wing    = isset(UnitModel::WINGS[$_GET['w'] ?? '']) ? $_GET['w'] : '';   // katalog sayap Umum / Muslimah; kosong = keduanya
 
         $this->view('admin/units/catalog', [
             'title'   => 'Unit Organisasi',
-            'rows'    => $units->catalogList($kind, $keyword, $urut),
-            'counts'  => $units->catalogCountsByKind(),
+            'rows'    => $units->catalogList($kind, $keyword, $urut, $wing),
+            'counts'  => $units->catalogCountsByKind($wing),
+            'wing'    => $wing,
+            'wingCounts' => $units->catalogCountsByWing(),
             'kind'    => $kind,
             'keyword' => $keyword,
             'urut'    => $urut,
@@ -32,7 +35,8 @@ class UnitsController extends Controller {
     private function backToCatalog() {
         $kind = in_array($_POST['kind_filter'] ?? '', self::UNIT_KINDS, true) ? $_POST['kind_filter'] : '';
         $q    = trim($_POST['q_filter'] ?? '');
-        $p    = array_filter(['kind' => $kind, 'q' => $q, 'urut' => ($_POST['urut_filter'] ?? '') === 'skuo' ? 'skuo' : ''], function ($v) { return $v !== ''; });
+        $w    = isset(UnitModel::WINGS[$_POST['w_filter'] ?? '']) ? $_POST['w_filter'] : '';
+        $p    = array_filter(['w' => $w, 'kind' => $kind, 'q' => $q, 'urut' => ($_POST['urut_filter'] ?? '') === 'skuo' ? 'skuo' : ''], function ($v) { return $v !== ''; });
         $this->redirect('units/catalog' . ($p ? '?' . http_build_query($p) : ''));
     }
 
@@ -63,6 +67,7 @@ class UnitsController extends Controller {
             'name'         => trim($_POST['name'] ?? ''),
             'abbreviation' => trim($_POST['abbreviation'] ?? ''),
             'kind'         => in_array($_POST['kind'] ?? '', self::UNIT_KINDS, true) ? $_POST['kind'] : 'lainnya',
+            'wing'         => isset(UnitModel::WINGS[$_POST['wing'] ?? '']) ? $_POST['wing'] : null,   // sayap katalog; kosong: entri baru 'umum', entri lama tak berubah
             'is_active'    => !empty($_POST['is_active']),
             'sort_order'   => trim((string) ($_POST['sort_order'] ?? '')),   // kosong: entri baru ke urutan terakhir, entri lama tetap
         ];
@@ -75,9 +80,11 @@ class UnitsController extends Controller {
         try {
             $units->catalogSave($id, $data);
             Flash::set('success', 'Katalog unit disimpan.');
+        } catch (RuntimeException $e) {
+            Flash::set('error', $e->getMessage());
         } catch (PDOException $e) {
             if (strpos($e->getMessage(), 'uq_unit_catalog_name') !== false) {
-                Flash::set('error', 'Nama unit itu sudah ada di katalog. Katalog dipakai bersama lintas struktur, jadi cukup pakai yang sudah ada.');
+                Flash::set('error', 'Nama unit itu sudah ada di katalog sayap tersebut. Katalog dipakai bersama lintas struktur sesayap, jadi cukup pakai yang sudah ada.');
             } else {
                 error_log('Simpan katalog unit gagal: ' . $e->getMessage());
                 Flash::set('error', 'Unit tidak bisa disimpan.');
@@ -117,7 +124,7 @@ class UnitsController extends Controller {
             'entries'  => $entries,
             'without'  => $without,
             'openTerm' => (int) ($_GET['open'] ?? 0),
-            'catalog'  => Auth::canEdit() ? $units->catalogAll(true) : [],   // saran nama pada isian "Tambah unit"
+            'catalog'  => Auth::canEdit() ? $units->catalogAll(true) : [],   // saran nama pada isian "Tambah unit" (tiap entri membawa wing: saran dipilah per sayap struktur)
         ]);
     }
 
@@ -174,7 +181,7 @@ class UnitsController extends Controller {
             'term'    => $term,
             'groups'  => $units->groupsByTerm($termId),
             'rows'    => $units->unitsByTerm($termId),
-            'catalog' => $units->catalogAll(true),
+            'catalog' => $units->catalogAll(true, $units->wingOfStructure($term['structure_id'])),   // hanya katalog sayap struktur ini
         ]);
     }
 
@@ -307,7 +314,8 @@ class UnitsController extends Controller {
                 $this->back($termId);
             }
             $kind = in_array($_POST['new_kind'] ?? '', self::UNIT_KINDS, true) ? $_POST['new_kind'] : 'lainnya';
-            [$catalogId, $createdInCatalog] = $units->catalogEnsure($newName, $kind);
+            // Nama dicari / dibuat di katalog SAYAP struktur ini (unit Muslimah tak memakai entri DPP, walau namanya sama).
+            [$catalogId, $createdInCatalog] = $units->catalogEnsure($newName, $kind, $units->wingOfStructure($term['structure_id']));
         }
 
         $data = [
@@ -324,6 +332,8 @@ class UnitsController extends Controller {
         try {
             $units->unitSave($id, $data);
             Flash::set('success', $createdInCatalog ? 'Unit baru dibuat di katalog dan ditambahkan.' : 'Unit disimpan.');
+        } catch (RuntimeException $e) {
+            Flash::set('error', $e->getMessage());
         } catch (PDOException $e) {
             if (strpos($e->getMessage(), 'uq_structure_units_term_unit') !== false) {
                 Flash::set('error', 'Unit itu sudah terdaftar di periode ini.');

@@ -10,6 +10,7 @@
 //   unit_groups.coordinator_placement_id  penempatan Ketua/Wakil Ketua (Pengurus Inti) yang memimpin Bidang itu.
 //                                     Menunjuk PENEMPATAN, bukan orang: mengikuti periode, dan pergantian Ketua cukup mengganti penempatannya.
 //   positions.core_from_tier          Wakil Ketua jadi inti mulai tier 1 (DPP; sebelumnya mulai tier 2 / Wilayah).
+//                                     (Riwayat: kolom ini dihapus migrasi 019; Wakil Ketua kini is_core = 1.)
 
 const SKUO_URUT_013 = [
     'Departemen Dakwah dan Pembinaan Masjid', 'Departemen Kaderisasi dan Pembinaan Murabbi', 'Lembaga Pendidikan Dai dan Murabbi',

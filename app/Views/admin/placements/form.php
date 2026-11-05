@@ -153,7 +153,7 @@ $this->view('layouts/header', ['title' => $title]);
           <option value="">PENGURUS INTI (tingkat struktur, tanpa unit)</option>
           <optgroup label="SKUO periode <?= e($term['level'] . ' · ' . $term['structure_name']) ?>">
           <?php foreach ($units as $u): ?>
-            <option value="<?= (int) $u['id'] ?>" <?= (int) ($row['structure_unit_id'] ?? 0) === (int) $u['id'] ? 'selected' : '' ?>>
+            <option value="<?= (int) $u['id'] ?>" data-kind="<?= e($u['kind']) ?>" <?= (int) ($row['structure_unit_id'] ?? 0) === (int) $u['id'] ? 'selected' : '' ?>>
               <?= e(($u['group_name'] ? $u['group_name'] . ' — ' : '') . ($u['display_name'] ?: $u['catalog_name'])) ?>
             </option>
           <?php endforeach; ?>
@@ -167,8 +167,8 @@ $this->view('layouts/header', ['title' => $title]);
         <select id="position_id" name="position_id" required>
           <option value="">— pilih —</option>
           <?php foreach ($positions as $p): ?>
-            <option value="<?= (int) $p['id'] ?>" data-applies-to="<?= e($p['applies_to']) ?>" <?= (int) ($row['position_id'] ?? 0) === (int) $p['id'] ? 'selected' : '' ?>>
-              <?= e($p['name']) ?><?= PositionModel::isCoreAt($p, $term['tier']) ? ' (inti)' : '' ?>
+            <option value="<?= (int) $p['id'] ?>" data-applies-to="<?= e($p['applies_to']) ?>" data-unit-kinds="<?= e($p['unit_kinds'] ?? '') ?>" <?= (int) ($row['position_id'] ?? 0) === (int) $p['id'] ? 'selected' : '' ?>>
+              <?= e($p['name']) ?><?= !empty($p['is_core']) ? ' (inti)' : '' ?>
             </option>
           <?php endforeach; ?>
         </select>
@@ -263,16 +263,21 @@ $this->view('layouts/header', ['title' => $title]);
 
   function syncPositionOptions() {
     var context = unit.value ? 'unit' : 'structure';
+    // Jenis unit yang dipilih (mis. "biro"): jabatan khusus jenis lain ("Ketua Departemen") ikut disembunyikan. Aturan yang sama
+    // dijaga ulang di server (PositionModel::mismatch), jadi ini hanya merapikan pilihan.
+    var kind = unit.selectedOptions[0] ? (unit.selectedOptions[0].getAttribute('data-kind') || '') : '';
     Array.prototype.forEach.call(position.options, function (option) {
       if (!option.value) return;
       var appliesTo = option.getAttribute('data-applies-to');
-      var allowed = appliesTo === 'both' || appliesTo === context;
+      var kinds = (option.getAttribute('data-unit-kinds') || '').split(',').filter(Boolean);
+      var allowed = (appliesTo === 'both' || appliesTo === context)
+        && (context !== 'unit' || !kinds.length || kinds.indexOf(kind) !== -1);
       option.hidden = !allowed;
       option.disabled = !allowed;
     });
     if (position.selectedOptions[0] && position.selectedOptions[0].disabled) position.value = '';
     hint.textContent = context === 'unit'
-      ? 'Menampilkan jabatan yang berlaku di dalam SKUO struktur tujuan.'
+      ? 'Menampilkan jabatan yang berlaku di unit ini (menurut jenis unitnya).'
       : 'Menampilkan jabatan yang berlaku di tingkat struktur tujuan, tanpa SKUO.';
   }
 
@@ -292,7 +297,7 @@ $this->view('layouts/header', ['title' => $title]);
         data.units.forEach(function (item) {
           var name = item.group_name ? item.group_name + ' — ' : '';
           name += item.display_name || item.catalog_name;
-          unitHtml += '<option value="' + item.id + '">' + escapeHtml(name) + '</option>';
+          unitHtml += '<option value="' + item.id + '" data-kind="' + escapeHtml(item.kind || '') + '">' + escapeHtml(name) + '</option>';
         });
         unitHtml += '</optgroup>';
       }
@@ -302,8 +307,8 @@ $this->view('layouts/header', ['title' => $title]);
 
       var positionHtml = '<option value="">— pilih —</option>';
       data.positions.forEach(function (item) {
-        var core = item.is_core == 1 || (item.core_from_tier !== null && parseInt(data.term.tier, 10) >= parseInt(item.core_from_tier, 10));
-        positionHtml += '<option value="' + item.id + '" data-applies-to="' + item.applies_to + '">' + escapeHtml(item.name) + (core ? ' (inti)' : '') + '</option>';
+        var core = item.is_core == 1;
+        positionHtml += '<option value="' + item.id + '" data-applies-to="' + item.applies_to + '" data-unit-kinds="' + escapeHtml(item.unit_kinds || '') + '">' + escapeHtml(item.name) + (core ? ' (inti)' : '') + '</option>';
       });
       position.innerHTML = positionHtml;
       if (stillSame) position.value = previousPosition;
