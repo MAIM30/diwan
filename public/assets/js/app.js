@@ -565,6 +565,61 @@
     $$(open ? 'details.mon-g' : 'details', tree).forEach(function (d) { d.open = open; });
   });
 
+  /* ---------- Pengelompokan Unit > "Tambah unit" di tingkat struktur ----------
+     Mengenali nama yang diketik: ada di katalog (tampilkan jenisnya, tak perlu bertanya jenis) atau nama baru (tanyakan jenis unitnya),
+     dan menjelaskan ke mana unit itu akan masuk. Tanpa berkas ini formulirnya tetap lengkap dan berfungsi: semua isian terlihat. */
+  $$('form[data-unit-add]').forEach(function (form) {
+    var name = $('input[name="new_name"]', form);
+    var kindSel = $('select[name="new_kind"]', form);
+    var nameHint = $('[data-name-hint]', form);
+    var masukHint = $('[data-masuk-hint]', form);
+    var list = name && name.getAttribute('list') ? document.getElementById(name.getAttribute('list')) : null;
+    if (!name || !kindSel || !nameHint || !masukHint) return;
+    var wing = form.getAttribute('data-wing-label') || '';
+    var idleName = nameHint.textContent, idleMasuk = masukHint.textContent;
+    // Nama yang tak ada di katalog LANGSUNG dibuat sebagai entri baru (salah ketik pun): tombolnya dibuat berbeda supaya terbaca.
+    var submit = $('button[type="submit"]', form);
+    var idleSubmit = submit ? submit.textContent : '';
+    var autoGroup = { biro: 'Biro-Biro', badan: 'Badan-Badan', pusat: 'Pusat-Pusat' };
+    var kindLabel = function (k) {
+      var o = $('option[value="' + k + '"]', kindSel);
+      return o ? o.textContent : k;
+    };
+    form.setAttribute('data-enhanced', '');
+
+    function known(value) {
+      if (!list) return null;
+      var v = value.toLowerCase();
+      var opts = list.options;
+      for (var i = 0; i < opts.length; i++) if (opts[i].value.toLowerCase() === v) return opts[i];
+      return null;
+    }
+    // Nama unit di katalog hampir selalu diawali jenisnya ("Badan Anggaran", "Biro Kaderisasi"): untuk nama baru, jenis ditebak dari
+    // kata pertamanya. Hanya sampai orangnya memilih jenis sendiri; sesudah itu pilihannya tak ditimpa lagi.
+    var touched = false;
+    function guessKind(v) {
+      var first = v.toLowerCase().split(/\s+/)[0];
+      return /^[a-z]+$/.test(first) && $('option[value="' + first + '"]', kindSel) ? first : '';   // huruf saja: ikut dipakai di pemilih CSS
+    }
+    function sync() {
+      var v = name.value.trim();
+      var opt = v ? known(v) : null;
+      var state = !v ? 'empty' : (opt ? 'known' : 'new');
+      if (state === 'new' && !touched) { var g = guessKind(v); if (g) kindSel.value = g; }
+      var kind = opt ? opt.getAttribute('data-kind') : (state === 'new' ? kindSel.value : '');
+      form.setAttribute('data-name-state', state);
+      if (submit) submit.textContent = state === 'new' ? 'Buat baru & tambah' : idleSubmit;
+      nameHint.textContent = state === 'known' ? 'Ada di katalog ' + wing + ' (' + kindLabel(kind) + '). Tidak akan dibuat dobel.'
+        : state === 'new' ? 'Nama baru: akan dibuat di katalog ' + wing + ' dengan jenis ' + kindLabel(kind) + '.' : idleName;
+      masukHint.textContent = autoGroup[kind] ? 'Otomatis masuk ke kelompok “' + autoGroup[kind] + '” (dibuat bila belum ada).'
+        : kind ? 'Jenis ' + kindLabel(kind) + ' hidup di dalam Bidang: pilih Bidangnya di “Masuk ke”, atau atur nanti di daftar bawah.' : idleMasuk;
+    }
+    name.addEventListener('input', sync);
+    name.addEventListener('change', sync);
+    kindSel.addEventListener('change', function () { touched = true; sync(); });
+    sync();
+  });
+
   /* ---------- Tooltip grafik ---------- */
   var tip = $('#tip');
   var tipTitle = tip && $('.tl', tip), tipVal = tip && $('.tv', tip), tipKey = tip && $('.key', tip);
@@ -654,11 +709,12 @@
 
       for (var i = 0; i < rows.length; i++) {
         rows[i].hidden = i < start || i >= end;
-        var editId = rows[i].cells[rows[i].cells.length - 1] ?
-          rows[i].querySelector('[data-toggle-edit]') : null;
-        if (editId) {
-          var editRow = document.getElementById(editId.getAttribute('data-toggle-edit'));
-          if (editRow && rows[i].hidden) editRow.hidden = true;
+        // Satu baris bisa punya beberapa panel (Ubah, Pasang): semuanya ditutup bila baris induknya ikut tersembunyi.
+        if (rows[i].hidden) {
+          $$('[data-toggle-edit]', rows[i]).forEach(function (t) {
+            var editRow = document.getElementById(t.getAttribute('data-toggle-edit'));
+            if (editRow) editRow.hidden = true;
+          });
         }
       }
 

@@ -13,7 +13,9 @@
 //
 // Dari controller: $rows (sudah tersaring, berisi used_count/used_structures/head_name),
 // $counts (jumlah per jenis pada sayap yang dipilih, TIDAK tersaring menurut jenis/pencarian), $wing ('' | umum | muslimah), $wingCounts, $kind, $keyword,
-// $urut (true = satu daftar menurut urutan resmi SKUO, bukan per jenis), $inti (UnitModel::intiInfo), $nextOrder (nomor urut berikutnya).
+// $urut (true = satu daftar menurut urutan resmi SKUO, bukan per jenis), $inti (UnitModel::intiInfo), $nextOrder (nomor urut berikutnya),
+// $baru (entri yang baru ditambahkan dan belum terpasang di mana pun, atau null: halaman menawarkan "Pasang ke struktur"),
+// $targets (UnitModel::installTargets, untuk pilihan struktur pada "Pasang").
 //
 // PENGURUS INTI bukan baris katalog: ia penempatan tingkat struktur (tanpa unit), jadi hanya DITAMPILKAN di sini sebagai entri
 // bawaan sistem. Jabatan yang inti diatur di Jabatan (/positions), bukan di sini.
@@ -67,6 +69,15 @@ if ($grouped) {
     </a>
   </div>
 </div>
+
+<?php if ($canEdit && !empty($baru)): ?>
+<div class="card pasang-callout">
+  <h2>Pasang &ldquo;<?= e($baru['name']) ?>&rdquo; ke struktur
+    <span class="badge<?= $baru['wing'] === 'muslimah' ? ' ok' : '' ?>">sayap <?= e($wings[$baru['wing']] ?? $baru['wing']) ?></span></h2>
+  <p style="margin:0 0 10px">Unit ini sudah masuk katalog, tetapi <strong>belum muncul di struktur mana pun</strong> (Data Pengurus, Pengelompokan Unit) sampai dipasang ke sebuah struktur.</p>
+  <?php $this->view('admin/units/_pasang', ['u' => $baru, 'targets' => $targets, 'idp' => 'baru']); ?>
+</div>
+<?php endif; ?>
 
 <div class="note">
   Katalog ini <strong>dipakai bersama</strong> lintas struktur <strong>sesayap</strong>: &ldquo;Departemen Kesehatan&rdquo;
@@ -169,9 +180,10 @@ $intiNames = array_column($inti['positions'], 'name');
     <div class="grid-3">
       <div class="field">
         <label for="new_wing">Sayap</label>
-        <select id="new_wing" name="wing">
+        <select id="new_wing" name="wing" required>
+          <?php if ($wing === ''): ?><option value="">&mdash; pilih sayap &mdash;</option><?php endif; ?>
           <?php foreach ($wings as $wk => $wl): ?>
-            <option value="<?= $wk ?>" <?= ($wing === '' ? 'umum' : $wing) === $wk ? 'selected' : '' ?>><?= e($wl) ?></option>
+            <option value="<?= $wk ?>" <?= $wing === $wk ? 'selected' : '' ?>><?= e($wl) ?></option>
           <?php endforeach; ?>
         </select>
         <div class="help">Umum = DPP, DPW, DPD, ...; Muslimah = MWP, MWW, MWD, ... Unit hanya bisa dipasang pada struktur sesayap.</div>
@@ -248,6 +260,9 @@ $intiNames = array_column($inti['positions'], 'name');
             </td>
             <?php if ($canEdit): ?>
               <td class="nowrap">
+                <?php if ($used === 0): ?>
+                  <button type="button" class="btn small" data-toggle-edit="pasang-<?= $id ?>" title="Pasang ke struktur">Pasang</button>
+                <?php endif; ?>
                 <button type="button" class="icon-btn" data-toggle-edit="unit-<?= $id ?>" title="Ubah"><?= Ui::icon('edit', 16) ?></button>
                 <form method="post" action="<?= BASEURL ?>/units/catalog_delete" style="display:inline"
                       data-confirm="Hapus unit &ldquo;<?= e($r['name']) ?>&rdquo; dari katalog?">
@@ -262,6 +277,13 @@ $intiNames = array_column($inti['positions'], 'name');
               </td>
             <?php endif; ?>
           </tr>
+          <?php if ($canEdit && $used === 0): ?>
+            <tr id="pasang-<?= $id ?>" hidden>
+              <td colspan="<?= ($sk === '' ? 8 : 7) + ($wing === '' ? 1 : 0) ?>">
+                <?php $this->view('admin/units/_pasang', ['u' => $r, 'targets' => $targets, 'idp' => 'ps' . $id]); ?>
+              </td>
+            </tr>
+          <?php endif; ?>
           <?php if ($canEdit): ?>
             <tr id="unit-<?= $id ?>" hidden>
               <td colspan="<?= ($sk === '' ? 8 : 7) + ($wing === '' ? 1 : 0) ?>">

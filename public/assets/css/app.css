@@ -1260,3 +1260,10 @@ details[open] > .mon-row .caret { transform: rotate(90deg); }
 .row-btn.danger:hover { background: var(--danger-bg); color: var(--danger); border-color: var(--danger-line); }
 .badge.lv { background: var(--primer-muda); color: var(--primer-gelap); font-weight: 700; letter-spacing: .02em; }
 .badge.warn { background: var(--warn-bg); color: var(--warn); }
+
+/* ---------- PENGELOMPOKAN UNIT: Tambah unit di tingkat struktur, dan Pasang dari katalog ---------- */
+/* Tanpa JavaScript semua isian terlihat; dengan JS, "Jenis unit" hanya muncul untuk nama yang belum ada di katalog. */
+[data-unit-add][data-enhanced] [data-kind-field] { display: none; }
+[data-unit-add][data-enhanced][data-name-state="new"] [data-kind-field] { display: block; }
+.pasang-callout { border-color: var(--primer-terang); background: var(--primer-pucat); }
+.pasang-form .sn-form { grid-template-columns: minmax(220px, 440px) auto; }

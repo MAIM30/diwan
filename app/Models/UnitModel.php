@@ -20,6 +20,11 @@ class UnitModel {
     // 'muslimah', yang lain 'umum'. Nama unit unik per sayap, bukan di seluruh katalog.
     const WINGS = ['umum' => 'Umum', 'muslimah' => 'Muslimah'];
 
+    // Kelompok bawaan menurut jenis unit: Biro, Badan, dan Pusat tidak hidup di dalam Bidang, melainkan di kelompok sendiri
+    // ("Biro-Biro", ...). Urutannya mengikuti yang sudah dipakai DPP (Pusat 890, Badan 900, Biro 910). Jenis lain (Departemen,
+    // Lembaga, Divisi, ...) hidup di Bidang yang harus dipilih orang, jadi tidak punya kelompok bawaan.
+    const KIND_GROUP = ['pusat' => ['Pusat-Pusat', 890], 'badan' => ['Badan-Badan', 900], 'biro' => ['Biro-Biro', 910]];
+
     private $db;
 
     public function __construct() {
@@ -174,7 +179,7 @@ class UnitModel {
 
     // Sebuah unit hanya boleh dipasang pada struktur yang sayapnya sama dengan sayap katalognya: unit MWP diambil dari katalog
     // Muslimah, unit DPP dari katalog Umum. Dijaga di server karena pilihan di formulir hanyalah penyaring.
-    private function assertCatalogFitsStructure($catalogId, $structureId) {
+    public function assertCatalogFitsStructure($catalogId, $structureId) {
         $stmt = $this->db->prepare("
             SELECT c.name, c.wing AS cwing, s.wing AS swing, s.level, s.name AS sname
             FROM unit_catalog c, structures s WHERE c.id = :c AND s.id = :s
@@ -440,6 +445,73 @@ class UnitModel {
         $this->db->prepare("UPDATE unit_groups SET deleted_at = NOW(3) WHERE id = :id")->execute([':id' => (int) $id]);
         Audit::log('unit_groups', $id, 'delete', $before, null);
         return true;
+    }
+
+    // Kelompok untuk unit baru yang tujuannya "otomatis menurut jenis". Jenis Biro / Badan / Pusat: kelompok biasa (bukan Bidang) yang
+    // namanya memuat jenis itu dipakai bila periode ini sudah punya, kalau belum dibuat ("Badan-Badan", dst.). Jenis lain: tanpa
+    // kelompok. Mengembalikan [id kelompok atau null, keterangan untuk pesan, mis. "kelompok Badan-Badan (baru dibuat)"].
+    public function groupForKind($structureId, $termId, $kind) {
+        if (!isset(self::KIND_GROUP[$kind])) return [null, ''];
+        [$name, $sort] = self::KIND_GROUP[$kind];
+
+        $groups = $this->groupsByTerm($termId);
+        foreach ($groups as $g) {
+            if (mb_strtolower($g['name']) === mb_strtolower($name)) return [(int) $g['id'], 'kelompok ' . $g['name']];
+        }
+        foreach ($groups as $g) {
+            if ($g['kind'] === 'grup' && stripos($g['name'], $kind) !== false) return [(int) $g['id'], 'kelompok ' . $g['name']];
+        }
+        $id = $this->groupSave(null, ['structure_id' => $structureId, 'term_id' => $termId, 'name' => $name, 'kind' => 'grup', 'sort_order' => $sort]);
+        return [$id, 'kelompok ' . $name . ' (baru dibuat)'];
+    }
+
+    // Berapa unit (di periode mana pun) yang masih hidup menunjuk entri katalog ini; 0 = belum terpasang di struktur mana pun.
+    public function unitUsage($catalogId) {
+        $stmt = $this->db->prepare("SELECT COUNT(*) FROM structure_units WHERE unit_catalog_id = :c AND deleted_at IS NULL");
+        $stmt->execute([':c' => (int) $catalogId]);
+        return (int) $stmt->fetchColumn();
+    }
+
+    // Sudah ada (dan masih hidup) unit katalog ini di periode itu? Dicek sebelum kelompok otomatis dibuat, supaya penolakan
+    // tidak meninggalkan kelompok kosong.
+    public function unitInTerm($termId, $catalogId) {
+        $stmt = $this->db->prepare("SELECT COUNT(*) FROM structure_units WHERE term_id = :t AND unit_catalog_id = :c AND deleted_at IS NULL");
+        $stmt->execute([':t' => (int) $termId, ':c' => (int) $catalogId]);
+        return (int) $stmt->fetchColumn() > 0;
+    }
+
+    // Isi Bidang dan unit tiap periode berjalan dalam lingkup admin, satu query: term_id => ['groups' => n, 'units' => n].
+    // Dasar saringan "Sudah disusun" di Pengelompokan Unit; isi rincinya baru dimuat untuk baris yang benar-benar ditampilkan.
+    public function termCounts() {
+        $rows = $this->db->query("
+            SELECT t.id,
+                   (SELECT COUNT(*) FROM unit_groups g WHERE g.term_id = t.id AND g.deleted_at IS NULL) AS groups_n,
+                   (SELECT COUNT(*) FROM structure_units su WHERE su.term_id = t.id AND su.deleted_at IS NULL) AS units_n
+            FROM terms t
+            WHERE t.is_current = 1 AND t.deleted_at IS NULL AND " . AdminScope::sqlFilter('t.structure_id') . "
+        ")->fetchAll();
+        $out = [];
+        foreach ($rows as $r) $out[(int) $r['id']] = ['groups' => (int) $r['groups_n'], 'units' => (int) $r['units_n']];
+        return $out;
+    }
+
+    // Periode berjalan yang bisa dipilih untuk "Pasang ke struktur" dari katalog: term_id, level, name, wing, label, disusun.
+    // Hanya struktur dalam lingkup admin; pembatasan menurut sayap dilakukan pemanggil.
+    public function installTargets() {
+        $counts = $this->termCounts();
+        $rows = $this->db->query("
+            SELECT t.id AS term_id, t.name AS term_name, s.level, s.name, s.wing
+            FROM terms t JOIN structures s ON s.id = t.structure_id
+            WHERE t.is_current = 1 AND t.deleted_at IS NULL AND s.deleted_at IS NULL AND " . AdminScope::sqlFilter('t.structure_id') . "
+            ORDER BY s.wing, s.tier, s.path
+        ")->fetchAll();
+        foreach ($rows as &$r) {
+            $c = $counts[(int) $r['term_id']] ?? ['groups' => 0, 'units' => 0];
+            $r['disusun'] = ($c['groups'] + $c['units']) > 0;
+            $r['label'] = $r['level'] . ' ' . $r['name'];
+        }
+        unset($r);
+        return $rows;
     }
 
     // ---------- Unit per struktur+periode ----------

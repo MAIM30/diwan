@@ -16,8 +16,18 @@ class UnitsController extends Controller {
         $urut    = ($_GET['urut'] ?? '') === 'skuo';   // satu daftar menurut urutan resmi SKUO, bukan per jenis
         $wing    = isset(UnitModel::WINGS[$_GET['w'] ?? '']) ? $_GET['w'] : '';   // katalog sayap Umum / Muslimah; kosong = keduanya
 
+        // Unit yang baru ditambahkan (?baru=id): halaman menawarkan langsung memasangnya ke struktur, karena entri katalog saja belum
+        // muncul di struktur mana pun. Hanya bila belum terpasang di mana pun dan admin boleh mengubah.
+        $baru = null;
+        if (Auth::canEdit() && !empty($_GET['baru'])) {
+            $baru = $units->catalogFindById((int) $_GET['baru']);
+            if ($baru && $units->unitUsage((int) $baru['id']) > 0) $baru = null;
+        }
+
         $this->view('admin/units/catalog', [
             'title'   => 'Unit Organisasi',
+            'baru'    => $baru,
+            'targets' => Auth::canEdit() ? $units->installTargets() : [],
             'rows'    => $units->catalogList($kind, $keyword, $urut, $wing),
             'counts'  => $units->catalogCountsByKind($wing),
             'wing'    => $wing,
@@ -32,11 +42,12 @@ class UnitsController extends Controller {
 
     // Kembali ke katalog dengan saringan yang sedang dipakai masih utuh: setelah mengubah satu unit
     // di antara 105 baris, kembali ke daftar penuh berarti kehilangan tempat.
-    private function backToCatalog() {
+    // $baru: id entri yang baru dibuat, supaya halaman katalog menawarkan memasangnya ke struktur.
+    private function backToCatalog($baru = 0) {
         $kind = in_array($_POST['kind_filter'] ?? '', self::UNIT_KINDS, true) ? $_POST['kind_filter'] : '';
         $q    = trim($_POST['q_filter'] ?? '');
         $w    = isset(UnitModel::WINGS[$_POST['w_filter'] ?? '']) ? $_POST['w_filter'] : '';
-        $p    = array_filter(['w' => $w, 'kind' => $kind, 'q' => $q, 'urut' => ($_POST['urut_filter'] ?? '') === 'skuo' ? 'skuo' : ''], function ($v) { return $v !== ''; });
+        $p    = array_filter(['w' => $w, 'kind' => $kind, 'q' => $q, 'urut' => ($_POST['urut_filter'] ?? '') === 'skuo' ? 'skuo' : '', 'baru' => $baru ?: ''], function ($v) { return $v !== ''; });
         $this->redirect('units/catalog' . ($p ? '?' . http_build_query($p) : ''));
     }
 
@@ -76,10 +87,17 @@ class UnitsController extends Controller {
             Flash::set('error', 'Nama unit wajib diisi.');
             $this->backToCatalog();
         }
+        // Entri baru wajib menyebut sayapnya: sayap yang terlewat (dulu bawaan Umum) membuat unit Muslimah tak pernah muncul sebagai saran di MWP.
+        if (!$id && $data['wing'] === null) {
+            Flash::set('error', 'Pilih sayap unit ini: Umum (DPP, DPW, DPD, ...) atau Muslimah (MWP, MWW, MWD, ...).');
+            $this->backToCatalog();
+        }
 
+        $baru = 0;
         try {
-            $units->catalogSave($id, $data);
-            Flash::set('success', 'Katalog unit disimpan.');
+            $saved = $units->catalogSave($id, $data);
+            if (!$id) $baru = (int) $saved;
+            Flash::set('success', $id ? 'Katalog unit disimpan.' : '"' . $data['name'] . '" masuk ke katalog ' . UnitModel::WINGS[$data['wing']] . '. Belum terpasang di struktur mana pun.');
         } catch (RuntimeException $e) {
             Flash::set('error', $e->getMessage());
         } catch (PDOException $e) {
@@ -90,8 +108,14 @@ class UnitsController extends Controller {
                 Flash::set('error', 'Unit tidak bisa disimpan.');
             }
         }
-        $this->backToCatalog();
+        $this->backToCatalog($baru);
     }
+
+    // Tampilan halaman Pengelompokan Unit memuat 500+ struktur, hampir semuanya masih kosong (belum punya Bidang maupun unit). Karena itu
+    // daftarnya disaring: jenjang (?lv=), status (?st=disusun|belum|semua) dan nama (?q=). Tanpa ?st= yang dipakai "Sudah disusun", kecuali
+    // belum ada yang disusun sama sekali (mis. admin satu DPD baru): saat itu "Semua". Baris yang baru disimpan (?open=) selalu ikut tampil.
+    const GROUPING_STATUS = ['disusun' => 'Sudah disusun', 'belum' => 'Belum disusun', 'semua' => 'Semua'];
+    const GROUPING_MAX_ROWS = 60;
 
     // Pengelompokan unit per struktur: untuk tiap struktur dalam lingkup yang punya periode berjalan, Bidang-nya dan unit di
     // bawah tiap Bidang. Struktur tanpa periode berjalan dikumpulkan terpisah (Bidang dan unit terikat periode, jadi belum ada).
@@ -100,6 +124,7 @@ class UnitsController extends Controller {
         $structures = $this->model('StructureModel')->allInScope();
         $terms = $this->model('TermModel')->allInScope();
         $units = $this->model('UnitModel');
+        $counts = $units->termCounts();
 
         $currentOf = [];
         foreach ($terms as $t) {
@@ -111,28 +136,92 @@ class UnitsController extends Controller {
             return [$a['wing'] === 'muslimah', (int) $a['tier'], $a['name']] <=> [$b['wing'] === 'muslimah', (int) $b['tier'], $b['name']];
         });
 
-        $entries = []; $without = [];
+        // Satu daftar ringan dulu (tanpa Bidang dan unit): saringan dan angka chip dihitung dari sini, isi rinci hanya dimuat untuk baris yang tampil.
+        $all = []; $without = [];
         foreach ($structures as $s) {
             $t = $currentOf[(int) $s['id']] ?? null;
             if (!$t) { $without[] = $s; continue; }
-            $entries[] = ['structure' => $s, 'term' => $t, 'groups' => $units->groupsByTerm($t['id']), 'units' => $units->unitsByTerm($t['id']),
-                          'coordinators' => $units->coordinatorCandidates($t['id'])];
+            $c = $counts[(int) $t['id']] ?? ['groups' => 0, 'units' => 0];
+            $all[] = ['structure' => $s, 'term' => $t, 'disusun' => ($c['groups'] + $c['units']) > 0];
+        }
+
+        // Parameter bisa datang sebagai larik (?st[]=x): hanya teks yang dipakai, selebihnya dianggap kosong.
+        $param = function ($key) { $v = $_GET[$key] ?? ''; return is_string($v) ? $v : ''; };
+        $keyword = mb_substr(trim($param('q')), 0, 100);
+        $matchName = function ($s) use ($keyword) {
+            return $keyword === '' || mb_stripos($s['level'] . ' ' . $s['name'], $keyword) !== false;
+        };
+        $nSusun = count(array_filter($all, function ($e) { return $e['disusun']; }));
+        $st = $param('st');
+        if (!isset(self::GROUPING_STATUS[$st])) $st = $nSusun > 0 ? 'disusun' : 'semua';
+
+        // Angka chip: jenjang dihitung menurut status + nama yang sedang dipilih, status menurut jenjang + nama.
+        $lv = $param('lv');
+        $okStatus = function ($e) use ($st) { return $st === 'semua' || ($st === 'disusun') === $e['disusun']; };
+        $levelCounts = []; $statusCounts = ['disusun' => 0, 'belum' => 0, 'semua' => 0];
+        foreach ($all as $e) {
+            if (!$matchName($e['structure'])) continue;
+            if ($okStatus($e)) $levelCounts[$e['structure']['level']] = ($levelCounts[$e['structure']['level']] ?? 0) + 1;
+            if ($lv === '' || $lv === $e['structure']['level']) {
+                $statusCounts[$e['disusun'] ? 'disusun' : 'belum']++;
+                $statusCounts['semua']++;
+            }
+        }
+        $allLevels = array_unique(array_map(function ($e) { return $e['structure']['level']; }, $all));
+        if (!in_array($lv, $allLevels, true)) $lv = '';
+
+        $open = (int) $param('open');
+        $match = array_values(array_filter($all, function ($e) use ($lv, $okStatus, $matchName, $open) {
+            if ((int) $e['term']['id'] === $open) return true;
+            return ($lv === '' || $e['structure']['level'] === $lv) && $matchName($e['structure']) && $okStatus($e);
+        }));
+        $matched = count($match);
+        $shown = array_slice($match, 0, self::GROUPING_MAX_ROWS);
+        foreach ($match as $e) {   // baris yang baru dikerjakan tetap tampil walau di luar batas
+            if ((int) $e['term']['id'] === $open && !in_array($e, $shown, true)) $shown[] = $e;
+        }
+
+        $entries = [];
+        foreach ($shown as $e) {
+            $tid = (int) $e['term']['id'];
+            $entries[] = $e + ['groups' => $units->groupsByTerm($tid), 'units' => $units->unitsByTerm($tid),
+                               'coordinators' => $units->coordinatorCandidates($tid)];
         }
 
         $this->view('admin/units/grouping', [
             'title'    => 'Pengelompokan Unit',
             'entries'  => $entries,
-            'without'  => $without,
-            'openTerm' => (int) ($_GET['open'] ?? 0),
+            'without'  => $st === 'disusun' ? [] : array_values(array_filter($without, function ($s) use ($lv, $matchName) {
+                return ($lv === '' || $s['level'] === $lv) && $matchName($s);
+            })),
+            'openTerm' => $open,
             'catalog'  => Auth::canEdit() ? $units->catalogAll(true) : [],   // saran nama pada isian "Tambah unit" (tiap entri membawa wing: saran dipilah per sayap struktur)
+            'lv'       => $lv,
+            'st'       => $st,
+            'q'        => $keyword,
+            'levelCounts'  => $levelCounts,
+            'statusCounts' => $statusCounts,
+            'totalAll' => count($all),
+            'matched'  => $matched,
+            'maxRows'  => self::GROUPING_MAX_ROWS,
         ]);
     }
 
     // Aksi-aksi simpan/hapus di bawah dipakai halaman Bidang & Unit sebuah periode DAN halaman Pengelompokan Unit; yang kedua menandai
-    // asalnya dengan return=grouping supaya pengguna kembali ke strukturnya di sana (terbuka), bukan ke halaman Bidang & Unit.
+    // asalnya dengan return=grouping supaya pengguna kembali ke strukturnya di sana (terbuka), bukan ke halaman Bidang & Unit. Saringan
+    // yang sedang dipakai di halaman itu (f_lv, f_st, f_q) ikut dibawa pulang.
     private function back($termId) {
         $termId = (int) $termId;
-        if (($_POST['return'] ?? '') === 'grouping') $this->redirect('units/grouping?open=' . $termId . '#t' . $termId);
+        if (($_POST['return'] ?? '') === 'grouping') {
+            $p = ['open' => $termId];
+            $lv = is_string($_POST['f_lv'] ?? null) ? $_POST['f_lv'] : '';
+            $st = is_string($_POST['f_st'] ?? null) ? $_POST['f_st'] : '';
+            $q  = is_string($_POST['f_q'] ?? null) ? mb_substr(trim($_POST['f_q']), 0, 100) : '';
+            if (preg_match('/^[A-Za-z]{2,5}$/', $lv)) $p['lv'] = $lv;
+            if (isset(self::GROUPING_STATUS[$st])) $p['st'] = $st;
+            if ($q !== '') $p['q'] = $q;
+            $this->redirect('units/grouping?' . http_build_query($p) . '#t' . $termId);
+        }
         $this->redirect('units/term/' . $termId);
     }
 
@@ -162,7 +251,8 @@ class UnitsController extends Controller {
             error_log('Simpan pengelompokan gagal: ' . $e->getMessage());
             Flash::set('error', 'Pengelompokan tidak bisa disimpan.');
         }
-        $this->redirect('units/grouping?open=' . $termId . '#t' . $termId);
+        $_POST['return'] = 'grouping';   // formulirnya hanya ada di halaman Pengelompokan Unit; back() membawa pulang saringannya
+        $this->back($termId);
     }
 
     // Bidang & unit milik satu periode.
@@ -284,8 +374,15 @@ class UnitsController extends Controller {
         // Bidang yang dipilih harus milik periode ini. Database juga menolaknya lewat composite FK,
         // tapi dicek di sini supaya pesannya bisa dibaca. Mengubah unit tanpa mengirim unit_group_id (mis. hanya nama tampil
         // dan urutan) membiarkan Bidangnya apa adanya.
+        // Tujuan unit BARU datang dari unit_group_id (formulir di dalam sebuah kelompok) atau dari "masuk" (formulir tingkat struktur dan
+        // "Pasang" di katalog): angka = kelompok itu, 'none' / kosong = tanpa Bidang, 'auto' = kelompok menurut jenis unit. 'auto' baru bisa
+        // diputuskan setelah katalognya beres di bawah, sebab jenis unit dari nama yang diketik baru ketahuan di situ.
+        $auto = false;
         if (array_key_exists('unit_group_id', $_POST) || !$existing) {
-            $groupId = !empty($_POST['unit_group_id']) ? (int) $_POST['unit_group_id'] : null;
+            $pick = array_key_exists('unit_group_id', $_POST) ? $_POST['unit_group_id'] : ($_POST['masuk'] ?? '');
+            $pick = is_scalar($pick) ? (string) $pick : '';
+            $auto = !$existing && $pick === 'auto';
+            $groupId = ctype_digit($pick) && (int) $pick > 0 ? (int) $pick : null;
         } else {
             $groupId = $existing['unit_group_id'] !== null ? (int) $existing['unit_group_id'] : null;
         }
@@ -318,6 +415,24 @@ class UnitsController extends Controller {
             [$catalogId, $createdInCatalog] = $units->catalogEnsure($newName, $kind, $units->wingOfStructure($term['structure_id']));
         }
 
+        // Unit baru: tolak yang mustahil SEBELUM kelompok otomatis dibuat, supaya penolakan tak meninggalkan kelompok kosong.
+        $groupNote = '';
+        if (!$existing) {
+            try {
+                $units->assertCatalogFitsStructure($catalogId, $term['structure_id']);
+            } catch (RuntimeException $e) {
+                Flash::set('error', $e->getMessage());
+                $this->back($termId);
+            }
+            if ($units->unitInTerm($termId, $catalogId)) {
+                Flash::set('error', 'Unit itu sudah terdaftar di periode ini.');
+                $this->back($termId);
+            }
+            if ($auto) {
+                [$groupId, $groupNote] = $units->groupForKind($term['structure_id'], $termId, (string) ($units->catalogFindById($catalogId)['kind'] ?? 'lainnya'));
+            }
+        }
+
         $data = [
             'structure_id'    => $term['structure_id'],
             'term_id'         => $termId,
@@ -331,7 +446,15 @@ class UnitsController extends Controller {
 
         try {
             $units->unitSave($id, $data);
-            Flash::set('success', $createdInCatalog ? 'Unit baru dibuat di katalog dan ditambahkan.' : 'Unit disimpan.');
+            if ($id) {
+                Flash::set('success', 'Unit disimpan.');
+            } else {
+                // Pesan menyebut TEMPAT unit itu mendarat, termasuk kelompok yang dibuat otomatis: di situlah pengguna akan mencarinya.
+                if ($groupNote === '' && $groupId) $groupNote = 'kelompok ' . ($units->groupFindById($groupId)['name'] ?? '');
+                $unitName = $units->catalogFindById($catalogId)['name'] ?? 'Unit';
+                Flash::set('success', ($createdInCatalog ? 'Unit baru dibuat di katalog. ' : '') . '"' . $unitName . '" ditambahkan ke ' . $term['level'] . ' ' . $term['structure_name']
+                    . ($groupNote !== '' ? ', masuk ' . $groupNote : ', tanpa Bidang (pilih Bidangnya di daftar bawah, lalu Simpan pengelompokan)') . '.');
+            }
         } catch (RuntimeException $e) {
             Flash::set('error', $e->getMessage());
         } catch (PDOException $e) {

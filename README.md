@@ -470,9 +470,18 @@ Lingkup admin berlaku di semuanya; nama struktur induk di luar lingkup tidak per
 untuk menyusun DAN mengubah pengelompokan unit langsung di tempat, menurut STRUKTUR: tiap struktur dalam lingkup yang punya periode berjalan menjadi satu simpul (sayap umum dulu lalu
 Muslimah, dari Pusat ke Ranting), berisi Bidang/kelompok-nya (Bidang, Subbidang, lalu kelompok lain seperti Pengurus Harian, Biro-Biro, Pusat-Pusat) dan di tiap Bidang unit-unitnya
 (Departemen dulu, lalu Lembaga, lalu jenis lain), serta "Unit tanpa Bidang". Ringkasan di baris struktur mis. "9 Bidang · 52 unit" atau "29 unit · belum ada Bidang".
-Alurnya dari atas ke bawah: (1) di sebuah struktur, **Tambah Bidang atau kelompok** (nama + jenis: Bidang, Subbidang untuk sayap Muslimah, atau kelompok lain); (2) di dalam Bidang itu,
-**Tambah unit**: ketik nama atau pilih dari saran katalog; nama yang sudah ada di katalog dipakai ulang (jenisnya tidak berubah), yang belum ada dibuat di katalog dengan jenis yang dipilih
-dan dicatat di jejak audit (`UnitModel::catalogEnsure`); (3) tiap Bidang punya **Ubah Bidang/Ubah kelompok** (nama, jenis, urutan, Hapus bila kosong), tiap unit punya **Ubah** (nama tampil,
+Daftarnya DISARING karena ada 500+ struktur dan hampir semuanya masih kosong: chip **Jenjang** (DPP, DPW, MWP, ...), chip status **Sudah disusun** (bawaan; punya Bidang atau unit di periode
+berjalan) / **Belum disusun** / **Semua**, dan kolom cari nama (`?lv=`, `?st=`, `?q=`; `UnitsController::grouping`). Paling banyak 60 baris tampil (baris `?open=` selalu ikut), dan isi rincinya
+(Bidang, unit, calon Ketua Bidang) hanya dimuat untuk baris yang tampil. Tanpa `?st=`, yang dipakai "Sudah disusun", kecuali belum ada yang disusun (mis. admin satu DPD baru): saat itu "Semua".
+Saringan ikut terbawa lewat `f_lv`/`f_st`/`f_q` di tiap formulir, jadi sesudah menyimpan pengguna kembali ke daftar yang sama.
+Alurnya: (1) di sebuah struktur, **Tambah unit** (tingkat struktur): satu isian nama dengan saran dari katalog SAYAP struktur itu, lalu **Masuk ke**: *Otomatis menurut jenis unit* (Biro, Badan,
+Pusat masuk ke kelompok "Biro-Biro" / "Badan-Badan" / "Pusat-Pusat", dibuat bila belum ada: `UnitModel::groupForKind`; jenis lain masuk tanpa Bidang), *Tanpa Bidang*, atau salah satu kelompok.
+Nama yang sudah ada di katalog dipakai ulang (jenisnya tidak berubah); yang belum ada dibuat di katalog sayap itu dan dicatat di jejak audit (`UnitModel::catalogEnsure`), dan baru untuk nama
+semacam itu **Jenis unit** ditanyakan (dengan JavaScript: jenisnya ditebak dari kata pertama nama, dan tombolnya menjadi "Buat baru & tambah"). Penolakan (sayap tak cocok, unit sudah ada di
+periode itu) diputuskan SEBELUM kelompok otomatis dibuat, supaya tak meninggalkan kelompok kosong; pesan sesudah menyimpan menyebut kelompok tempat unit itu mendarat. (2) **Tambah Bidang atau
+kelompok** hanya untuk Bidang, Subbidang, atau kelompok baru (nama + **Jenis kelompok**); di dalam sebuah Bidang tetap ada **Tambah unit** yang langsung ke Bidang itu. Dari Katalog Unit,
+unit yang belum terpasang punya tombol **Pasang** (dan sesudah menambah unit baru, halaman katalog menampilkan kotak "Pasang ... ke struktur"): memilih struktur lalu masuk otomatis ke kelompok
+menurut jenisnya lewat `units/unit_save` yang sama (`masuk=auto`). Sayap katalog wajib dipilih saat menambah unit ke katalog (tidak ada bawaan Umum). (3) tiap Bidang punya **Ubah Bidang/Ubah kelompok** (nama, jenis, urutan, Hapus bila kosong), tiap unit punya **Ubah** (nama tampil,
 urutan, Hapus bila belum berisi pengurus). Panel itu `<details class="sn-edit">` tanpa JavaScript; Buka semua / Tutup semua tidak membukanya. Unit yang sudah ada dipindah antar Bidang dengan
 **pemilih Bidang** di barisnya, lalu **Simpan pengelompokan** menyimpan seluruh perubahan satu struktur sekaligus (`units/grouping_save`, `UnitModel::regroup`; pemilih terhubung ke formulir lewat
 atribut `form`): hanya unit yang Bidangnya berubah yang ditulis dan dicatat, Bidang milik periode lain menggagalkan seluruh simpanan, dan id unit dari periode lain diabaikan. Pemilih baru

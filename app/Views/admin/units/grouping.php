@@ -6,8 +6,15 @@
 //   - Bidang/kelompok: tambah unit (pilih dari katalog atau ketik nama baru), ubah, hapus
 //   - unit: Ubah (nama tampil, urutan) / Hapus; pemilih Bidang di tiap unit disimpan sekaligus per struktur (units/grouping_save)
 // Pemilih memakai atribut form="regroup-<periode>" supaya tak bersarang di formulir lain; panel Ubah dan Tambah adalah <details>.
-// Variabel: $entries (struktur + periode berjalan + Bidang + unit), $without (struktur tanpa periode berjalan),
-// $openTerm (id periode yang dibuka), $catalog (nama katalog beserta sayapnya, untuk saran isian).
+//
+// Daftarnya disaring (jenjang, status Sudah/Belum disusun, nama struktur) karena ada 500+ struktur dan hampir semuanya masih kosong.
+// "Tambah unit" ada di TINGKAT STRUKTUR: satu isian nama (saran dari katalog sesayap), kelompok tujuannya otomatis menurut jenis unit
+// (Biro-Biro, Badan-Badan, Pusat-Pusat), jadi orang tak perlu lebih dulu membuat kelompok dan membuka-bukanya. Formulir di dalam tiap
+// kelompok tetap ada untuk menambah langsung ke kelompok itu.
+//
+// Variabel: $entries (struktur yang TAMPIL + periode berjalan + Bidang + unit), $without (struktur tanpa periode berjalan),
+// $openTerm (id periode yang dibuka), $catalog (nama katalog beserta sayap dan jenisnya, untuk saran isian),
+// $lv / $st / $q (saringan yang dipakai), $levelCounts / $statusCounts (angka chip), $totalAll (struktur berperiode), $matched (yang cocok), $maxRows.
 $this->view('layouts/header', ['title' => $title]);
 
 $canEdit = Auth::canEdit();
@@ -26,7 +33,16 @@ $defaultUnitKind = function ($groupName) {
 $fid = 0;
 $nextId = function () use (&$fid) { return 'f' . (++$fid); };
 // Isian tersembunyi yang dibutuhkan setiap formulir: token CSRF, periode, dan penanda kembali ke halaman ini.
-$ctx = function ($tid) { return Csrf::field() . '<input type="hidden" name="term_id" value="' . (int) $tid . '"><input type="hidden" name="return" value="grouping">'; };
+// Saringan halaman (f_lv, f_st, f_q) ikut dikirim supaya sesudah menyimpan pengguna kembali ke daftar yang sama, bukan ke daftar penuh.
+$ctx = function ($tid) use ($lv, $st, $q) {
+    return Csrf::field() . '<input type="hidden" name="term_id" value="' . (int) $tid . '"><input type="hidden" name="return" value="grouping">'
+         . '<input type="hidden" name="f_lv" value="' . e($lv) . '"><input type="hidden" name="f_st" value="' . e($st) . '"><input type="hidden" name="f_q" value="' . e($q) . '">';
+};
+// Alamat halaman ini dengan sebagian saringan diganti.
+$url = function (array $over = []) use ($lv, $st, $q) {
+    $p = array_filter(array_merge(['lv' => $lv, 'st' => $st, 'q' => $q], $over), function ($v) { return $v !== '' && $v !== null; });
+    return BASEURL . '/units/grouping' . ($p ? '?' . http_build_query($p) : '');
+};
 $options = function (array $map, $selected) {
     $h = '';
     foreach ($map as $value => $label) $h .= '<option value="' . e($value) . '"' . ((string) $value === (string) $selected ? ' selected' : '') . '>' . e($label) . '</option>';
@@ -63,7 +79,7 @@ $bucket = function ($title, array $list, array $pick, $empty, $g, $tid, $formId,
                       <?php $a = $nextId(); $b = $nextId(); ?>
                       <div class="field"><label for="<?= $a ?>">Nama unit</label>
                         <input type="text" id="<?= $a ?>" name="new_name" list="katalog-unit-<?= e($wingOfTerm[(int) $tid] ?? 'umum') ?>" required maxlength="200" autocomplete="off" placeholder="Pilih dari katalog atau ketik nama baru"></div>
-                      <div class="field"><label for="<?= $b ?>">Jenis (bila nama baru)</label>
+                      <div class="field"><label for="<?= $b ?>">Jenis unit (bila nama baru)</label>
                         <select id="<?= $b ?>" name="new_kind"><?= $options($unitKinds, $defaultUnitKind($g['name'])) ?></select></div>
                       <button type="submit" class="btn">Tambah</button>
                     </div>
@@ -80,7 +96,7 @@ $bucket = function ($title, array $list, array $pick, $empty, $g, $tid, $formId,
                       <?php $a = $nextId(); $b = $nextId(); $c = $nextId(); ?>
                       <div class="field"><label for="<?= $a ?>">Nama</label>
                         <input type="text" id="<?= $a ?>" name="name" required maxlength="200" value="<?= e($g['name']) ?>"></div>
-                      <div class="field"><label for="<?= $b ?>">Jenis</label>
+                      <div class="field"><label for="<?= $b ?>">Jenis kelompok</label>
                         <select id="<?= $b ?>" name="kind"><?= $options($groupKinds, $g['kind']) ?></select></div>
                       <div class="field"><label for="<?= $c ?>">Urutan</label>
                         <input type="number" id="<?= $c ?>" name="sort_order" min="0" max="65535" value="<?= (int) $g['sort_order'] ?>"></div>
@@ -182,7 +198,7 @@ $bucket = function ($title, array $list, array $pick, $empty, $g, $tid, $formId,
     <?php
 };
 
-$structureNode = function (array $e) use ($bucket, $canEdit, $groupRank, $openTerm, $entries, $groupKinds, $nextId, $ctx, $options) {
+$structureNode = function (array $e) use ($bucket, $canEdit, $groupRank, $openTerm, $entries, $groupKinds, $unitKinds, $nextId, $ctx, $options) {
     $s = $e['structure']; $t = $e['term']; $tid = (int) $t['id'];
     $groups = $e['groups']; $units = $e['units'];
     usort($groups, function ($a, $b) use ($groupRank) { return ($groupRank[$a['kind']] ?? 2) <=> ($groupRank[$b['kind']] ?? 2); });
@@ -218,8 +234,31 @@ $structureNode = function (array $e) use ($bucket, $canEdit, $groupRank, $openTe
 
         <div class="sn-body">
           <div class="sn-actions">
-            <a class="btn small secondary" href="<?= BASEURL ?>/terms/detail/<?= $tid ?>">Susunan Pengurus</a>
-            <?php if ($canEdit): ?>
+            <?php if ($canEdit): $wingKey = $s['wing'] === 'muslimah' ? 'muslimah' : 'umum'; ?>
+              <details class="sn-edit">
+                <summary class="btn small">Tambah unit</summary>
+                <div class="sn-panel">
+                  <form method="post" action="<?= BASEURL ?>/units/unit_save" data-unit-add data-wing-label="<?= e(UnitModel::WINGS[$wingKey]) ?>">
+                    <?= $ctx($tid) ?>
+                    <div class="sn-form">
+                      <?php $a = $nextId(); $b = $nextId(); $c = $nextId(); ?>
+                      <div class="field"><label for="<?= $a ?>">Nama unit</label>
+                        <input type="text" id="<?= $a ?>" name="new_name" list="katalog-unit-<?= e($wingKey) ?>" required maxlength="200" autocomplete="off" placeholder="mis. Badan Anggaran"></div>
+                      <div class="field" data-kind-field><label for="<?= $b ?>">Jenis unit (nama baru)</label>
+                        <select id="<?= $b ?>" name="new_kind"><?= $options($unitKinds, 'departemen') ?></select></div>
+                      <div class="field"><label for="<?= $c ?>">Masuk ke</label>
+                        <select id="<?= $c ?>" name="masuk">
+                          <option value="auto">Otomatis menurut jenis unit</option>
+                          <option value="none">Tanpa Bidang</option>
+                          <?php foreach ($groups as $g): ?><option value="<?= (int) $g['id'] ?>"><?= e($g['name']) ?></option><?php endforeach; ?>
+                        </select></div>
+                      <button type="submit" class="btn">Tambah</button>
+                    </div>
+                    <p class="help" data-name-hint style="margin:8px 0 0">Pilih dari katalog <?= e(UnitModel::WINGS[$wingKey]) ?>, atau ketik nama baru.</p>
+                    <p class="help" data-masuk-hint style="margin:2px 0 0">Biro, Badan, dan Pusat masuk otomatis ke kelompok Biro-Biro / Badan-Badan / Pusat-Pusat (dibuat bila belum ada). Jenis lain: pilih Bidangnya.</p>
+                  </form>
+                </div>
+              </details>
               <details class="sn-edit">
                 <summary class="btn small secondary">Tambah Bidang atau kelompok</summary>
                 <div class="sn-panel">
@@ -228,15 +267,17 @@ $structureNode = function (array $e) use ($bucket, $canEdit, $groupRank, $openTe
                     <div class="sn-form">
                       <?php $a = $nextId(); $b = $nextId(); ?>
                       <div class="field"><label for="<?= $a ?>">Nama</label>
-                        <input type="text" id="<?= $a ?>" name="name" required maxlength="200" placeholder="mis. Bidang Pendidikan, Pengurus Harian, Biro-Biro"></div>
-                      <div class="field"><label for="<?= $b ?>">Jenis</label>
+                        <input type="text" id="<?= $a ?>" name="name" required maxlength="200" placeholder="mis. Bidang Pendidikan, Pengurus Harian"></div>
+                      <div class="field"><label for="<?= $b ?>">Jenis kelompok</label>
                         <select id="<?= $b ?>" name="kind"><?= $options($groupKinds, $s['wing'] === 'muslimah' ? 'subbidang' : 'bidang') ?></select></div>
                       <button type="submit" class="btn">Tambah</button>
                     </div>
                   </form>
+                  <p class="help" style="margin:8px 0 0">Ini untuk Bidang atau kelompok baru. Biro-Biro, Badan-Badan, dan Pusat-Pusat tidak perlu dibuat di sini: dibuat otomatis saat unit jenis itu ditambahkan.</p>
                 </div>
               </details>
             <?php endif; ?>
+            <a class="btn small secondary" href="<?= BASEURL ?>/terms/detail/<?= $tid ?>">Susunan Pengurus</a>
           </div>
           <?php if (!$groups): ?>
             <p class="muted small" style="margin:0">
@@ -253,8 +294,7 @@ $structureNode = function (array $e) use ($bucket, $canEdit, $groupRank, $openTe
         <?php endif; ?>
         <?php if ($batch): ?>
           <form id="<?= e($formId) ?>" method="post" action="<?= BASEURL ?>/units/grouping_save">
-            <?= Csrf::field() ?>
-            <input type="hidden" name="term_id" value="<?= $tid ?>">
+            <?= $ctx($tid) ?>
           </form>
           <div class="sn-save"><button type="submit" form="<?= e($formId) ?>" class="btn">Simpan pengelompokan</button></div>
         <?php endif; ?>
@@ -266,19 +306,65 @@ $structureNode = function (array $e) use ($bucket, $canEdit, $groupRank, $openTe
 
 <div class="page-head">
   <h1>Pengelompokan Unit</h1>
+  <span class="badge"><?= Ui::n($totalAll) ?> struktur</span>
   <div class="actions">
     <a class="btn secondary" href="<?= BASEURL ?>/units/catalog">Unit Organisasi</a>
   </div>
 </div>
 
-<div class="card">
-  <?php if (!$entries && !$without): ?>
-    <div class="empty"><span>Belum ada struktur dalam lingkup Anda.</span></div>
-  <?php else: ?>
-    <div class="btn-row" style="margin:0 0 8px">
+<?php if ($totalAll > 0): ?>
+<?php $chipGroups = PeopleOverview::chipGroups($levelCounts); ?>
+<div class="mon-strip" role="group" aria-label="Saring menurut jenjang">
+  <span class="mon-strip-l">Jenjang</span>
+  <a class="chip<?= $lv === '' ? ' on' : '' ?>" href="<?= e($url(['lv' => ''])) ?>"<?= $lv === '' ? ' aria-current="true"' : '' ?>>Semua <span class="chip-n"><?= Ui::n(array_sum($levelCounts)) ?></span></a>
+  <?php foreach ($chipGroups as $wing => $list): ?>
+    <span class="mon-sep" aria-hidden="true"></span>
+    <?php foreach ($list as $level): $on = $lv === $level; ?>
+      <a class="chip<?= $on ? ' on' : '' ?>" href="<?= e($url(['lv' => $on ? '' : $level])) ?>"<?= $on ? ' aria-current="true"' : '' ?>
+         title="<?= e(PeopleOverview::LEVEL_NAMES[$level] ?? $level) ?>"><?= e($level) ?> <span class="chip-n"><?= Ui::n($levelCounts[$level]) ?></span></a>
+    <?php endforeach; ?>
+  <?php endforeach; ?>
+</div>
+
+<div class="toolbar" style="margin-top:10px">
+  <form class="q" method="get" action="<?= BASEURL ?>/units/grouping" role="search">
+    <?= Ui::icon('search', 17) ?>
+    <input type="search" name="q" value="<?= e($q) ?>" aria-label="Cari struktur" placeholder="Cari nama struktur, mis. MWP atau Kab. Barru">
+    <?php if ($lv !== ''): ?><input type="hidden" name="lv" value="<?= e($lv) ?>"><?php endif; ?>
+    <input type="hidden" name="st" value="<?= e($st) ?>">
+  </form>
+  <div class="chips" role="group" aria-label="Saring menurut status">
+    <?php foreach (UnitsController::GROUPING_STATUS as $key => $label): $on = $st === $key; ?>
+      <a class="chip<?= $on ? ' on' : '' ?>" href="<?= e($url(['st' => $key])) ?>"<?= $on ? ' aria-current="true"' : '' ?>
+         title="<?= $key === 'belum' ? 'Belum punya Bidang maupun unit di periode berjalan' : ($key === 'disusun' ? 'Sudah punya Bidang atau unit di periode berjalan' : '') ?>"><?= e($label) ?> <span class="chip-n"><?= Ui::n($statusCounts[$key]) ?></span></a>
+    <?php endforeach; ?>
+  </div>
+  <?php if ($entries): ?>
+    <span class="mon-bulk">
       <button type="button" class="btn small secondary" data-tree="pengelompokan" data-tree-all="open">Buka semua</button>
       <button type="button" class="btn small secondary" data-tree="pengelompokan" data-tree-all="close">Tutup semua</button>
+    </span>
+  <?php endif; ?>
+</div>
+
+<p class="mon-ctx">
+  <span>Menampilkan <b><?= Ui::n(count($entries)) ?></b> dari <?= Ui::n($matched) ?> struktur<?= $lv !== '' ? ' ' . e($lv) : '' ?><?= $q !== '' ? ' &middot; pencarian &ldquo;' . e($q) . '&rdquo;' : '' ?>
+    <?php if ($matched > count($entries)): ?> &middot; persempit dengan kolom cari atau pilih jenjang<?php endif; ?></span>
+  <?php if ($lv !== '' || $q !== ''): ?><a href="<?= e($url(['lv' => '', 'q' => ''])) ?>">Hapus penyaringan</a><?php endif; ?>
+</p>
+<?php endif; ?>
+
+<div class="card">
+  <?php if (!$entries && !$without): ?>
+    <div class="empty">
+      <span><?= $totalAll === 0 ? 'Belum ada struktur dalam lingkup Anda.' : 'Tidak ada struktur yang cocok dengan penyaringan ini.' ?></span>
+      <?php if ($totalAll > 0 && $st === 'disusun' && $statusCounts['belum'] > 0): ?>
+        <a class="btn small secondary" href="<?= e($url(['st' => 'belum'])) ?>">Lihat yang belum disusun (<?= Ui::n($statusCounts['belum']) ?>)</a>
+      <?php elseif ($totalAll > 0): ?>
+        <a class="btn small secondary" href="<?= e($url(['lv' => '', 'q' => '', 'st' => 'semua'])) ?>">Hapus penyaringan</a>
+      <?php endif; ?>
     </div>
+  <?php else: ?>
     <ul class="stree" id="pengelompokan">
       <?php foreach ($entries as $e) $structureNode($e); ?>
 
@@ -318,7 +404,7 @@ $structureNode = function (array $e) use ($bucket, $canEdit, $groupRank, $openTe
 <?php if ($canEdit && $catalog): ?>
   <?php foreach (array_keys(UnitModel::WINGS) as $w): ?>
     <datalist id="katalog-unit-<?= $w ?>">
-      <?php foreach ($catalog as $c): if ($c['wing'] !== $w) continue; ?><option value="<?= e($c['name']) ?>"><?php endforeach; ?>
+      <?php foreach ($catalog as $c): if ($c['wing'] !== $w) continue; ?><option value="<?= e($c['name']) ?>" data-kind="<?= e($c['kind']) ?>"><?php endforeach; ?>
     </datalist>
   <?php endforeach; ?>
 <?php endif; ?>
