@@ -43,9 +43,18 @@ $this->view('layouts/header', ['title' => $title]);
         <label for="structure_level">Tingkat Struktur</label>
         <select id="structure_level" required>
           <option value="">— pilih tingkat —</option>
-          <?php foreach ($targetTerms as $target): ?>
-            <option value="<?= e($target['level']) ?>" data-wing="<?= e($target['wing']) ?>" <?= ($row && $row['level'] === $target['level']) ? 'selected' : '' ?>><?= e($target['level']) ?></option>
-          <?php endforeach; ?>
+          <?php
+          // Dedupe: satu opsi per kombinasi tingkat+sayap, bukan satu per struktur.
+          $seenLevels = [];
+          foreach ($targetTerms as $target) {
+              $key = $target['level'] . '|' . $target['wing'];
+              if (isset($seenLevels[$key])) continue;
+              $seenLevels[$key] = true;
+              $selected = $row && $row['level'] === $target['level'] ? 'selected' : '';
+              echo '<option value="' . e($target['level']) . '" data-wing="' . e($target['wing']) . '" ' . $selected . '>'
+                 . e($target['level']) . '</option>';
+          }
+          ?>
         </select>
       </div>
     </div>

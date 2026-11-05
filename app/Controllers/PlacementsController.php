@@ -203,11 +203,29 @@ class PlacementsController extends Controller {
 
         $reason = in_array($_POST['end_reason'] ?? '', ['selesai_periode','mengundurkan_diri','mutasi','wafat','diberhentikan','lainnya'], true)
                   ? $_POST['end_reason'] : 'lainnya';
-        $endDate = !empty($_POST['end_date']) ? $_POST['end_date'] : date('Y-m-d');
+        $endDate = !empty($_POST['end_date']) ? trim($_POST['end_date']) : date('Y-m-d');
+
+        // Tombol Akhiri dari profil pengurus mengirim return_to_person agar kembali ke profil yang
+        // sama; dari susunan periode kembali ke susunan itu.
+        $back = !empty($_POST['return_to_person'])
+              ? 'people/detail/' . (int) $row['person_id']
+              : 'terms/detail/' . $row['term_id'];
+
+        $parsed = DateTime::createFromFormat('Y-m-d', $endDate);
+        if (!$parsed || $parsed->format('Y-m-d') !== $endDate) {
+            Flash::set('error', 'Tanggal berakhir tidak valid.');
+            $this->redirect($back);
+        }
+        $floor = $row['start_date'] ?: $row['term_start'];
+        if ($floor && $endDate < $floor) {
+            Flash::set('error', 'Tanggal berakhir tidak boleh lebih awal dari tanggal mulai (' . $floor . ').');
+            $this->redirect($back);
+        }
 
         $placements->end($row['id'], $endDate, $reason);
-        Flash::set('success', 'Penempatan diakhiri per ' . $endDate . '. Riwayatnya tetap tersimpan.');
-        $this->redirect('terms/detail/' . $row['term_id']);
+        Flash::set('success', 'Jabatan ' . $row['position_name'] . ' pada ' . $row['level'] . ' ' . $row['structure_name']
+            . ' diakhiri per ' . $endDate . '. Riwayatnya tetap tersimpan.');
+        $this->redirect($back);
     }
 
     // Hanya untuk kekeliruan entri. Pengurus yang selesai menjabat diakhiri lewat end(), bukan ini.
@@ -222,7 +240,13 @@ class PlacementsController extends Controller {
         $this->requireScope($row['structure_id']);
 
         $placements->softDelete($row['id']);
-        Flash::set('success', 'Penempatan berhasil dianulir. Data orang tetap tersimpan; bila tidak memiliki penempatan aktif dalam SKUO lain, orang ini muncul pada filter Tanpa Unit Organisasi (SKUO).');
+        Flash::set('success', 'Jabatan ' . $row['position_name'] . ' pada ' . $row['level'] . ' ' . $row['structure_name']
+            . ' berhasil dilepas. Data orang dan penempatan lainnya tetap tersimpan.');
+
+        // Tombol Hapus dari profil pengurus mengirim return_to_person_id agar kembali ke profil
+        // yang sama; dari susunan periode kembali ke daftar Tanpa Unit Organisasi.
+        $returnPersonId = (int) ($_POST['return_to_person_id'] ?? 0);
+        if ($returnPersonId > 0) $this->redirect('people/detail/' . $returnPersonId);
         $this->redirect('people?filter=tanpa_unit');
     }
 }

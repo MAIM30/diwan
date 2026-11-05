@@ -13,6 +13,34 @@ $info = function ($icon, $key, $val, $sub = '') {
         . '<span class="v">' . $val . ($sub !== '' ? '<small>' . e($sub) . '</small>' : '') . '</span></li>';
 };
 $dash = '<span class="muted">—</span>';
+$endReasons = ['mengundurkan_diri' => 'Mengundurkan diri', 'mutasi' => 'Mutasi', 'wafat' => 'Wafat',
+               'diberhentikan' => 'Diberhentikan', 'selesai_periode' => 'Selesai periode', 'lainnya' => 'Lainnya'];
+// Panel "Akhiri" satu jabatan; $prefix membedakan id field antara tab Ringkasan dan Riwayat.
+$akhiriPanel = function ($h, $prefix) use ($endReasons) {
+    $uid = $prefix . (int) $h['id'];
+    $min = $h['start_date'] ?: $h['term_start'];
+    ?>
+    <details class="sn-edit">
+      <summary class="btn small secondary" title="Akhiri jabatan ini tanpa menghapus riwayatnya"><?= Ui::icon('clock', 14) ?> Akhiri</summary>
+      <div class="sn-panel">
+        <form method="post" action="<?= BASEURL ?>/placements/end">
+          <?= Csrf::field() ?>
+          <input type="hidden" name="id" value="<?= (int) $h['id'] ?>">
+          <input type="hidden" name="return_to_person" value="1">
+          <div class="sn-form">
+            <div class="field"><label for="<?= $uid ?>-d">Berakhir pada</label>
+              <input type="date" id="<?= $uid ?>-d" name="end_date" value="<?= e(date('Y-m-d')) ?>" min="<?= e((string) $min) ?>" required></div>
+            <div class="field"><label for="<?= $uid ?>-r">Alasan</label>
+              <select id="<?= $uid ?>-r" name="end_reason">
+                <?php foreach ($endReasons as $k => $v): ?><option value="<?= e($k) ?>"><?= e($v) ?></option><?php endforeach; ?>
+              </select></div>
+            <button type="submit" class="btn">Akhiri jabatan</button>
+          </div>
+        </form>
+      </div>
+    </details>
+    <?php
+};
 ?>
 
 <div class="crumb"><a href="<?= BASEURL ?>/people">Data Pengurus</a> &rsaquo; <?= e($nameOnly) ?></div>
@@ -226,6 +254,22 @@ $dash = '<span class="muted">—</span>';
                   <?php if ($h['is_core'] && !$h['unit_name']): ?><span class="badge core">inti</span><?php endif; ?></div>
                 <div class="t-struct"><?= e($h['level'] . ' ' . $h['structure_name']) ?></div>
                 <div class="t-meta"><?= $h['unit_name'] ? e($h['unit_name']) . ' · ' : 'Pucuk pimpinan · ' ?>Periode <?= e($h['term_name']) ?></div>
+                <?php if (Auth::canEdit()): ?>
+                  <div class="t-actions" style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
+                    <a class="btn small secondary" href="<?= BASEURL ?>/placements/form/<?= (int) $h['term_id'] ?>/<?= (int) $h['id'] ?>" title="Ubah penempatan atau pindahkan ke struktur yang tepat">
+                      <?= Ui::icon('edit', 14) ?> Ubah / Pindahkan
+                    </a>
+                    <?php if (empty($h['end_date'])) $akhiriPanel($h, 'rk-'); ?>
+                    <form class="inline" method="post" action="<?= BASEURL ?>/placements/delete"
+                          onsubmit="return confirm(this.dataset.confirm)"
+                          data-confirm="Lepas jabatan <?= e($h['position_name']) ?> di <?= e($h['level'] . ' ' . $h['structure_name']) ?> dari <?= e(Ui::fullName($person)) ?>? Entri akan disembunyikan dari susunan; data orang dan penempatan lainnya tetap tersimpan.">
+                      <?= Csrf::field() ?>
+                      <input type="hidden" name="id" value="<?= (int) $h['id'] ?>">
+                      <input type="hidden" name="return_to_person_id" value="<?= (int) $person['id'] ?>">
+                      <button type="submit" class="btn small danger" title="Hapus jabatan ini"><?= Ui::icon('trash', 14) ?> Hapus</button>
+                    </form>
+                  </div>
+                <?php endif; ?>
               </div>
             <?php endforeach; ?>
           </div>
@@ -337,6 +381,22 @@ $dash = '<span class="muted">—</span>';
                   <?= e($h['end_date_actual'] ? Ui::date($h['end_date_actual']) : ($h['end_date_planned'] ? Ui::date($h['end_date_planned']) : 'sekarang')) ?>
                 <?php endif; ?>
               </div>
+              <?php if (Auth::canEdit()): ?>
+                <div class="l-actions" style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+                  <a class="btn small secondary" href="<?= BASEURL ?>/placements/form/<?= (int) $h['term_id'] ?>/<?= (int) $h['id'] ?>" title="Ubah atau pindahkan ke struktur yang tepat">
+                    <?= Ui::icon('edit', 14) ?> Ubah / Pindahkan
+                  </a>
+                  <?php if ($now && empty($h['end_date'])) $akhiriPanel($h, 'rw-'); ?>
+                  <form class="inline" method="post" action="<?= BASEURL ?>/placements/delete"
+                        onsubmit="return confirm(this.dataset.confirm)"
+                        data-confirm="Lepas jabatan <?= e($h['position_name']) ?> di <?= e($h['level'] . ' ' . $h['structure_name']) ?> dari <?= e(Ui::fullName($person)) ?>? Entri akan disembunyikan dari susunan; data orang dan penempatan lainnya tetap tersimpan.">
+                    <?= Csrf::field() ?>
+                    <input type="hidden" name="id" value="<?= (int) $h['id'] ?>">
+                    <input type="hidden" name="return_to_person_id" value="<?= (int) $person['id'] ?>">
+                    <button type="submit" class="btn small danger" title="Hapus jabatan ini"><?= Ui::icon('trash', 14) ?> Hapus</button>
+                  </form>
+                </div>
+              <?php endif; ?>
             </li>
           <?php endforeach; ?>
         </ol>
