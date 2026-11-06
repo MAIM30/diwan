@@ -6,6 +6,8 @@
 //   - induk di luar lingkup admin tak pernah bocor (admin DPD tidak melihat nama DPW di atasnya)
 //   - menekan struktur tanpa Bidang dan unit menampilkan nama dan jabatan pengurus langsung; yang punya Bidang atau unit tetap pohon
 //   - halaman Susunan Periode (admin/_susunan tanpa $metrics) tidak berubah
+//   - Daftar: arti "Lengkap" dijelaskan (tooltip dan satu baris keterangan), dan padanan PHP-nya (PersonModel::missingFields) sepakat
+//     dengan predikat SQL-nya (COMPLETE_SQL) untuk seluruh orang
 // Syarat: database lokal berisi data pengurus biasa proyek ini (MWW/MWD/DPD, DPP, MWP).
 //
 //   php tests/people_per_struktur_test.php
@@ -85,20 +87,34 @@ $blocksD = PeopleOverview::build($o, []);
 ok($blocksD && $blocksD[0]['rows'][0]['context'] === '', 'admin DPD: keterangan induk kosong');
 national();
 
+// ---------- Struktur tanpa pengurus / tanpa periode ikut (overview $includeEmpty) ----------
+$sc = (new StructureModel())->levelCountsInScope();
+$ovAll = (new PersonModel())->overviewByStructure('', ['gender' => '', 'filter' => '', 'serving' => false, 'level' => ''], true);
+$perLevel = [];
+foreach ($ovAll['structures'] as $s) $perLevel[$s['level']] = ($perLevel[$s['level']] ?? 0) + 1;
+ok($perLevel == $sc, 'includeEmpty: setiap struktur dalam lingkup ada di overview (jumlah per jenjang sama dengan tabel structures)', json_encode(array_diff_assoc($sc, $perLevel)));
+$noTerm = (int) $pdo->query("SELECT COUNT(*) FROM structures s WHERE s.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM terms t WHERE t.structure_id = s.id AND t.is_current = 1 AND t.deleted_at IS NULL)")->fetchColumn();
+ok(count(array_filter($ovAll['structures'], function ($s) { return $s['term_id'] === null; })) === $noTerm, 'includeEmpty: term_id null tepat untuk struktur yang belum punya periode berjalan (' . $noTerm . ')');
+ok(count(array_filter($ovAll['structures'], function ($s) { return $s['orang'] === 0; })) >= $noTerm, 'includeEmpty: struktur kosong berangka nol');
+ok(count($ovAll['structures']) > count($ov['structures']), 'tanpa includeEmpty (bawaan model): hanya struktur yang berpenghuni, seperti sebelumnya');
+function structRows($h) { return substr_count($h, 'class="mon-s"') + substr_count($h, 'class="mon-row mon-noterm"'); }
+
 // ---------- Halaman ----------
 $h = page(['lv' => 'MWW']);
-ok(substr_count($h, 'class="mon-s"') === count($mww), 'halaman ?lv=MWW: satu baris per provinsi (' . count($mww) . ')', (string) substr_count($h, 'class="mon-s"'));
-ok(strpos($h, 'mon-grp') === false && strpos($h, '<b>MWP ') === false && strpos($h, '<small>' . count($mww) . ' MWW</small>') === false, 'halaman ?lv=MWW: tak ada kelompok "MWP" (dengan "36 MWW") di antaranya');
+ok(structRows($h) === $sc['MWW'], 'halaman ?lv=MWW: satu baris per provinsi, termasuk yang belum punya periode (' . $sc['MWW'] . ')', (string) structRows($h));
+ok(strpos($h, 'mon-grp') === false && strpos($h, '<b>MWP ') === false && strpos($h, '<small>' . $sc['MWW'] . ' MWW</small>') === false, 'halaman ?lv=MWW: tak ada kelompok "MWP" (dengan "36 MWW") di antaranya');
 ok(strpos($h, 'Jenjang &middot; struktur') !== false, 'judul kolom pertama: "Jenjang · struktur"');
 $h = page(['lv' => 'MWD']);
-ok(substr_count($h, 'class="mon-s"') === count($mwd), 'halaman ?lv=MWD: satu baris per kabupaten/kota (' . count($mwd) . ')', (string) substr_count($h, 'class="mon-s"'));
+ok(structRows($h) === $sc['MWD'], 'halaman ?lv=MWD: satu baris per kabupaten/kota, termasuk yang belum punya periode (' . $sc['MWD'] . ')', (string) structRows($h));
 ok(strpos($h, 'mon-grp') === false && preg_match('/<small>' . preg_quote($by['MWD']['rows'][0]['context'], '/') . '<\/small>/', $h) === 1, 'halaman ?lv=MWD: tanpa kelompok provinsi; provinsi jadi keterangan kecil');
 $h = page([]);
 preg_match_all('/<details class="mon-g mon-lvl [a-z]+"( open)?[^>]*>\s*<summary[^>]*>\s*<span class="mon-t">.*?<b>([A-Za-z]+)<\/b>/s', $h, $m, PREG_SET_ORDER);
 $open = []; foreach ($m as $x) $open[$x[2]] = trim($x[1]) === 'open';
 ok(!empty($open['DPW']) && !empty($open['MWW']) && empty($open['DPD']) && empty($open['MWD']), 'halaman bawaan: DPW dan MWW terbuka; DPD dan MWD (ratusan baris) tertutup', json_encode($open));
 $h = page(['lv' => 'DPD']);
-ok(substr_count($h, 'class="mon-s"') === count($dpd), 'halaman ?lv=DPD: jenjang yang dipilih tetap terbuka walau panjang');
+ok(structRows($h) === $sc['DPD'], 'halaman ?lv=DPD: jenjang yang dipilih tetap terbuka walau panjang (' . $sc['DPD'] . ' struktur)', (string) structRows($h));
+$h = page(['lv' => 'DPD', 'kosong' => '0']);
+ok(structRows($h) === count($dpd), 'halaman ?lv=DPD&kosong=0: kembali hanya struktur yang berpenghuni (' . count($dpd) . ')', (string) structRows($h));
 
 // ---------- Isi struktur ----------
 // MWW yang paling banyak pengurusnya DAN tak punya unit (yang punya unit, mis. Sulawesi Tenggara, memang tetap pohon).
@@ -142,6 +158,27 @@ if ($nonPrimary > 0) {
     $html = (new TPS)->render('admin/_susunan', ['tree' => $tree, 'treeId' => 'uji']);
     ok(strpos($html, '>rangkap<') !== false && strpos($html, '<details') !== false && strpos($html, 'mon-flat') === false, 'Susunan Periode: lencana "rangkap" dan simpul tetap seperti semula');
 }
+
+// ---------- Daftar: arti "Lengkap" ----------
+// Padanan PHP (label "Kurang: ...") harus sepakat dengan predikat SQL (hitungan kartu dan filter) untuk SEMUA orang. Bila NIK kelak
+// diwajibkan, keduanya berubah bersama; ujian ini menangkap kalau salah satunya tertinggal.
+$all = $pdo->query("SELECT p.id, p.phone, p.gender, " . PersonModel::COMPLETE_SQL . " AS complete FROM people p WHERE p.deleted_at IS NULL")->fetchAll();
+$disagree = count(array_filter($all, function ($r) { return (bool) $r['complete'] !== (PersonModel::missingFields($r) === []); }));
+ok(count($all) > 100 && $disagree === 0, 'missingFields() sepakat dengan COMPLETE_SQL untuk seluruh orang (' . count($all) . ')', "tak sepakat: $disagree");
+ok(PersonModel::missingFields(['phone' => '', 'gender' => 'L']) === ['WA'] && PersonModel::missingFields(['phone' => '62812', 'gender' => '']) === ['jenis kelamin']
+   && PersonModel::missingFields(['phone' => null, 'gender' => null]) === ['WA', 'jenis kelamin'] && PersonModel::missingFields(['phone' => '62812', 'gender' => 'P']) === [],
+   'missingFields(): WA kosong, jenis kelamin kosong, keduanya, tak ada yang kurang');
+
+$rule = PersonModel::COMPLETE_RULE;
+$h = page(['susun' => 'daftar', 'filter' => 'lengkap']);
+ok(substr_count($h, 'class="badge ok" title="' . e('Lengkap: ' . $rule) . '"') >= 10 && strpos($h, 'Kurang:') === false, 'Daftar (filter lengkap): setiap baris berbadge Lengkap dengan tooltip aturannya');
+$h = page(['susun' => 'daftar', 'filter' => 'belum_lengkap']);
+ok(substr_count($h, 'class="badge warn" title="' . e('Belum lengkap. Syaratnya: ' . $rule) . '"') >= 10 && strpos($h, '>Lengkap</span>') === false, 'Daftar (filter belum lengkap): setiap baris berbadge Kurang dengan tooltip aturannya');
+ok(strpos($h, '<th title="' . e('Lengkap = ' . $rule) . '">Kelengkapan</th>') !== false, 'Daftar: judul kolom Kelengkapan menjelaskan aturannya');
+ok(strpos($h, 'Lengkap = ' . $rule . ' Kolom Kontak tetap menampilkan NIK bila ada.') !== false, 'Daftar: satu baris keterangan di bawah tabel (NIK belum dihitung; kolom Kontak tetap menampilkannya)');
+$h = page([]);
+ok(strpos($h, 'Kolom Kontak tetap menampilkan NIK') === false && strpos($h, '&middot; WA dan jenis kelamin') !== false && strpos($h, 'Data lengkap: WA dan jenis kelamin terisi.') !== false,
+   'Per Struktur: keterangan Daftar tak ikut; kartu dan legenda tetap memakai teks yang sama seperti sebelumnya');
 
 echo "\nLULUS: $pass    GAGAL: $fail\n";
 exit($fail ? 1 : 0);

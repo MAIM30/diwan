@@ -3,6 +3,9 @@
 Daftar ringkas semua URL yang bisa dipanggil aplikasi konsumen. Penjelasan mendalam (protokol
 sinkronisasi, skema field lengkap, contoh klien, jebakan) ada di [API.md](API.md).
 
+*Terakhir diverifikasi: 2026-11-06 terhadap kode dan data. Daftar field tiap endpoint di bawah dicocokkan
+langsung dengan keluaran nyata API (urutan dan jumlahnya sama).*
+
 - **Basis URL produksi:** `https://diwan.wahdah.or.id/api/v1`
 - **Basis URL pengembangan:** `http://localhost/pengurus/api/v1`
 - **Metode:** hanya `GET` (metode lain dijawab `405 method_not_allowed`)
@@ -212,6 +215,23 @@ Field: `uuid`, `person_uuid`, `person_name`, `structure_uuid`, `structure` (labe
 
 `is_core` dihitung server — jangan disalin aturannya. Pakai `position_code` untuk logika dan
 `position_name` untuk tampilan.
+
+**Kode jabatan dibedakan menurut tempatnya** (jangan bercabang hanya pada `ketua` / `wakil_ketua`):
+
+| Tempat | Ketua | Wakil Ketua |
+|---|---|---|
+| Pengurus Inti DPP (tanpa unit) | `ketua_bidang` | `wakil_ketua_bidang` |
+| DPW (tingkat struktur) | `ketua_dpw` | `wakil_ketua_dpw` |
+| DPD (tingkat struktur) | `ketua_dpd` | `wakil_ketua_dpd` |
+| Tingkat struktur lain (MWP, MWW, MWD, DSO, DSY, DPK, …) | `ketua` | `wakil_ketua` |
+| Unit Departemen / Lembaga / Biro / Badan | `ketua_departemen` / `ketua_lembaga` / `ketua_biro` / `ketua_badan` | `wakil_ketua_departemen_lembaga` |
+
+Ketua unit Divisi dan Komisi berkode `ketua`; kepala unit Pusat dan Lainnya umumnya `kepala`.
+**Data lama belum tentu tuntas dipindahkan**: di DPW dan DPD masih bisa ada penempatan berkode `ketua`
+polos di samping `ketua_dpw` / `ketua_dpd` — terima keduanya sebagai Ketua. Himpunan kode bisa bertambah
+(kelak `ketua_dpc`, `ketua_dpra`): perlakukan kode yang tak dikenal sebagai jabatan biasa, bukan galat.
+Kunci unit pada `unit_uuid`, bukan `unit_name`: nama yang sama (mis. "Departemen Kesehatan") bisa ada
+di sayap Umum dan Muslimah sebagai dua unit berbeda.
 
 ---
 

@@ -6,6 +6,9 @@
 // Dari controller: $keyword, $gender, $filter, $serving, $level (jenjang terpilih atau ''), $levelCounts (jenjang => orang),
 // $perStruktur, $totalAll (seluruh lingkup), $recap (PersonModel::recapCounts untuk pencarian + jenjang), $showL/$showP,
 // Daftar: $rows, $total, $page, $perPage, $perPageOptions. Per Struktur: $blocks (PeopleOverview::build), $openLevels.
+// Chip Jenjang: $levelCounts (level => jumlah orang, boleh nol: semua jenjang yang punya struktur dalam lingkup), $structCounts (level => jumlah struktur).
+// $showEmpty (struktur tanpa pengurus ikut tampil; ?kosong=0 menyembunyikannya) dan $hasFacet (ada pencarian atau penyaring orang: struktur kosong
+// tak disertakan, jadi tombolnya disembunyikan).
 $this->view('layouts/header', ['title' => $title]);
 
 $pages = max(1, (int) ceil($total / $perPage));
@@ -13,7 +16,7 @@ $perPageParam = $perPage !== 25 ? $perPage : '';
 
 // Satu-satunya tempat parameter halaman ini disusun: tiap tautan di halaman membawa semua pilihan yang sedang aktif, termasuk tampilannya.
 $base = ['q' => $keyword, 'gender' => $gender, 'filter' => $filter, 'menjabat' => $serving ? 1 : '', 'lv' => $level,
-         'susun' => $perStruktur ? 'struktur' : 'daftar', 'per_page' => $perPageParam];
+         'susun' => $perStruktur ? 'struktur' : 'daftar', 'per_page' => $perPageParam, 'kosong' => $showEmpty ? '' : '0'];
 $keepEmpty = function ($v) { return $v !== '' && $v !== null; };
 $backQuery = http_build_query(array_filter($base + ['page' => $page > 1 ? $page : ''], $keepEmpty));
 $qs = function (array $over = []) use ($base, $keepEmpty) {
@@ -56,8 +59,8 @@ $chipGroups = PeopleOverview::chipGroups($levelCounts);
   <?php foreach ($chipGroups as $wing => $list): ?>
     <span class="mon-sep" aria-hidden="true"></span>
     <?php foreach ($list as $lv): $on = $level === $lv; ?>
-      <a class="chip<?= $on ? ' on' : '' ?>" href="<?= e($qs(['lv' => $on ? '' : $lv, 'page' => ''])) ?>"<?= $on ? ' aria-current="true"' : '' ?>
-         title="<?= e(PeopleOverview::LEVEL_NAMES[$lv] ?? $lv) ?>"><?= e($lv) ?> <span class="chip-n"><?= Ui::n($levelCounts[$lv]) ?></span></a>
+      <a class="chip<?= $on ? ' on' : ($levelCounts[$lv] === 0 ? ' zero' : '') ?>" href="<?= e($qs(['lv' => $on ? '' : $lv, 'page' => ''])) ?>"<?= $on ? ' aria-current="true"' : '' ?>
+         title="<?= e((PeopleOverview::LEVEL_NAMES[$lv] ?? $lv) . ' · ' . Ui::n($structCounts[$lv] ?? 0) . ' struktur') ?>"><?= e($lv) ?> <span class="chip-n"><?= Ui::n($levelCounts[$lv]) ?></span></a>
     <?php endforeach; ?>
   <?php endforeach; ?>
 </div>
@@ -90,7 +93,7 @@ $chipGroups = PeopleOverview::chipGroups($levelCounts);
     <h2>Kelengkapan data</h2>
     <div class="rk-cards">
       <?= $rk('Data lengkap', $recap['lengkap'], 'clipboard-check', 't-green', $filter === 'lengkap', $qs(['filter' => $filter === 'lengkap' ? '' : 'lengkap', 'page' => '']),
-              Ui::pct($recap['lengkap'], $recap['total']) . ' &middot; WA dan jenis kelamin',
+              Ui::pct($recap['lengkap'], $recap['total']) . ' &middot; ' . e(PersonModel::COMPLETE_SHORT),
               '<span class="rk-meter"><i style="width:' . ($recap['total'] > 0 ? min(100, round($recap['lengkap'] / $recap['total'] * 100, 1)) : 0) . '%"></i></span>') ?>
       <?= $rk('Belum lengkap', $recap['belum_lengkap'], 'alert', 't-amber', $filter === 'belum_lengkap', $qs(['filter' => $filter === 'belum_lengkap' ? '' : 'belum_lengkap', 'page' => '']),
               Ui::pct($recap['belum_lengkap'], $recap['total']) . ' perlu dilengkapi') ?>
@@ -138,6 +141,9 @@ $chipGroups = PeopleOverview::chipGroups($levelCounts);
   </div>
   <div class="chips">
     <?= $chip('Tanpa Unit Organisasi (SKUO)', $filter === 'tanpa_unit', $qs(['filter' => $filter === 'tanpa_unit' ? '' : 'tanpa_unit', 'susun' => 'daftar', 'page' => '']), 'users') ?>
+    <?php if ($perStruktur && !$hasFacet): ?>
+      <?= $chip('Sembunyikan struktur tanpa pengurus', !$showEmpty, $qs(['kosong' => $showEmpty ? '0' : '']), null, 'Struktur yang belum punya pengurus atau periode (angkanya nol) ikut tampil supaya bisa dipantau; ketuk untuk menyembunyikannya') ?>
+    <?php endif; ?>
   </div>
   <?php if ($perStruktur): ?>
     <span class="mon-bulk">
@@ -179,9 +185,19 @@ $rosterUrl = function ($termId) use ($facetQuery) {
 };
 // Baris satu struktur; daftar pengurusnya dimuat saat dibuka (struktur tanpa Bidang dan unit: nama dan jabatan langsung; selain itu
 // Pengurus Inti, Bidang, unit). Di bawah nama: induknya ("Sulawesi Selatan" untuk sebuah kabupaten) dan jumlah struktur anaknya ("5 MWD").
-// $d = kedalaman untuk indentasi.
-$structureRow = function (array $r, $d) use ($caret, $cols, $rosterUrl) {
+// $d = kedalaman untuk indentasi. Struktur yang belum punya periode berjalan (term_id null) tak punya isi untuk dimuat: barisnya tidak bisa dibuka
+// dan hanya menunjukkan bahwa strukturnya ada (dengan tautan Buat periode bagi yang boleh mengubah).
+$noTermNote = function ($structureId) {
+    return 'Belum punya periode berjalan' . (Auth::canEdit()
+        ? ' &middot; <a href="' . BASEURL . '/terms/form/0/' . (int) $structureId . '">Buat periode</a>' : '');
+};
+$structureRow = function (array $r, $d) use ($caret, $cols, $rosterUrl, $noTermNote) {
     $small = implode(' · ', array_filter([$r['context'], $r['sub']], function ($x) { return $x !== ''; }));
+    if ($r['term_id'] === null) {
+        return '<div class="mon-row mon-noterm" style="--d:' . (int) $d . '"><span class="mon-t"><span class="mon-caret-gap"></span>'
+            . '<span class="mon-ttl"><b>' . e($r['name']) . '</b><small>' . ($small !== '' ? e($small) . ' &middot; ' : '') . $noTermNote($r['id']) . '</small></span></span>'
+            . $cols($r['num'], Ui::ksb($r['flags'])) . '</div>';
+    }
     ob_start(); ?>
     <details class="mon-s" data-roster-url="<?= e($rosterUrl($r['term_id'])) ?>">
       <summary class="mon-row" style="--d:<?= (int) $d ?>">
@@ -217,7 +233,17 @@ $structureRow = function (array $r, $d) use ($caret, $cols, $rosterUrl) {
       <?php foreach ($blocks as $b):
         $open = in_array($b['level'], $openLevels, true);
         $inti = $b['single'] ? Ui::ksb($b['flags']) : $intiSum($b['inti_lengkap'], $b['strukt']);
+        // Jenjang dengan satu struktur yang belum punya periode berjalan: tak ada isi untuk dimuat, jadi barisnya statis.
+        if ($b['single'] && $b['term_id'] === null):
       ?>
+        <div class="mon-g mon-lvl <?= e($b['wing']) ?>">
+          <div class="mon-row mon-noterm" style="--d:0">
+            <span class="mon-t"><span class="mon-caret-gap"></span><span class="mon-ttl"><b><?= e($b['level']) ?></b>
+              <small><?= e($b['name']) ?> &middot; <?= $noTermNote($b['rows'][0]['id']) ?></small></span></span>
+            <?= $cols($b['num'], $inti) ?>
+          </div>
+        </div>
+      <?php continue; endif; ?>
         <details class="mon-g mon-lvl <?= e($b['wing']) ?>"<?= $open ? ' open' : '' ?><?= $b['single'] ? ' data-roster-url="' . e($rosterUrl($b['term_id'])) . '"' : '' ?>>
           <summary class="mon-row" style="--d:0">
             <span class="mon-t"><?= $caret ?><span class="mon-ttl"><b><?= e($b['level']) ?></b>
@@ -239,7 +265,7 @@ $structureRow = function (array $r, $d) use ($caret, $cols, $rosterUrl) {
   <div class="mon-legend">
     <?= Ui::ksb(['k' => true, 's' => true, 'b' => false]) ?>
     <span>K Ketua &middot; S Sekretaris &middot; B Bendahara. Merah putus-putus: belum ada pengurusnya di Pengurus Inti.</span>
-    <span>Data lengkap: WA dan jenis kelamin terisi. Hijau mulai 90%, kuning mulai 75%, merah di bawahnya.</span>
+    <span>Data lengkap: <?= e(PersonModel::COMPLETE_SHORT) ?> terisi. Hijau mulai 90%, kuning mulai 75%, merah di bawahnya.</span>
   </div>
 </div>
 <?php endif; ?>
@@ -262,15 +288,13 @@ $structureRow = function (array $r, $d) use ($caret, $cols, $rosterUrl) {
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>Nama</th><th>Jabatan Terkini</th><th>Kontak</th><th>Kelengkapan</th><th>Status</th><th></th></tr>
+          <tr><th>Nama</th><th>Jabatan Terkini</th><th>Kontak</th><th title="<?= e('Lengkap = ' . PersonModel::COMPLETE_RULE) ?>">Kelengkapan</th><th>Status</th><th></th></tr>
         </thead>
         <tbody>
         <?php foreach ($rows as $r):
           // Struktur tersimpan sebagai "DPD Kab. Pinrang"; jenjangnya (kata pertama) dijadikan label tersendiri.
           [$rowLevel, $rowStructure] = array_pad(explode(' ', (string) $r['structure_label'], 2), 2, '');
-          $missing = [];
-          if ((string) ($r['phone'] ?? '') === '') $missing[] = 'WA';
-          if ((string) ($r['gender'] ?? '') === '') $missing[] = 'jenis kelamin';
+          $missing = PersonModel::missingFields($r);
         ?>
           <tr>
             <td>
@@ -289,8 +313,8 @@ $structureRow = function (array $r, $d) use ($caret, $cols, $rosterUrl) {
               <div class="mono muted">NIK <?= e($r['nik'] ?: '—') ?></div>
             </td>
             <td>
-              <?php if ($missing): ?><span class="badge warn">Kurang: <?= e(implode(', ', $missing)) ?></span>
-              <?php else: ?><span class="badge ok">Lengkap</span><?php endif; ?>
+              <?php if ($missing): ?><span class="badge warn" title="<?= e('Belum lengkap. Syaratnya: ' . PersonModel::COMPLETE_RULE) ?>">Kurang: <?= e(implode(', ', $missing)) ?></span>
+              <?php else: ?><span class="badge ok" title="<?= e('Lengkap: ' . PersonModel::COMPLETE_RULE) ?>">Lengkap</span><?php endif; ?>
             </td>
             <td>
               <?php if ($r['status'] === 'deceased'): ?><span class="badge ended">Wafat</span>
@@ -321,6 +345,8 @@ $structureRow = function (array $r, $d) use ($caret, $cols, $rosterUrl) {
     </div>
 
     <p class="mon-count">Menampilkan <?= Ui::n(($page - 1) * $perPage + 1) ?>&ndash;<?= Ui::n(min($total, $page * $perPage)) ?> dari <b><?= Ui::n($total) ?></b> orang</p>
+    <?php // Badge "Lengkap" tidak menjelaskan dirinya, dan baris yang NIK-nya "—" pun Lengkap: aturannya dinyatakan terang di sini dan di tooltip. ?>
+    <p class="mon-note">Lengkap = <?= e(PersonModel::COMPLETE_RULE) ?> Kolom Kontak tetap menampilkan NIK bila ada.</p>
 
     <?php if ($pages > 1): ?>
       <nav class="pager" aria-label="Halaman">

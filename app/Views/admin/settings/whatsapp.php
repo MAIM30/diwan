@@ -18,7 +18,7 @@ $qrUrl = rtrim((string) ($s['wa_gateway_url'] ?? 'http://localhost:3001'), '/') 
 
 <div class="note">
   WA Gateway mengirim notifikasi (hasil peninjauan pendaftaran, penempatan, SK) dan broadcast lewat WhatsApp.
-  OTP login pengurus tidak dikirim lewat WhatsApp; kodenya ditampilkan di halaman verifikasi.
+  OTP login pengurus tidak dikirim lewat WhatsApp; kodenya ditampilkan di halaman verifikasi. Selama gateway ini tidak aktif (tidak menjawab atau WhatsApp belum tersambung), langkah OTP dilewati dan pengurus langsung masuk.
   Gateway berjalan di server lokal menggunakan Baileys (Node.js).
 </div>
 

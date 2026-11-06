@@ -28,7 +28,8 @@ class PeopleController extends Controller {
         $this->requireLogin();
 
         $people = $this->model('PersonModel');
-        $keyword = trim($_GET['q'] ?? '');
+        // Pencarian bisa datang sebagai larik (?q[]=x): hanya teks yang dipakai, selebihnya dianggap kosong.
+        $keyword = is_string($_GET['q'] ?? '') ? trim($_GET['q'] ?? '') : '';
         $gender = in_array($_GET['gender'] ?? '', ['L', 'P'], true) ? $_GET['gender'] : '';
         $filter = in_array($_GET['filter'] ?? '', self::VALID_FILTERS, true) ? $_GET['filter'] : '';
         $page = max(1, (int) ($_GET['page'] ?? 1));
@@ -36,8 +37,14 @@ class PeopleController extends Controller {
                  ? (int) $_GET['per_page'] : 25;
         $serving = !empty($_GET['menjabat']);
 
-        // Jenjang (?lv=DPW): hanya jenjang yang punya orang dalam lingkup admin; nilai lain diabaikan.
-        $levelCounts = array_filter($people->levelCounts());
+        // Jenjang (?lv=DPLN): semua jenjang yang punya STRUKTUR dalam lingkup admin atau punya orang; nilai lain diabaikan. Dulu hanya yang
+        // berpenghuni, sehingga jenjang baru (mis. DPLN) tak tampil sampai ada pengurusnya. $levelCounts = level => jumlah orang (boleh nol).
+        $structCounts = $this->model('StructureModel')->levelCountsInScope();
+        $peopleCounts = $people->levelCounts();
+        $levelCounts = [];
+        foreach (PeopleOverview::orderedLevels(array_unique(array_merge(array_keys($structCounts), array_keys(array_filter($peopleCounts))))) as $l) {
+            $levelCounts[$l] = (int) ($peopleCounts[$l] ?? 0);
+        }
         $lv = is_string($_GET['lv'] ?? '') ? ($_GET['lv'] ?? '') : '';
         $level = isset($levelCounts[$lv]) ? $lv : '';
 
@@ -53,6 +60,11 @@ class PeopleController extends Controller {
         }
         $perStruktur = $susun === 'struktur';
 
+        // Per Struktur memuat SEMUA struktur dalam lingkup, termasuk yang belum punya pengurus atau periode (angkanya nol), kecuali ada
+        // pencarian atau penyaring orang (struktur kosong tak punya apa-apa untuk dicocokkan) atau orang memilih menyembunyikannya (?kosong=0).
+        $facet = $keyword !== '' || $gender !== '' || $filter !== '' || $serving;
+        $showEmpty = ($_GET['kosong'] ?? '') !== '0';
+
         $levels = $this->model('StructureModel')->levelsInScope();
         $umum = ['DPP', 'DPW', 'DPLN', 'DPD', 'DPC', 'DPRa'];
         $musl = ['MWP', 'MWW', 'MWD', 'MWC', 'MWRa'];
@@ -65,6 +77,9 @@ class PeopleController extends Controller {
             'serving'  => $serving,
             'level'    => $level,
             'levelCounts' => $levelCounts,
+            'structCounts' => $structCounts,
+            'showEmpty' => $showEmpty,
+            'hasFacet' => $facet,
             'perStruktur' => $perStruktur,
             'totalAll' => $people->countInScope('', []),
             'recap'    => $people->recapCounts($keyword, $level),
@@ -80,7 +95,7 @@ class PeopleController extends Controller {
         ];
 
         if ($perStruktur) {
-            $data['blocks'] = PeopleOverview::build($people->overviewByStructure($keyword, $filters), $people->intiFlags());
+            $data['blocks'] = PeopleOverview::build($people->overviewByStructure($keyword, $filters, $showEmpty && !$facet), $people->intiFlags());
             $data['openLevels'] = PeopleOverview::defaultOpen($data['blocks'], $level);
         } else {
             $data['rows'] = $people->searchInScope($keyword, $perPage, ($page - 1) * $perPage, $filters);

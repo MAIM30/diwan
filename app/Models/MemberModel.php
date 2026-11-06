@@ -69,12 +69,15 @@ class MemberModel {
         return (new PlacementModel())->historyOfPerson($personId);
     }
 
-    // Yang sedang berjalan: periode berjalan dan belum berakhir.
+    // Sedang berjalan = periodenya berjalan DAN penempatannya belum berakhir. Satu definisi untuk Beranda dan Riwayat.
+    public static function isNow(array $h, $today = null) {
+        $today = $today ?: date('Y-m-d');
+        return !empty($h['is_current']) && (empty($h['end_date']) || $h['end_date'] >= $today);
+    }
+
+    // Yang sedang berjalan, urutan semula (periode terbaru lebih dulu).
     public function currentOf(array $history) {
-        $today = date('Y-m-d');
-        return array_values(array_filter($history, function ($h) use ($today) {
-            return !empty($h['is_current']) && (empty($h['end_date']) || $h['end_date'] >= $today);
-        }));
+        return array_values(array_filter($history, function ($h) { return self::isNow($h); }));
     }
 
     // Rentang waktu efektif sebuah penempatan: [mulai, selesai]. Mulai = tanggal mulai menjabat bila
@@ -117,21 +120,24 @@ class MemberModel {
         return $this->db->query("SELECT id, level, name, wing FROM structures WHERE id IN ($in) AND deleted_at IS NULL ORDER BY depth")->fetchAll();
     }
 
-    // Rekan yang saat ini menjabat di tempat yang SAMA (struktur + periode + unit; unit kosong =
-    // pucuk pimpinan struktur). Hanya nama + jabatan. Foto sengaja tidak ikut -- dan tidak ada
-    // kolom kontak atau identitas sama sekali di SELECT ini.
-    public function colleagues(array $placement, $meId, $limit = 14) {
+    // Syarat "tempat yang SAMA": periode yang sama, belum berakhir, bukan saya; unit kosong = pucuk pimpinan struktur.
+    private function colleagueFilter(array $placement, $meId) {
         $where = "pl.term_id = :term AND pl.deleted_at IS NULL AND pl.person_id <> :me
                   AND (pl.end_date IS NULL OR pl.end_date >= CURDATE())";
         $params = [':term' => (int) $placement['term_id'], ':me' => (int) $meId];
-
         if (!empty($placement['structure_unit_id'])) {
             $where .= " AND pl.structure_unit_id = :unit";
             $params[':unit'] = (int) $placement['structure_unit_id'];
         } else {
             $where .= " AND pl.structure_unit_id IS NULL";
         }
+        return [$where, $params];
+    }
 
+    // Rekan yang saat ini menjabat di tempat yang SAMA (struktur + periode + unit). Hanya nama + jabatan. Foto
+    // sengaja tidak ikut -- dan tidak ada kolom kontak atau identitas sama sekali di SELECT ini.
+    public function colleagues(array $placement, $meId, $limit = 14) {
+        [$where, $params] = $this->colleagueFilter($placement, $meId);
         $stmt = $this->db->prepare("
             SELECT p.id, p.title_prefix, p.name, p.title_suffix, p.full_name, p.uuid,
                    po.name AS position_name, " . PositionModel::CORE_SQL . " AS is_core
@@ -147,6 +153,22 @@ class MemberModel {
         $stmt->bindValue(':lim', (int) $limit, PDO::PARAM_INT);
         $stmt->execute();
         return $stmt->fetchAll();
+    }
+
+    // Berapa orang yang dihitung colleagues() tanpa batas -- untuk "+ N rekan lainnya". Orang yang merangkap di tempat
+    // yang sama dihitung satu kali per jabatan, sama seperti daftarnya.
+    public function colleaguesCount(array $placement, $meId) {
+        [$where, $params] = $this->colleagueFilter($placement, $meId);
+        $stmt = $this->db->prepare("
+            SELECT COUNT(*) FROM placements pl
+            JOIN people p ON p.id = pl.person_id AND p.deleted_at IS NULL
+            JOIN positions po ON po.id = pl.position_id
+            JOIN structures s ON s.id = pl.structure_id
+            WHERE $where
+        ");
+        foreach ($params as $k => $v) $stmt->bindValue($k, $v, PDO::PARAM_INT);
+        $stmt->execute();
+        return (int) $stmt->fetchColumn();
     }
 
     // ---------- Riwayat masuk ----------
@@ -303,13 +325,35 @@ class MemberModel {
         return ['changed' => array_keys($set), 'errors' => []];
     }
 
-    // Bidang yang masih kosong, sebagai daftar nama bidang -- untuk "Kelengkapan Data Saya".
-    public function missingFields(array $person) {
-        $labels = ['phone' => 'Nomor WhatsApp', 'nik' => 'NIK', 'email' => 'Email', 'birth_date' => 'Tanggal lahir',
-                   'address_text' => 'Alamat', 'photo_path' => 'Foto profil'];
+    // Enam butir "Data saya" di Beranda: [kolom, label, ikon, bisa diisi pengurus sendiri]. Butir yang bisa diisi sendiri
+    // persis yang ada di SELF_FIELDS (dijaga uji); WhatsApp, NIK, dan foto profil hanya diisi admin.
+    const COMPLETENESS = [
+        ['email',        'Email',          'mail',     true],
+        ['birth_date',   'Tanggal lahir',  'calendar', true],
+        ['address_text', 'Alamat',         'map-pin',  true],
+        ['phone',        'Nomor WhatsApp', 'phone',    false],
+        ['nik',          'NIK',            'shield',   false],
+        ['photo_path',   'Foto profil',    'camera',   false],
+    ];
+
+    // Isi "Data saya": tiap butir terisi atau belum, dan nilai yang BOLEH ditampilkan ke pemiliknya. Aturan tampil sama
+    // dengan halaman Data Saya: WhatsApp dan NIK utuh, email tersamar, tanggal lahir dan alamat jalan tidak ditampilkan
+    // (value null; yang terisi cukup bertanda "Terisi"). Foto biodata ($person['biodata_photo_id'], diisi PengurusController::guard())
+    // ikut menghitung sebagai foto profil.
+    public function completeness(array $person) {
         $out = [];
-        foreach ($labels as $col => $label) {
-            if (empty($person[$col])) $out[] = $label;
+        foreach (self::COMPLETENESS as [$col, $label, $icon, $self]) {
+            $has = trim((string) ($person[$col] ?? '')) !== '';
+            $value = null;
+            if ($col === 'photo_path') {
+                $has = $has || trim((string) ($person['biodata_photo_id'] ?? '')) !== '';
+                $value = $has ? 'Terpasang' : null;
+            } elseif ($has && $col === 'email') {
+                $value = Text::maskEmail($person['email']);
+            } elseif ($has && ($col === 'phone' || $col === 'nik')) {
+                $value = (string) $person[$col];
+            }
+            $out[] = ['key' => $col, 'label' => $label, 'icon' => $icon, 'self' => $self, 'filled' => $has, 'value' => $value];
         }
         return $out;
     }

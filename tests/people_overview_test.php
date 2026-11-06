@@ -25,7 +25,8 @@ ok('wingOf: DPW umum, MWD musl, DSO dewan', PeopleOverview::wingOf('DPW') === 'u
 ok('shortName membuang awalan Muslimah', PeopleOverview::shortName('Muslimah Wahdah Islamiyah Wilayah Aceh') === 'Aceh' && PeopleOverview::shortName('Muslimah Wahdah Islamiyah Daerah Kab. Gowa') === 'Kab. Gowa');
 ok('shortName membiarkan nama biasa dan nama Pusat', PeopleOverview::shortName('Sulawesi Selatan') === 'Sulawesi Selatan' && PeopleOverview::shortName('Muslimah Wahdah Islamiyah Pusat') === 'Muslimah Wahdah Islamiyah Pusat');
 ok('orderedLevels: urutan baku, jenjang tak dikenal di akhir', PeopleOverview::orderedLevels(['MWD', 'XYZ', 'DPD', 'DPP', 'DSO']) === ['DPP', 'DPD', 'MWD', 'DSO', 'XYZ'], js(PeopleOverview::orderedLevels(['MWD', 'XYZ', 'DPD', 'DPP', 'DSO'])));
-ok('chipGroups: dikelompokkan per sayap, jenjang kosong dibuang', PeopleOverview::chipGroups(['DPW' => 3, 'DPD' => 0, 'MWP' => 2, 'DPK' => 1]) === ['umum' => ['DPW'], 'musl' => ['MWP'], 'dewan' => ['DPK']], js(PeopleOverview::chipGroups(['DPW' => 3, 'DPD' => 0, 'MWP' => 2, 'DPK' => 1])));
+ok('chipGroups: dikelompokkan per sayap dan urutan baku; jenjang yang orangnya nol ikut (jenjang baru seperti DPLN langsung tampil)', PeopleOverview::chipGroups(['DPW' => 3, 'DPD' => 0, 'DPLN' => 0, 'MWP' => 2, 'DPK' => 1]) === ['umum' => ['DPW', 'DPLN', 'DPD'], 'musl' => ['MWP'], 'dewan' => ['DPK']], js(PeopleOverview::chipGroups(['DPW' => 3, 'DPD' => 0, 'DPLN' => 0, 'MWP' => 2, 'DPK' => 1])));
+ok('chipGroups: sayap tanpa jenjang tidak muncul', PeopleOverview::chipGroups(['DPW' => 1]) === ['umum' => ['DPW']]);
 
 // ---- build ----
 $overview = [
@@ -75,6 +76,15 @@ ok('urutan alami: "Kab. 2" mendahului "Kab. 10"', (function () use ($s) {
     $o = ['structures' => [$s(1, 'DPD', 'Kab. 10', 1, [9, 'DPW', 'X']), $s(2, 'DPD', 'Kab. 2', 1, [9, 'DPW', 'X'])], 'levels' => ['DPD' => ['orang' => 2, 'lengkap' => 2, 'l' => 2, 'p' => 0]]];
     return array_column(PeopleOverview::build($o, [])[0]['rows'], 'name') === ['Kab. 2', 'Kab. 10'];
 })());
+// Struktur tanpa pengurus dan tanpa periode (mis. DPLN yang baru dibuat): ikut sebagai baris angka nol, term_id null.
+$kosong = fn($id, $level, $name, $termId = null) => ['id' => $id, 'term_id' => $termId, 'level' => $level, 'name' => $name, 'parent_id' => null, 'parent_level' => null, 'parent_name' => null] + $n(0);
+$ov = ['structures' => [$kosong(60, 'DPLN', 'Yaman'), $kosong(61, 'DPLN', 'Arab Saudi'), $kosong(62, 'DPLN', 'Mesir', 1062)], 'levels' => ['DPLN' => $n(0)]];
+$dpln = PeopleOverview::build($ov, [])[0];
+ok('jenjang tanpa orang: tetap satu blok dengan semua strukturnya (terurut nama), bukan dibuang', $dpln['level'] === 'DPLN' && $dpln['strukt'] === 3 && array_column($dpln['rows'], 'name') === ['Arab Saudi', 'Mesir', 'Yaman'], js(array_column($dpln['rows'], 'name')));
+ok('struktur kosong: angka nol, Ketua/Sekretaris/Bendahara kosong, inti tak lengkap', array_reduce($dpln['rows'], function ($c, $r) { return $c && $r['num']['orang'] === 0 && $r['flags'] === ['k' => false, 's' => false, 'b' => false] && $r['inti_ok'] === false; }, true) && $dpln['inti_lengkap'] === 0);
+ok('struktur tanpa periode berjalan: term_id null; yang punya periode membawa term_id-nya', array_column($dpln['rows'], 'term_id', 'name') === ['Arab Saudi' => null, 'Mesir' => 1062, 'Yaman' => null], js(array_column($dpln['rows'], 'term_id', 'name')));
+$satu = PeopleOverview::build(['structures' => [$kosong(70, 'DPLN', 'Arab Saudi')], 'levels' => ['DPLN' => $n(0)]], [])[0];
+ok('jenjang satu-struktur tanpa periode: single dengan term_id null (barisnya statis, tak bisa dimuat)', $satu['single'] === true && $satu['term_id'] === null && $satu['rows'][0]['name'] === 'Arab Saudi');
 ok('hasil kosong untuk overview kosong', PeopleOverview::build(['structures' => [], 'levels' => []], []) === []);
 ok('jenjang tanpa struktur diabaikan (levels tanpa baris struktur)', PeopleOverview::build(['structures' => [], 'levels' => ['DPW' => $n(1)]], []) === []);
 

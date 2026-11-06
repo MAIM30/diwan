@@ -4,6 +4,7 @@
 
 class Whatsapp {
     const TIMEOUT = 15;
+    const STATUS_TIMEOUT = 3;   // detik; pemeriksaan "aktif?" tak boleh menahan halaman yang memanggilnya
 
     const SETTINGS_KEYS = [
         'wa_gateway_url',
@@ -14,6 +15,7 @@ class Whatsapp {
     ];
 
     public static $settings;
+    private static $active;   // hasil isActive() untuk permintaan ini
 
     private static function settings() {
         if (self::$settings === null) {
@@ -26,6 +28,26 @@ class Whatsapp {
     public static function isConfigured() {
         $s = self::settings();
         return !empty($s['wa_gateway_url']) && !empty($s['wa_gateway_key']);
+    }
+
+    // Gateway AKTIF = URL dan kunci terisi, gateway menjawab /status, dan WhatsApp-nya tersambung (status "open"): hanya dalam
+    // keadaan itu pesan bisa terkirim. Terisi saja tidak cukup (URL bawaan localhost:3001 tetap terisi walau gateway mati).
+    // Gagal apa pun (tak terhubung, kunci salah, balasan aneh, status lain) berarti tidak aktif. Diingat selama satu permintaan.
+    public static function isActive() {
+        if (self::$active === null) {
+            self::$active = false;
+            if (self::isConfigured()) {
+                $r = self::request('GET', 'status', null, self::STATUS_TIMEOUT);
+                self::$active = !empty($r['ok']) && ($r['data']['status'] ?? '') === 'open';
+            }
+        }
+        return self::$active;
+    }
+
+    // Lupakan pengaturan dan status yang sudah dibaca (setelah pengaturan disimpan, dan di uji).
+    public static function forget() {
+        self::$settings = null;
+        self::$active = null;
     }
 
     private static function gatewayUrl() {
@@ -50,7 +72,7 @@ class Whatsapp {
             CURLOPT_URL            => $url,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT        => $timeout ?? self::TIMEOUT,
-            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_CONNECTTIMEOUT => min(5, $timeout ?? self::TIMEOUT),
             CURLOPT_HTTPHEADER     => $headers,
             CURLOPT_CUSTOMREQUEST  => $method,
         ]);

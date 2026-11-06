@@ -64,6 +64,32 @@ class StructureModel {
         ")->fetchAll();
     }
 
+    // Jumlah struktur per jenjang dalam lingkup admin (level => jumlah), termasuk yang belum punya periode atau pengurus. Dasar chip
+    // Jenjang di Data Pengurus dan Struktur: jenjang baru (mis. DPLN) langsung tampil begitu strukturnya dibuat, tak menunggu ada pengurusnya.
+    public function levelCountsInScope() {
+        return array_map('intval', $this->db->query("
+            SELECT s.level, COUNT(*) FROM structures s
+            WHERE s.deleted_at IS NULL AND " . AdminScope::sqlFilter('s.id') . "
+            GROUP BY s.level
+        ")->fetchAll(PDO::FETCH_KEY_PAIR));
+    }
+
+    // Periode berjalan tiap struktur dalam lingkup admin: structure_id => ['id' => id periode, 'name' => nama periode]. Struktur yang belum
+    // punya periode berjalan tidak ada di hasil. Satu query untuk seluruh daftar Struktur (bukan satu per baris).
+    public function currentTermsInScope() {
+        $rows = $this->db->query("
+            SELECT t.structure_id, t.id, t.name FROM terms t
+            WHERE t.is_current = 1 AND t.deleted_at IS NULL AND " . AdminScope::sqlFilter('t.structure_id') . "
+            ORDER BY t.start_date DESC, t.id DESC
+        ")->fetchAll();
+        $out = [];
+        foreach ($rows as $r) {
+            $sid = (int) $r['structure_id'];
+            if (!isset($out[$sid])) $out[$sid] = ['id' => (int) $r['id'], 'name' => $r['name']];   // yang terbaru bila datanya ganda
+        }
+        return $out;
+    }
+
     // Tingkat yang sudah ada di lingkup admin dan tingkat yang dapat dibuat sebagai anaknya.
     public function levelsInScope() {
         if (AdminScope::isUnbounded()) return self::LEVELS;

@@ -25,15 +25,28 @@ class PersonModel {
     // Definisi tunggal "data lengkap", dipakai kartu rekap DAN filter daftar supaya angka di kartu
     // selalu sama dengan isi halaman yang dibukanya.
     //
-    // NIK sengaja TIDAK disyaratkan. Nomor KTP belum bisa didapatkan untuk hampir semua pengurus,
-    // jadi mensyaratkannya membuat kartu ini menghitung 1 dari 4.931 -- benar secara harfiah, tapi
-    // tidak memberi tahu admin satu pun pekerjaan yang bisa ia kerjakan. Kelengkapan NIK tetap
-    // terlihat terpisah di dasbor dan lewat filter 'tanpa_nik'.
+    // Bila definisinya berubah, ubah BERSAMA, semuanya di sini: COMPLETE_SQL (hitungan dan filter), missingFields() (padanan PHP untuk label
+    // "Kurang: ..." per baris Daftar), dan teksnya COMPLETE_RULE / COMPLETE_SHORT (tooltip badge, keterangan di bawah tabel Daftar, kartu
+    // "Data lengkap", legenda Per Struktur). tests/people_per_struktur_test.php menjaga COMPLETE_SQL dan missingFields() tetap sepakat.
+    //
+    // NIK untuk SAAT INI sengaja belum disyaratkan (diputuskan 2026-10-24, ditegaskan 2026-11-06). NIK akan menjadi ID unik penghubung data
+    // personal ke aplikasi lain dan kelak diwajibkan; sumbernya diharapkan ditarik dari Database Kader (DIWAN hanya database Pengurus).
+    // Kelengkapan NIK tetap terlihat terpisah di dasbor dan lewat filter 'tanpa_nik'.
     //
     // Jenis kelamin hari ini selalu terisi (kolomnya NOT NULL), jadi syarat ini belum menyaring
     // apa-apa; ia ditulis agar tetap benar bila kolomnya kelak boleh kosong.
     const COMPLETE_SQL = "(p.phone IS NOT NULL AND p.phone <> ''
                            AND p.gender IS NOT NULL AND p.gender <> '')";
+    const COMPLETE_SHORT = 'WA dan jenis kelamin';
+    const COMPLETE_RULE = 'nomor WA dan jenis kelamin terisi. NIK belum dihitung sebagai syarat.';
+
+    // Yang masih kurang pada satu baris orang (padanan PHP dari COMPLETE_SQL); kosong = lengkap.
+    public static function missingFields(array $p) {
+        $out = [];
+        if ((string) ($p['phone'] ?? '') === '') $out[] = 'WA';
+        if ((string) ($p['gender'] ?? '') === '') $out[] = 'jenis kelamin';
+        return $out;
+    }
 
     private $db;
 
@@ -179,7 +192,11 @@ class PersonModel {
     //               lingkup, selain itu null; hanya KETERANGAN dan dasar hitung "5 MWD", bukan pengelompok), orang, lengkap, l, p;
     //               terurut nama
     //   levels:     level => orang, lengkap, l, p
-    public function overviewByStructure($keyword = '', array $filters = []) {
+    // $includeEmpty: ikut menyertakan struktur dalam lingkup yang TIDAK punya orang yang cocok (angkanya nol; term_id null bila belum punya
+    // periode berjalan). Dipakai bila tak ada pencarian atau penyaring orang: dulu struktur baru (mis. DPLN) dan struktur kerangka tak tampil
+    // sama sekali sampai ada pengurusnya, padahal justru yang kosong itulah yang perlu dipantau. Dengan penyaring orang, struktur kosong
+    // memang tak punya apa-apa untuk dicocokkan, jadi tidak disertakan.
+    public function overviewByStructure($keyword = '', array $filters = [], $includeEmpty = false) {
         $params = [];
         $where = $this->listWhere($keyword, $filters, $params);
         $cond = "WHERE pl.deleted_at IS NULL AND (pl.end_date IS NULL OR pl.end_date >= CURDATE())
@@ -230,6 +247,30 @@ class PersonModel {
             $byStructure[$sid][$pid] = $who;
             $byLevel[$r['level']][$pid] = $who;
         }
+
+        if ($includeEmpty) {
+            // Satu periode berjalan per struktur (yang terbaru bila datanya ganda); null bila belum punya.
+            $empty = $this->db->query("
+                SELECT s.id, s.level, s.name, sp.id AS parent_id, sp.level AS parent_level, sp.name AS parent_name,
+                       (SELECT tr.id FROM terms tr WHERE tr.structure_id = s.id AND tr.is_current = 1 AND tr.deleted_at IS NULL
+                         ORDER BY tr.start_date DESC, tr.id DESC LIMIT 1) AS term_id
+                FROM structures s
+                LEFT JOIN structures sp ON $parentOn
+                WHERE s.deleted_at IS NULL AND " . AdminScope::sqlFilter('s.id')
+                . (!empty($filters['level']) ? " AND s.level = " . $this->db->quote($filters['level']) : '') . "
+                ORDER BY s.name, s.id
+            ")->fetchAll();
+            foreach ($empty as $r) {
+                $sid = (int) $r['id'];
+                if (isset($structures[$sid])) continue;
+                $structures[$sid] = ['id' => $sid, 'term_id' => $r['term_id'] !== null ? (int) $r['term_id'] : null, 'level' => $r['level'], 'name' => $r['name'],
+                                     'parent_id' => $r['parent_id'] !== null ? (int) $r['parent_id'] : null,
+                                     'parent_level' => $r['parent_level'], 'parent_name' => $r['parent_name']];
+                $byStructure[$sid] = [];
+                if (!isset($byLevel[$r['level']])) $byLevel[$r['level']] = [];
+            }
+        }
+
         foreach ($structures as $sid => &$s) $s += $count($byStructure[$sid]);
         unset($s);
 

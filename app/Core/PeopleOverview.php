@@ -35,10 +35,12 @@ class PeopleOverview {
         return trim(preg_replace('/^Muslimah Wahdah Islamiyah (Wilayah|Daerah|Cabang|Ranting)\s+/u', '', (string) $name));
     }
 
-    // Chip jenjang: ['umum' => ['DPP', 'DPW', ...], 'musl' => [...], 'dewan' => [...]], hanya jenjang yang punya orang. Kelompok kosong dibuang.
+    // Chip jenjang: ['umum' => ['DPP', 'DPW', ...], 'musl' => [...], 'dewan' => [...]] untuk SEMUA kunci $levelCounts (level => jumlah, boleh nol).
+    // Jenjang mana yang ikut ditentukan pemanggil: jenjang yang punya struktur dalam lingkup ATAU punya orang, bukan hanya yang berpenghuni,
+    // supaya jenjang baru (mis. DPLN) langsung tampil. Kelompok sayap yang kosong tidak muncul.
     public static function chipGroups(array $levelCounts) {
         $out = [];
-        foreach (self::orderedLevels(array_keys(array_filter($levelCounts))) as $level) $out[self::wingOf($level)][] = $level;
+        foreach (self::orderedLevels(array_keys($levelCounts)) as $level) $out[self::wingOf($level)][] = $level;
         return $out;
     }
 
@@ -58,8 +60,9 @@ class PeopleOverview {
     // Hasil: daftar blok jenjang. Blok: level, name, wing, strukt (jumlah struktur), inti_lengkap (struktur yang Ketua, Sekretaris, dan
     // Bendahara-nya terisi), num (orang/lengkap/l/p seluruh jenjang), single (hanya satu struktur), flags dan term_id (hanya bila single),
     // rows (SEMUA struktur jenjang itu, rata, terurut induk lalu nama).
-    // Baris struktur: id, term_id, name, context (nama induk tingkat Wilayah ke bawah, mis. provinsi untuk sebuah kabupaten; kosong bila
-    // tak ada), sub ("5 MWD": jumlah struktur anak), num, flags, inti_ok.
+    // Baris struktur: id, term_id (null bila belum punya periode berjalan: barisnya tak bisa dibuka, hanya menunjukkan bahwa strukturnya ada),
+    // name, context (nama induk tingkat Wilayah ke bawah, mis. provinsi untuk sebuah kabupaten; kosong bila tak ada), sub ("5 MWD": jumlah
+    // struktur anak), num, flags, inti_ok. Struktur tanpa pengurus ikut (angka nol, Ketua/Sekretaris/Bendahara kosong) bila overview memuatnya.
     public static function build(array $overview, array $inti) {
         $childrenOf = [];
         foreach ($overview['structures'] as $s) {

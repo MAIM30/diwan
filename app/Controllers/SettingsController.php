@@ -45,7 +45,7 @@ class SettingsController extends Controller {
         ];
 
         $settings->setMany($pairs, Auth::id());
-        Whatsapp::$settings = null;
+        Whatsapp::forget();
 
         Audit::log('settings', 0, 'update', null, ['keys' => array_keys($pairs)]);
         Flash::set('success', 'Pengaturan WhatsApp disimpan.');

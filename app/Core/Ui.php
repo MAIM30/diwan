@@ -55,6 +55,7 @@ class Ui {
         'circle'    => '<circle cx="12" cy="12" r="9"/>',
         'message-circle' => '<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>',
         'send'      => '<path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/>',
+        'route'     => '<circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/>',
         'radio'     => '<circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49M7.76 16.24a6 6 0 0 1 0-8.49"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 19.07a10 10 0 0 1 0-14.14"/>',
     ];
 
@@ -216,17 +217,25 @@ class Ui {
         return '<span class="mon-ksb">' . $out . '</span>';
     }
 
-    // Durasi singkat dari jumlah hari: "2 th 4 bln", "9 bln", "12 hr". Bulan dihitung 30 hari --
-    // cukup untuk sisa masa jabatan, bukan untuk akuntansi tanggal.
-    public static function span($days) {
+    // Durasi dari jumlah hari sebagai bagian-bagiannya: [[55, 'hari']], [[9, 'bulan']], [[2, 'tahun'], [4, 'bulan']].
+    // Bulan dihitung 30 hari -- cukup untuk sisa masa jabatan, bukan untuk akuntansi tanggal. Satu-satunya tempat
+    // ambang hari/bulan/tahun ditetapkan; span() (singkatan) dan angka besar di Beranda sama-sama bertumpu padanya.
+    public static function spanParts($days) {
         $days = max(0, (int) $days);
         if ($days >= 365) {
-            $y = intdiv($days, 365);
+            $parts = [[intdiv($days, 365), 'tahun']];
             $m = intdiv($days % 365, 30);
-            return $y . ' th' . ($m > 0 ? ' ' . $m . ' bln' : '');
+            if ($m > 0) $parts[] = [$m, 'bulan'];
+            return $parts;
         }
-        if ($days >= 60) return intdiv($days, 30) . ' bln';
-        return $days . ' hr';
+        if ($days >= 60) return [[intdiv($days, 30), 'bulan']];
+        return [[$days, 'hari']];
+    }
+
+    // Durasi singkat dari jumlah hari: "2 th 4 bln", "9 bln", "12 hr".
+    public static function span($days) {
+        $abbr = ['tahun' => 'th', 'bulan' => 'bln', 'hari' => 'hr'];
+        return implode(' ', array_map(function ($p) use ($abbr) { return $p[0] . ' ' . $abbr[$p[1]]; }, self::spanParts($days)));
     }
 
     // Label kolom data diri yang boleh diubah pengurus sendiri (Portal) -- dipakai form, riwayat, dan umpan admin.

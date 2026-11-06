@@ -3,12 +3,26 @@
 // Portal Pengurus: pengurus melihat data kepengurusannya sendiri.
 //
 // Alur masuk: nomor WA → OTP yang ditampilkan di halaman verifikasi (tidak dikirim lewat WhatsApp) → sesi.
+// Bila gateway WhatsApp tidak aktif (Whatsapp::isActive), langkah OTP dilewati: nomor WA yang lolos pemeriksaan langsung masuk.
 
 class PengurusController extends Controller {
 
     private function noStore() {
         header('Cache-Control: no-store, max-age=0');
         header('Pragma: no-cache');
+    }
+
+    // Gateway WhatsApp aktif? Satu-satunya syarat adanya langkah OTP. Dipisah supaya uji bisa mengaturnya.
+    protected function gatewayActive() {
+        return Whatsapp::isActive();
+    }
+
+    // Membuka sesi portal bagi pengurus yang sudah lolos semua pemeriksaan masuk (setelah OTP, atau langsung bila gateway tak aktif).
+    private function enter($members, array $person) {
+        unset($_SESSION['otp_pending']);
+        Member::login($person);
+        $members->recordLogin($person['id']);
+        $this->redirect('pengurus');
     }
 
     // ---------- Masuk / keluar ----------
@@ -56,6 +70,12 @@ class PengurusController extends Controller {
             $_SESSION['daftar_phone'] = $raw;
             Flash::set('info', 'Nomor ini belum tercatat sebagai pengurus. Silakan daftarkan diri Anda terlebih dahulu.');
             $this->redirect('daftar');
+        }
+
+        // Tanpa gateway aktif kode itu hanya muncul di layar dan tidak membuktikan apa pun, jadi langkahnya ditiadakan. Semua pemeriksaan
+        // di atas (format, pembatas, kelayakan, nomor bersama) tetap berlaku; yang hilang hanya halaman kode.
+        if (!$this->gatewayActive()) {
+            $this->enter($members, $person);
         }
 
         $_SESSION['otp_pending'] = [
@@ -113,9 +133,7 @@ class PengurusController extends Controller {
             $this->redirect('pengurus/login');
         }
 
-        Member::login($person);
-        $members->recordLogin($person['id']);
-        $this->redirect('pengurus');
+        $this->enter($members, $person);
     }
 
     // POST + CSRF (diverifikasi App): keluar lewat GET bisa dipicu orang lain lewat <img src>.
@@ -149,32 +167,28 @@ class PengurusController extends Controller {
         return [$members, $person];
     }
 
+    // Beranda: jabatan utama dan sisa waktunya, Biodata, jabatan lain, data diri, rekan, perjalanan, dan riwayat masuk.
+    // Jabatan utama = yang pertama setelah PortalHome::orderCurrent (Pengurus Inti dulu, lalu periode terbaru).
     public function index() {
         [$members, $person] = $this->guard();
+        $pid = (int) $person['id'];
 
-        $history = $members->history($person['id']);
-        $current = $members->currentOf($history);
-
-        // Rantai struktur di-cache per struktur supaya orang yang rangkap di struktur sama tidak
-        // mengulang query. Progres masa jabatan dihitung per jabatan aktif.
-        $chains = [];
-        $lives = [];
-        foreach ($current as $i => $c) {
-            $sid = (int) $c['structure_id'];
-            if (!isset($chains[$sid])) $chains[$sid] = $members->structureChain($sid);
-            $lives[$i] = MemberModel::life($c);
-        }
+        $history = $members->history($pid);
+        $current = PortalHome::orderCurrent($members->currentOf($history));
+        $main = $current[0] ?? null;
 
         $this->view('pengurus/index', [
-            'title'   => 'Beranda',
-            'person'  => $person,
-            'history' => $history,
-            'current' => $current,
-            'chains'  => $chains,
-            'lives'   => $lives,
-            'missing' => $members->missingFields($person),
-            'logins'  => $members->loginHistory($person['id'], 6),
-            'biodata' => $this->model('BiodataModel')->findByPersonId($person['id']),
+            'title'           => 'Beranda',
+            'person'          => $person,
+            'history'         => $history,
+            'current'         => $current,
+            'lives'           => array_map(function ($c) { return MemberModel::life($c); }, $current),
+            'chain'           => $main ? $members->structureChain($main['structure_id']) : [],
+            'colleagues'      => $main ? $members->colleagues($main, $pid, PortalHome::COLLEAGUES_MAX) : [],
+            'colleaguesTotal' => $main ? $members->colleaguesCount($main, $pid) : 0,
+            'data'            => $members->completeness($person),
+            'logins'          => $members->loginHistory($pid, 6),
+            'biodata'         => $this->model('BiodataModel')->findByPersonId($pid),
         ]);
     }
 
@@ -205,10 +219,7 @@ class PengurusController extends Controller {
         $history = $members->history($person['id']);
         $today = date('Y-m-d');
 
-        // Berjalan = periode berjalan DAN belum berakhir -- definisi yang sama dengan beranda.
-        $isNow = function ($h) use ($today) {
-            return !empty($h['is_current']) && (empty($h['end_date']) || $h['end_date'] >= $today);
-        };
+        $isNow = function ($h) use ($today) { return MemberModel::isNow($h, $today); };
         $counts = ['semua' => count($history), 'berjalan' => 0, 'arsip' => 0];
         foreach ($history as $h) $counts[$isNow($h) ? 'berjalan' : 'arsip']++;
 

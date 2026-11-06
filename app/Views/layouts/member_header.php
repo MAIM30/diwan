@@ -1,10 +1,9 @@
 <?php
 // PATH LOKASI FILE: app/Views/layouts/member_header.php
-// Kerangka Portal Pengurus. Dirancang ponsel-dulu: di layar lebar ada navigasi di bilah atas; di layar
-// ponsel navigasinya berpindah ke BILAH BAWAH (mudah dijangkau ibu jari), tab aktif membesar menjadi
-// pil putih berlabel. Sengaja TANPA sidebar admin -- portal ini hanya punya empat halaman.
-// Variabel: $title, $person, $active ('beranda' | 'susunan' | 'riwayat' | 'data'), $hero (opsional: true
-// hanya di Beranda -- bilah atas menjadi transparan di atas latar melengkung, lihat .m-home di app.css).
+// Kerangka Portal Pengurus. Dirancang ponsel-dulu: di layar lebar ada navigasi di bilah atas (pil putih berisi empat
+// tautan); di layar ponsel navigasinya berpindah ke BILAH BAWAH yang melayang (mudah dijangkau ibu jari), tab aktif
+// membesar menjadi pil berlabel. Sengaja TANPA sidebar admin -- portal ini hanya punya empat halaman.
+// Variabel: $title, $person, $active ('beranda' | 'susunan' | 'riwayat' | 'data').
 [$pre, $mName, $suf] = Ui::nameParts($person);
 $mFirst = preg_split('/\s+/u', trim($mName), -1, PREG_SPLIT_NO_EMPTY)[0] ?? $mName;
 $mItems = [
@@ -23,7 +22,7 @@ $mItems = [
 <title><?= isset($title) ? e($title) . ' &middot; ' : '' ?>Portal Pengurus &middot; <?= e(APP_NAME) ?></title>
 <link rel="stylesheet" href="<?= Ui::asset('css/app.css') ?>">
 </head>
-<body class="m-body<?= !empty($hero) ? ' m-home' : '' ?>">
+<body class="m-body">
 
 <header class="m-top">
   <div class="m-top-in">

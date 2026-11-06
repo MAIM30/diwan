@@ -2,6 +2,7 @@
 // PATH LOKASI FILE: app/Core/Otp.php
 // Kode OTP masuk Portal Pengurus. Kode TIDAK dikirim ke mana pun: halaman verifikasi menampilkannya
 // di atas kolom isian, karena pengiriman OTP lewat WhatsApp membuat nomor gateway sering diblokir.
+// Hanya dipakai bila gateway WhatsApp aktif; tanpa itu PengurusController::login_process melewati langkah ini.
 
 class Otp {
     const TTL = 300; // detik

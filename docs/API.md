@@ -301,10 +301,13 @@ mana. **Berhalaman.**
 Filter bisa digabung. `?current=1&core=1` menjawab *"siapa Pengurus Inti yang menjabat sekarang"*
 tanpa perlu tahu nama periodenya.
 
-> **`is_core` dihitung di server.** Jangan menyalin aturannya ke aplikasi Anda — aturannya bergantung
-> pada tier struktur dan bisa berubah lewat data, tanpa deploy. Contoh yang berlaku sekarang:
-> Wakil Ketua adalah inti di DPW ke bawah, tetapi **bukan** di DPP/MWP. Jabatan di dalam unit
-> (Departemen/Lembaga/Biro) tidak pernah inti.
+> **`is_core` dihitung di server.** Jangan menyalin aturannya ke aplikasi Anda — aturannya berupa data
+> di katalog jabatan dan bisa berubah tanpa deploy. Yang berlaku sekarang: jabatan yang bertanda inti
+> di katalog dan dipegang di tingkat struktur (`unit_uuid` kosong) adalah Pengurus Inti — termasuk
+> Wakil Ketua di semua tingkat (`wakil_ketua`, `wakil_ketua_dpw`, `wakil_ketua_dpd`, `wakil_ketua_bidang`).
+> Jabatan di dalam unit (Departemen/Lembaga/Biro/Badan, mis. `ketua_biro`,
+> `wakil_ketua_departemen_lembaga`) tidak pernah inti, walau kodenya (mis. `ketua` di unit Divisi)
+> bertanda inti di katalog.
 
 ### `GET /sync/full` dan `GET /sync/changes`
 
@@ -425,8 +428,10 @@ Beberapa jabatan dibedakan menurut tempatnya dan punya kode sendiri:
 | `wakil_ketua` di Pengurus Inti DPP (tanpa unit) | `wakil_ketua_bidang` |
 | `ketua` di dalam unit berjenis Departemen / Lembaga / Biro / Badan | `ketua_departemen` / `ketua_lembaga` / `ketua_biro` / `ketua_badan` |
 
-`ketua` tetap untuk tingkat struktur lain (MWP, MWW, MWD, ...) dan untuk kepala unit berjenis Pusat, Divisi, Komisi,
-atau Lainnya; `wakil_ketua` tetap untuk Wakil Ketua tingkat struktur selain DPW/DPD/DPP (mis. MWP).
+`ketua` tetap untuk tingkat struktur lain (MWP, MWW, MWD, DSO, DSY, DPK, ...) dan untuk ketua unit berjenis Divisi dan
+Komisi; kepala unit berjenis Pusat dan Lainnya umumnya berkode `kepala`; `wakil_ketua` tetap untuk Wakil Ketua tingkat
+struktur selain DPW/DPD/DPP (mis. MWP). **Pemindahan data lama belum tentu tuntas**: di DPW dan DPD masih bisa ada
+penempatan berkode `ketua` polos di samping `ketua_dpw` / `ketua_dpd`; terima keduanya sebagai Ketua.
 Himpunan kode jabatan bisa bertambah (kelak `ketua_dpc`,
 `ketua_dpra`), jadi perlakukan kode yang tak dikenal sebagai jabatan biasa, jangan sebagai galat.
 

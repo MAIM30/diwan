@@ -230,11 +230,13 @@ yang ada dipertahankan, ditambah dua yang khusus nomor:
 | Nomor bersama tak bisa dipakai masuk | `people.phone` sengaja tidak unik (mis. nomor suami pada data pengurus muslimah). Portal tak punya faktor kedua untuk memilih pemiliknya, jadi nomor yang dipakai **dua orang atau lebih** (yang belum dihapus) tidak bisa dipakai masuk oleh siapa pun, bukan "masuk sebagai yang pertama". Dihitung semua pemilik, bukan hanya yang layak, supaya hasilnya tak berubah mengikuti status orang lain. Pemilik ber-NIK tetap bisa masuk dengan NIK-nya. Admin melihat alasannya di profil ("Nomor WA dipakai orang lain juga") |
 | Pesan seragam | nomor tak terdaftar, dipakai bersama, akses dicabut, nonaktif, belum punya penempatan: satu pesan yang **identik** dengan NIK tak dikenal |
 
-Setelah nomor dikenali, portal meminta pengurus mengetik **kode OTP 4 digit** yang ditampilkan di atas kolom isian halaman
+Setelah nomor dikenali, **bila gateway WhatsApp aktif** portal meminta pengurus mengetik **kode OTP 4 digit** yang ditampilkan di atas kolom isian halaman
 verifikasi. Kode **tidak dikirim lewat WhatsApp** (pengiriman OTP membuat nomor gateway sering diblokir WhatsApp), jadi
 kode ini hanya langkah konfirmasi, **bukan bukti bahwa pengguna memegang nomor itu**. Kode berlaku 5 menit, sekali pakai,
-dan percobaan gagal dibatasi. Gateway WhatsApp hanya dipakai untuk notifikasi dan broadcast. `PORTAL_ENABLED = false`
-mematikan seluruh portal dan `people.portal_enabled` mencabut akses satu orang seketika.
+dan percobaan gagal dibatasi. **Bila gateway tidak aktif, langkah OTP ditiadakan** dan nomor yang lolos semua pemeriksaan langsung masuk.
+"Aktif" = `Whatsapp::isActive()`: URL dan kunci terisi, gateway menjawab `/status` (batas 3 detik), dan WhatsApp-nya tersambung (`status: open`);
+URL yang terisi saja tidak cukup (URL bawaan `localhost:3001` tetap terisi walau gateway mati). Gateway WhatsApp dipakai untuk notifikasi dan broadcast
+(dan sebagai penentu langkah OTP ini). `PORTAL_ENABLED = false` mematikan seluruh portal dan `people.portal_enabled` mencabut akses satu orang seketika.
 
 ### Soal risiko: NIK dan nomor WA bukan rahasia
 
@@ -259,7 +261,8 @@ pengamannya dipasang di sekelilingnya tanpa mengubah sifat "satu kredensial saja
 
 **Konsekuensi NIK utuh.** Masuk ke portal hanya bermodal nomor WA, dan nomor WA bukan rahasia; maka siapa pun yang tahu nomor WA seorang pengurus bisa melihat NIK
 lengkapnya di portal. Itu keputusan yang disengaja (NIK memang milik pemiliknya sendiri), tetapi ia menambah nilai nomor WA sebagai sasaran. OTP yang
-ditampilkan di layar (lihat atas) tidak menutupnya, karena kode itu terlihat oleh siapa pun yang memasukkan nomor tersebut. NIK di jejak audit tetap disamarkan.
+ditampilkan di layar (lihat atas) tidak menutupnya, karena kode itu terlihat oleh siapa pun yang memasukkan nomor tersebut; ketika gateway tidak aktif dan langkah itu hilang,
+perlindungannya memang sama. NIK di jejak audit tetap disamarkan.
 
 Admin dapat mematikan seluruh portal melalui `PORTAL_ENABLED` atau mencabut akses satu orang lewat `people.portal_enabled`
 bila akses perlu dihentikan.
@@ -340,7 +343,7 @@ Pengurus membuka portal terutama dari ponsel, jadi tampilannya dirancang dari la
 
 | Unsur referensi | Keputusan | Alasan / wujudnya |
 |---|---|---|
-| Bilah tab bawah gelap, tab aktif pil putih | **Dipakai** (`.m-tabbar`, ≤760px) | 4 tab: Beranda, Susunan, Riwayat, Data Saya. Tab aktif memunculkan label teks; tiap tab ber-`aria-label`, tepat satu `aria-current="page"`; menghormati area aman layar berponi (`viewport-fit=cover`). Di layar lebar tetap menu atas |
+| Bilah tab bawah, tab aktif pil | **Dipakai** (`.m-tabbar`, ≤760px; melayang, putih, tab aktif pil teal muda) | 4 tab: Beranda, Susunan, Riwayat, Data Saya. Tab aktif memunculkan label teks; tiap tab ber-`aria-label`, tepat satu `aria-current="page"`; menghormati area aman layar berponi (`viewport-fit=cover`). Di layar lebar tetap menu atas |
 | Kartu kaca (blur + tembus pandang) | **Dipakai, hanya di portal** | latar gradien lembut, kartu 74% putih + `backdrop-filter`; tanpa dukungan blur turun ke kartu hampir opak. Teks tak pernah di atas latar ramai, jadi kontras tidak turun |
 | Judul halaman besar | **Dipakai** | 32px di ponsel |
 | Pil penyaring | **Dipakai** di Riwayat | Semua / Berjalan / Arsip dengan hitungan; `?f=` tak dikenal jatuh ke "semua" |
@@ -355,6 +358,28 @@ teks terbaca 1:1. Bentuk *emphasis* (satu aksen + abu-abu) karena data hanya pun
 divalidasi dengan `validate_palette.js` (abu-abu 2,88:1 < 3:1 sah karena ada label teks "· berjalan",
 legenda, tooltip, dan tabel). Semua teks yang berasal dari data (nama struktur, periode) di-escape,
 termasuk di atribut tooltip dan `aria-label` (diuji dengan nama struktur bermuatan skrip).
+
+### Beranda portal (`/pengurus`)
+
+Satu kartu gelap (**Jabatan saat ini**) sebagai fokus, lalu kartu putih. Layar ≥900px dua kolom (kiri: jabatan, Biodata, jabatan lain, perjalanan; kanan: data saya,
+rekan, riwayat masuk); di bawahnya satu kolom dengan urutan menurut kelas `bn-t-*` (kolom dilebur dengan `display: contents`). Latar melengkung dan cincin persen yang
+lama sudah dilepas; persen berjalan kini gelembung pada garis periode.
+
+| Blok | Isi | Sumber |
+|---|---|---|
+| Jabatan saat ini | nama jabatan, unit (atau Pengurus Inti / Pimpinan Lainnya), rantai struktur, **sisa masa jabatan sebagai angka besar** ("55 hari", "4 tahun 10 bulan"), garis periode dengan tanda tahun dan posisi hari ini. Molor: "+15 hari" kuning, label "Lewat dari tanggal akhir rencana" | `MemberModel::life`, `PortalHome::countdown/yearTicks`, `Ui::spanParts` |
+| Biodata | Isi / Ubah, Unduh PDF, status Drive | `BiodataModel` |
+| Jabatan lain | kartu dengan bar sisa waktu; ponsel: kartu geser, desktop: dua kolom; tampil paling banyak 4 (`PortalHome::OTHERS_MAX`), sisanya "+ N jabatan lainnya" ke Riwayat | `MemberModel::currentOf` |
+| Data saya | enam butir (donat n/6). Yang bisa diisi sendiri (email, tanggal lahir, alamat) bertombol **Isi** ke kolomnya di Ubah data; WhatsApp, NIK, foto profil "dikelola admin" tanpa tombol | `MemberModel::completeness` |
+| Rekan | 4 rekan se-unit (atau pimpinan struktur bila jabatannya tingkat struktur), nama + jabatan saja, "+ N rekan lainnya" | `colleagues`, `colleaguesCount` |
+| Perjalanan saya | tiga penempatan terbaru, kolom tahun di kiri | `PortalHome::career` |
+| Terakhir masuk | satu baris; enam masuk terakhir (waktu, IP tersamar) terbuka bila diketuk | `loginHistory` |
+
+**Jabatan utama** = Pengurus Inti tingkat struktur lebih dulu, lalu urutan semula (periode terbaru lebih dulu) (`PortalHome::orderCurrent`). **Tidak sedang menjabat**: kartu terang
+berisi jabatan terakhir; blok rekan tidak tampil. **Privasi** sama dengan halaman Data Saya: NIK dan WhatsApp utuh, email tersamar, tanggal lahir dan alamat jalan **tidak
+ditampilkan** (butir yang terisi cukup bertanda "Terisi"). Foto Biodata dihitung sebagai foto profil. Nama struktur yang jabarannya sudah namanya ("Dewan Pimpinan Pusat")
+ditulis "DPP". Bahan perhitungan ada di `app/Core/PortalHome.php` (tanpa database), diuji di `tests/portal_beranda_test.php` (termasuk beranda sungguhan untuk pengurus satu
+jabatan, rangkap, dan tidak menjabat di database lokal, serta penjaga agar gaya/markup lama tidak tersisa).
 
 ## Jejak SK (Surat Keputusan)
 
@@ -459,7 +484,9 @@ berada di luar form simpan: form di dalam form tidak sah di HTML, dan browser me
 tiga kelompok kartu rekap, lalu satu dari dua tampilan (`?susun=struktur|daftar`):
 
 - **Rekap tiga kelompok** (`PersonModel::recapCounts`): *Status jabatan* (Menjabat, Rangkap, Tidak menjabat), *Kelengkapan data* (Data lengkap, Belum lengkap; definisi
-  `PersonModel::COMPLETE_SQL`), *Jenis kelamin*. Angkanya selalu saling cocok: Menjabat + Tidak menjabat = total, Rangkap + tunggal = Menjabat, Lengkap + Belum = total.
+  `PersonModel::COMPLETE_SQL`: **nomor WA dan jenis kelamin terisi**; NIK belum dihitung, karena NIK akan menjadi ID unik penghubung ke aplikasi lain dan kelak diwajibkan,
+  dengan sumber yang diharapkan Database Kader, sedangkan DIWAN hanya database Pengurus. Saat NIK diwajibkan, ubah `COMPLETE_SQL`, `missingFields()`, dan teks `COMPLETE_RULE` /
+  `COMPLETE_SHORT` bersama di `PersonModel`; `tests/people_per_struktur_test.php` menjaga predikat SQL dan padanan PHP-nya tetap sepakat), *Jenis kelamin*. Angkanya selalu saling cocok: Menjabat + Tidak menjabat = total, Rangkap + tunggal = Menjabat, Lengkap + Belum = total.
   Rekap mengikuti **pencarian dan jenjang** yang dipilih, tetapi tidak mengikuti penyaring kartunya sendiri (jenis kelamin, kelengkapan, rangkap): kartu-kartu itu memecah himpunan
   yang sama, kalau ikut menyaring maka memilih "Perempuan" akan menolkan kartu "Laki-laki". Lencana judul tetap total seluruh lingkup admin.
 - **Per Struktur** (bawaan bila tak ada pencarian atau penyaring daftar): jenjang, lalu struktur, tanpa tingkatan perantara. Menekan **MWW** langsung menampilkan seluruh provinsi,
@@ -475,11 +502,24 @@ tiga kelompok kartu rekap, lalu satu dari dua tampilan (`?susun=struktur|daftar`
   kosong di hampir semua penempatan (100% DPD, MWD, DSO, DSY, DPK), jadi hampir setiap baris akan salah disebut rangkap; rangkap yang sebenarnya dihitung kartu "Rangkap".
   Jenjang satu-struktur (DPP, MWP, DSO, DSY, DPK) tidak terbuka otomatis karena isinya berat, begitu juga jenjang dengan lebih dari 60 struktur (DPD dan MWD; ringkasannya sudah ada
   di baris jenjangnya): daftar itu terbuka bila jenjangnya dipilih atau diketuk. Tombol "Buka semua jenjang" hanya membuka jenjang, bukan ratusan baris struktur.
+  Per Struktur memuat SEMUA struktur dalam lingkup, termasuk yang belum punya pengurus atau periode (angka nol, K·S·B kosong; yang belum punya periode berjalan barisnya statis dengan
+  tautan Buat periode): struktur yang baru dibuat (mis. DPLN Arab Saudi) langsung tampil, dan yang kosong justru yang perlu dipantau (`PersonModel::overviewByStructure(..., $includeEmpty)`).
+  Tombol "Sembunyikan struktur tanpa pengurus" (`?kosong=0`) mengembalikan hanya yang berpenghuni; dengan pencarian atau penyaring orang struktur kosong tak disertakan. Chip **Jenjang**
+  berasal dari struktur yang ADA (`StructureModel::levelCountsInScope`) ditambah yang punya orang, bukan hanya yang berpenghuni, jadi jenjang baru langsung tampil (redup bila belum ada orangnya).
   Pencarian dan penyaring ikut ke isi struktur (`PersonModel::idsInScope`), jadi isinya cocok dengan angka barisnya.
 - **Daftar** (bawaan bila ada pencarian, atau tautan dari luar seperti dasbor dan "Tanpa SKUO"): tabel A-Z dengan label jenjang, kolom Kontak (WA dan NIK), Kelengkapan
-  (menyebut apa yang kurang), dan aksi berupa ikon.
+  (menyebut apa yang kurang; tooltip pada badge dan judul kolom, serta satu baris keterangan di bawah tabel, menyatakan bahwa Lengkap = nomor WA dan jenis kelamin terisi dan NIK belum
+  dihitung, jadi baris yang NIK-nya "—" tetap Lengkap), dan aksi berupa ikon.
 
 Lingkup admin berlaku di semuanya; nama struktur induk di luar lingkup tidak pernah dibuka. `?susun=bidang` (tampilan lama "Per Bidang") dialihkan ke Per Struktur.
+
+**Struktur Organisasi** (`/structures`) punya saringan supaya yang dicari mudah ditemukan (dulu hanya pohon dengan Buka/Tutup semua, dan seluruh ~1.100 simpul dimuat sekaligus, sekitar 2 MB):
+baris **Jenjang** (chip per jenjang yang ADA, dikelompokkan Umum / Muslimah / Dewan, dengan jumlah struktur), kotak cari (nama, kode wilayah, atau nama induk; `?q=`), dan chip status
+(`?f=`: Punya periode berjalan, Belum punya periode, Punya admin untuk yang boleh mengelola akun, dan Nonaktif bila ada). Angka tiap chip mengikuti penyaring lain, jadi sama dengan
+baris yang tampil bila diketuk; chip berangka nol redup. Dua tampilan (`?tampil=`): **Daftar** (bawaan; tabel berhalaman 25/50/100, terurut jenjang, induk, nama; kolom Struktur, Jenjang,
+Kode wilayah, Periode berjalan, Admin, dan aksi ikon) dan **Pohon** (hierarki yang bisa dibuka; dengan saringan hanya yang cocok beserta induk-induknya, yang dibuka dan tampil redup tanpa
+isi). Seluruhnya disaring di PHP dari satu daftar (`StructuresController::index`), tanpa perubahan database, dan hanya struktur dalam lingkup admin yang ikut (induk di luar lingkup tak
+pernah tampil). Hapus kembali ke daftar yang sama lewat `back` (hanya karakter query string biasa yang diterima). Diuji di `tests/structures_page_test.php`.
 
 **Pengelompokan Unit** (`/units/grouping`, menu samping "Pengelompokan Unit"; tombolnya juga ada di Katalog Unit dan di halaman Bidang & Unit tiap periode). Halaman tersendiri
 untuk menyusun DAN mengubah pengelompokan unit langsung di tempat, menurut STRUKTUR: tiap struktur dalam lingkup yang punya periode berjalan menjadi satu simpul (sayap umum dulu lalu

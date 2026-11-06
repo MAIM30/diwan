@@ -19,6 +19,7 @@ require_once ROOT_DIR . '/app/Core/SkFile.php';
 require_once ROOT_DIR . '/app/Core/Lokasi.php';
 require_once ROOT_DIR . '/app/Core/Susunan.php';
 require_once ROOT_DIR . '/app/Core/PeopleOverview.php';
+require_once ROOT_DIR . '/app/Core/PortalHome.php';
 require_once ROOT_DIR . '/app/Core/Ui.php';
 require_once ROOT_DIR . '/app/Core/Chart.php';
 require_once ROOT_DIR . '/app/Core/Flash.php';
