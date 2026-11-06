@@ -98,15 +98,24 @@ class UnitsController extends Controller {
             $saved = $units->catalogSave($id, $data);
             if (!$id) $baru = (int) $saved;
             Flash::set('success', $id ? 'Katalog unit disimpan.' : '"' . $data['name'] . '" masuk ke katalog ' . UnitModel::WINGS[$data['wing']] . '. Belum terpasang di struktur mana pun.');
-        } catch (RuntimeException $e) {
-            Flash::set('error', $e->getMessage());
+        // PDOException turunan RuntimeException, jadi harus ditangkap LEBIH DULU; kalau tidak, pesan mentah database yang sampai ke layar.
         } catch (PDOException $e) {
             if (strpos($e->getMessage(), 'uq_unit_catalog_name') !== false) {
-                Flash::set('error', 'Nama unit itu sudah ada di katalog sayap tersebut. Katalog dipakai bersama lintas struktur sesayap, jadi cukup pakai yang sudah ada.');
+                // Entri yang sama sudah ada: tunjukkan (halaman katalog menawarkan Pasang bila belum terpasang), jangan hanya menolak.
+                $ada = (!$id && $data['wing'] !== null) ? $units->catalogFindByName($data['name'], $data['wing']) : null;
+                if ($ada) {
+                    $baru = (int) $ada['id'];
+                    Flash::set('error', '"' . $ada['name'] . '" sudah ada di katalog sayap ' . UnitModel::WINGS[$ada['wing']] . ', jadi tidak ditambah lagi. '
+                        . ($units->unitUsage($baru) === 0 ? 'Belum terpasang di struktur mana pun: pasang lewat kotak di halaman ini.' : 'Sudah terpasang di struktur lain; cari barisnya di daftar.'));
+                } else {
+                    Flash::set('error', 'Nama unit itu sudah ada di katalog sayap tersebut. Katalog dipakai bersama lintas struktur sesayap, jadi cukup pakai yang sudah ada.');
+                }
             } else {
                 error_log('Simpan katalog unit gagal: ' . $e->getMessage());
                 Flash::set('error', 'Unit tidak bisa disimpan.');
             }
+        } catch (RuntimeException $e) {
+            Flash::set('error', $e->getMessage());
         }
         $this->backToCatalog($baru);
     }
@@ -245,11 +254,11 @@ class UnitsController extends Controller {
         try {
             $n = $this->model('UnitModel')->regroup($termId, $moves);
             Flash::set('success', $n > 0 ? $n . ' unit dipindahkan.' : 'Tidak ada perubahan.');
-        } catch (RuntimeException $e) {
-            Flash::set('error', $e->getMessage());
-        } catch (PDOException $e) {
+        } catch (PDOException $e) {   // lebih dulu dari RuntimeException: PDOException adalah turunannya
             error_log('Simpan pengelompokan gagal: ' . $e->getMessage());
             Flash::set('error', 'Pengelompokan tidak bisa disimpan.');
+        } catch (RuntimeException $e) {
+            Flash::set('error', $e->getMessage());
         }
         $_POST['return'] = 'grouping';   // formulirnya hanya ada di halaman Pengelompokan Unit; back() membawa pulang saringannya
         $this->back($termId);
@@ -455,15 +464,15 @@ class UnitsController extends Controller {
                 Flash::set('success', ($createdInCatalog ? 'Unit baru dibuat di katalog. ' : '') . '"' . $unitName . '" ditambahkan ke ' . $term['level'] . ' ' . $term['structure_name']
                     . ($groupNote !== '' ? ', masuk ' . $groupNote : ', tanpa Bidang (pilih Bidangnya di daftar bawah, lalu Simpan pengelompokan)') . '.');
             }
-        } catch (RuntimeException $e) {
-            Flash::set('error', $e->getMessage());
-        } catch (PDOException $e) {
+        } catch (PDOException $e) {   // lebih dulu dari RuntimeException: PDOException adalah turunannya
             if (strpos($e->getMessage(), 'uq_structure_units_term_unit') !== false) {
                 Flash::set('error', 'Unit itu sudah terdaftar di periode ini.');
             } else {
                 error_log('Simpan unit gagal: ' . $e->getMessage());
                 Flash::set('error', 'Unit tidak bisa disimpan.');
             }
+        } catch (RuntimeException $e) {
+            Flash::set('error', $e->getMessage());
         }
         $this->back($termId);
     }

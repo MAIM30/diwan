@@ -138,6 +138,13 @@ class UnitModel {
         return (int) $this->db->lastInsertId();
     }
 
+    // Entri katalog menurut nama dan sayapnya (kunci uniknya), atau null.
+    public function catalogFindByName($name, $wing) {
+        $stmt = $this->db->prepare("SELECT * FROM unit_catalog WHERE name = :n AND wing = :w LIMIT 1");
+        $stmt->execute([':n' => trim($name), ':w' => $wing]);
+        return $stmt->fetch() ?: null;
+    }
+
     // Untuk isian "ketik nama unit" (halaman Pengelompokan Unit): nama yang sudah ada di katalog SAYAP struktur itu dipakai ulang
     // (jenisnya tidak diubah), yang belum ada dibuat di sayap itu dan dicatat. Mengembalikan [id katalog, apakah baru dibuat].
     public function catalogEnsure($name, $kind, $wing = 'umum') {
@@ -522,7 +529,7 @@ class UnitModel {
             SELECT su.*, c.name AS catalog_name, c.abbreviation, c.kind,
                    g.name AS group_name, g.kind AS group_kind, g.sort_order AS group_sort,
                    (SELECT COUNT(*) FROM placements pl
-                     WHERE pl.structure_unit_id = su.id AND pl.deleted_at IS NULL) AS placement_count
+                     WHERE pl.term_id = su.term_id AND pl.structure_unit_id = su.id AND pl.deleted_at IS NULL) AS placement_count
             FROM structure_units su
             JOIN unit_catalog c ON c.id = su.unit_catalog_id
             LEFT JOIN unit_groups g ON g.id = su.unit_group_id

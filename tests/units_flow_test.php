@@ -143,6 +143,20 @@ $newId = (int) $pdo->query("SELECT id FROM unit_catalog WHERE name = 'Unit Uji M
 ok($newId > 0, 'unit baru dengan sayap tersimpan');
 ok($redir !== null && strpos($redir, 'baru=' . $newId) !== false, 'sesudah menambah, halaman diarahkan dengan ?baru=', (string) $redir);
 
+// Menambah nama yang sudah ada di sayap itu: pesan ramah (bukan SQL mentah), dan halaman diarahkan ke entri yang sudah ada.
+// (Dulu PDOException tertangkap blok RuntimeException lebih dulu, jadi "SQLSTATE[23000] ... Duplicate entry" sampai ke layar.)
+foreach (['Unit Uji Muslimah', 'unit uji muslimah'] as $dup) {
+    [$redir, $fl] = call('catalog_save', ['name' => $dup, 'kind' => 'badan', 'wing' => 'muslimah', 'is_active' => '1']);
+    $t = flashText($fl);
+    ok(strpos($t, 'SQLSTATE') === false && strpos($t, 'Duplicate') === false, "duplikat \"$dup\": tak menampilkan pesan SQL mentah", $t);
+    ok(strpos($t, 'sudah ada di katalog sayap Muslimah') !== false && strpos($t, 'Belum terpasang') !== false, "duplikat \"$dup\": pesan menyebut sudah ada dan belum terpasang", $t);
+    ok($redir !== null && strpos($redir, 'baru=' . $newId) !== false, "duplikat \"$dup\": diarahkan ke entri yang sudah ada (kotak Pasang)", (string) $redir);
+}
+ok((int) $pdo->query("SELECT COUNT(*) FROM unit_catalog WHERE name = 'Unit Uji Muslimah' AND wing = 'muslimah'")->fetchColumn() === 1, 'duplikat: tetap satu entri');
+// Nama yang sama di sayap LAIN boleh (dua entri terpisah).
+[, $fl] = call('catalog_save', ['name' => 'Unit Uji Muslimah', 'kind' => 'badan', 'wing' => 'umum', 'is_active' => '1']);
+ok(strpos(flashText($fl), 'success') === 0, 'nama yang sama di sayap Umum boleh', flashText($fl));
+
 [, , $c] = call('catalog', [], ['baru' => $newId, 'w' => 'muslimah'], true);
 ok(!empty($c->viewData['baru']) && (int) $c->viewData['baru']['id'] === $newId, 'katalog: kotak "baru" terisi untuk unit yang belum terpasang');
 ok(strpos($c->html, 'Pasang &ldquo;Unit Uji Muslimah&rdquo;') !== false && strpos($c->html, 'name="masuk" value="auto"') !== false, 'katalog: kotak Pasang tampil dan memakai masuk=auto');
