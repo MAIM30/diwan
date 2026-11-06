@@ -157,7 +157,7 @@ class TermModel {
     public function allInScope() {
         return $this->db->query("
             SELECT t.*, s.level, s.wing, s.name AS structure_name,
-                   s.path AS structure_path, s.tier AS structure_tier,
+                   s.path AS structure_path, s.tier AS structure_tier, s.parent_id AS structure_parent_id,
                    gp.id AS governance_period_id, gp.name AS shared_period_name,
                    (SELECT COUNT(*) FROM placements pl
                      WHERE pl.term_id = t.id AND pl.deleted_at IS NULL) AS placement_count
@@ -382,5 +382,85 @@ class TermModel {
             $this->db->rollBack();
             throw $e;
         }
+    }
+
+    // ---------- Pemilih struktur (Tambah Jabatan) ----------
+
+    const PICKER_LIMIT = 8;       // baris yang dikirim per pencarian
+    const PICKER_MAX_LIMIT = 15;
+
+    // Pencarian struktur + periode untuk pemilih di formulir jabatan. $o: q (kata dipisah spasi, semuanya harus cocok), lv (jenjang),
+    // wing ('umum' | 'muslimah' | ''), gp (acuan periode, 0 = semua), limit. Hanya struktur dalam lingkup admin. Nama induk hanya ikut dicocokkan
+    // dan ditampilkan bila induknya juga dalam lingkup (nama induk di luar lingkup tak boleh bocor lewat pencarian).
+    // Hasil: items (satu baris per periode: periode berjalan lebih dulu, lalu urutan jenjang baku, induk, nama), levels (jenjang => jumlah cocok,
+    // menurut pencarian + sayap + periode, TANPA saringan jenjang, urut baku), total (yang cocok semua saringan).
+    public function pickerSearch(array $o) {
+        $wing = in_array($o['wing'] ?? '', ['umum', 'muslimah'], true) ? $o['wing'] : '';
+        $gp = (int) ($o['gp'] ?? 0);
+        $lv = is_string($o['lv'] ?? '') ? (string) ($o['lv'] ?? '') : '';
+        $q = is_string($o['q'] ?? '') ? trim((string) ($o['q'] ?? '')) : '';
+        $limit = max(1, min(self::PICKER_MAX_LIMIT, (int) ($o['limit'] ?? self::PICKER_LIMIT)));
+
+        $parentIn = AdminScope::sqlFilter('sp.id');
+        $from = " FROM terms t
+                  JOIN structures s ON s.id = t.structure_id AND s.deleted_at IS NULL
+                  JOIN governance_periods gp ON gp.id = t.governance_period_id
+                  LEFT JOIN structures sp ON sp.id = s.parent_id AND sp.deleted_at IS NULL
+                  WHERE t.deleted_at IS NULL AND " . AdminScope::sqlFilter('t.structure_id');
+        $where = ''; $params = [];
+        if ($wing !== '') { $where .= ' AND s.wing = :wing'; $params[':wing'] = $wing; }
+        if ($gp > 0)      { $where .= ' AND t.governance_period_id = :gp'; $params[':gp'] = $gp; }
+        // Satu placeholder per kata (placeholder bernama tak boleh dipakai dua kali). % dan _ dari pengguna dilepas supaya dicari apa adanya.
+        $parentText = "CASE WHEN $parentIn THEN CONCAT(sp.level, ' ', sp.name) END";
+        $words = array_slice(preg_split('/\s+/u', mb_substr($q, 0, 100), -1, PREG_SPLIT_NO_EMPTY), 0, 4);
+        foreach ($words as $i => $w) {
+            $where .= " AND CONCAT_WS(' ', s.level, s.name, $parentText, s.region_code, gp.name) LIKE :w$i";
+            $params[":w$i"] = '%' . addcslashes($w, '%_\\') . '%';
+        }
+
+        $count = $this->db->prepare("SELECT s.level, COUNT(*) AS c" . $from . $where . " GROUP BY s.level");
+        $count->execute($params);
+        $byLevel = [];
+        foreach ($count->fetchAll() as $r) $byLevel[$r['level']] = (int) $r['c'];
+        $levels = [];
+        foreach (PeopleOverview::orderedLevels(array_keys($byLevel)) as $l) $levels[$l] = $byLevel[$l];
+
+        $whereLv = $where; $paramsLv = $params;
+        if ($lv !== '') { $whereLv .= ' AND s.level = :lv'; $paramsLv[':lv'] = $lv; }
+        $total = $lv === '' ? array_sum($byLevel) : ($byLevel[$lv] ?? 0);
+
+        $order = "FIELD(s.level, " . implode(',', array_map(function ($l) { return "'" . $l . "'"; }, PeopleOverview::LEVEL_ORDER)) . ")";
+        $stmt = $this->db->prepare("SELECT t.id, t.is_current, gp.name AS period, s.level, s.name AS structure_name, s.wing,
+                       CASE WHEN $parentIn THEN sp.level END AS parent_level, CASE WHEN $parentIn THEN sp.name END AS parent_name,
+                       CASE WHEN $parentIn THEN sp.tier END AS parent_tier" . $from . $whereLv . "
+                ORDER BY t.is_current DESC, ($order = 0), $order, parent_name, s.name, t.start_date DESC, t.id
+                LIMIT " . (int) $limit);
+        $stmt->execute($paramsLv);
+
+        $items = [];
+        foreach ($stmt->fetchAll() as $r) {
+            $parent = '';
+            if ($r['parent_level'] !== null) {
+                $parent = (int) $r['parent_tier'] <= 1 ? $r['parent_level'] : $r['parent_level'] . ' ' . PeopleOverview::shortName($r['parent_name']);
+            }
+            $items[] = [
+                'id'      => (int) $r['id'],
+                'level'   => $r['level'],
+                'name'    => PeopleOverview::shortName($r['structure_name']),
+                'parent'  => $parent,
+                'period'  => $r['period'],
+                'current' => (int) $r['is_current'] === 1,
+                'wing'    => $r['wing'],
+            ];
+        }
+        return ['items' => $items, 'levels' => $levels, 'total' => (int) $total];
+    }
+
+    // Ada struktur dengan periode di lingkup admin untuk sayap ini? (tombol Tambah Jabatan hanya tampil bila ada yang bisa dipilih.)
+    public function hasTermsForWing($wing) {
+        $stmt = $this->db->prepare("SELECT 1 FROM terms t JOIN structures s ON s.id = t.structure_id AND s.deleted_at IS NULL
+                WHERE t.deleted_at IS NULL AND s.wing = :wing AND " . AdminScope::sqlFilter('t.structure_id') . " LIMIT 1");
+        $stmt->execute([':wing' => $wing]);
+        return (bool) $stmt->fetchColumn();
     }
 }

@@ -10,13 +10,15 @@
 //  - "Penempatan lain" ada di panel samping DI LUAR form simpan: form di dalam form tidak sah di HTML, dan browser membuang yang di
 //    dalamnya, sehingga tombol Anulir dulu menyimpan form ini alih-alih menganulir.
 //
-// Dari controller: $term, $row (penempatan yang diubah atau null), $person (orang atau null), $targetTerms, $otherPlacements,
+// Struktur dipilih lewat pemilih (_struktur_picker, mencari di placements/structures dalam acuan periode yang sama dan sayap orangnya), bukan
+// <select> yang memuat ratusan struktur.
+//
+// Dari controller: $term, $row (penempatan yang diubah atau null), $person (orang atau null), $otherPlacements,
 // $landingNow (tempat tampil sekarang, hanya saat mengubah), $units, $positions.
 $this->view('layouts/header', ['title' => $title]);
 
 $isEdit = !empty($row['id']);
 $gender = (string) ($person['gender'] ?? '');
-$selectedTermId = (int) ($row['term_id'] ?? $term['id']);
 $termLabel = $term['level'] . ' · ' . $term['structure_name'];
 $submitLabel = $isEdit ? 'Simpan perubahan' : 'Tambahkan penempatan';
 $cancelUrl = $person && !$isEdit ? BASEURL . '/people/detail/' . (int) $person['id'] : BASEURL . '/terms/detail/' . (int) $term['id'];
@@ -70,18 +72,12 @@ $cancelUrl = $person && !$isEdit ? BASEURL . '/people/detail/' . (int) $person['
 
     <div class="field">
       <label for="target_term_id">Struktur</label>
-      <?php if (count($targetTerms) > 6): ?>
-        <input type="search" id="structure_search" class="pf-gap" placeholder="Cari nama atau tingkat struktur..." autocomplete="off">
-      <?php endif; ?>
-      <select id="target_term_id" name="target_term_id" required>
-        <option value="">— pilih struktur —</option>
-        <?php foreach ($targetTerms as $target): ?>
-          <option value="<?= (int) $target['id'] ?>" data-wing="<?= e($target['wing']) ?>"
-                  data-search="<?= e(mb_strtolower($target['level'] . ' ' . $target['structure_name'])) ?>"<?= $selectedTermId === (int) $target['id'] ? ' selected' : '' ?>>
-            <?= e($target['level'] . ' · ' . $target['structure_name']) ?>
-          </option>
-        <?php endforeach; ?>
-      </select>
+      <?php $this->view('admin/_struktur_picker', [
+          'id' => 'target_term_id', 'name' => 'target_term_id', 'gp' => (int) $term['governance_period_id'],
+          'wing' => $gender === 'P' ? 'muslimah' : ($gender === 'L' ? 'umum' : ''),
+          'selected' => ['id' => (int) $term['id'], 'level' => $term['level'], 'name' => PeopleOverview::shortName($term['structure_name']),
+                         'period' => $term['shared_period_name'] ?? $term['name'], 'current' => !empty($term['is_current']), 'wing' => $term['wing'] ?? ''],
+      ]); ?>
       <div class="help" id="structure-help"><?= $isEdit
         ? 'Ganti hanya untuk memindahkan penempatan ke struktur lain yang memakai acuan periode yang sama.'
         : 'Hanya struktur dalam lingkup Anda yang memakai acuan periode ini, dan sesuai sayap orangnya (laki-laki: Umum, perempuan: Muslimah).' ?></div>
@@ -225,7 +221,6 @@ $cancelUrl = $person && !$isEdit ? BASEURL . '/people/detail/' . (int) $person['
 <script>
 (function () {
   var form = document.getElementById('pf-form');
-  var search = document.getElementById('structure_search');
   var target = document.getElementById('target_term_id');
   var unit = document.getElementById('structure_unit_id');
   var position = document.getElementById('position_id');
@@ -245,18 +240,10 @@ $cancelUrl = $person && !$isEdit ? BASEURL . '/people/detail/' . (int) $person['
     return String(value).replace(/[&<>"']/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; });
   }
 
-  /* ---------- Sayap menurut orangnya: laki-laki = Umum, perempuan = Muslimah ---------- */
+  /* ---------- Sayap menurut orangnya: laki-laki = Umum, perempuan = Muslimah (pemilih struktur mencarinya di server) ---------- */
+  var picker = target.closest('[data-struct-picker]');
   function allowedWing() { return genderInput.value === 'P' ? 'muslimah' : (genderInput.value === 'L' ? 'umum' : ''); }
-
-  function syncStructureChoices() {
-    var wing = allowedWing(), text = search ? search.value.toLowerCase() : '';
-    Array.prototype.forEach.call(target.options, function (option) {
-      if (!option.value) return;
-      var ok = (!wing || option.getAttribute('data-wing') === wing) && (!text || (option.getAttribute('data-search') || '').indexOf(text) >= 0);
-      option.hidden = !ok; option.disabled = !ok;
-    });
-    if (target.selectedOptions[0] && target.selectedOptions[0].disabled) { target.value = ''; loadTargetOptions(); }
-  }
+  function syncStructureChoices() { if (picker && picker.structPicker) picker.structPicker.setWing(allowedWing()); }
 
   /* ---------- Jabatan menurut tempatnya (tingkat struktur / di dalam unit / jenis unit) ---------- */
   function syncPositionOptions() {
@@ -303,7 +290,7 @@ $cancelUrl = $person && !$isEdit ? BASEURL . '/people/detail/' . (int) $person['
 
   /* ---------- Struktur lain: unit dan jabatannya dimuat ulang ---------- */
   function loadTargetOptions() {
-    if (!target.value) return;
+    if (!target.value) { updatePreview(); return; }
     var previousUnit = unit.value, previousPosition = position.value;
     fetch(<?= json_encode(BASEURL . '/placements/options/' . (int) $term['id'] . '/') ?> + encodeURIComponent(target.value), {
       credentials: 'same-origin', headers: { Accept: 'application/json' }
@@ -403,7 +390,14 @@ $cancelUrl = $person && !$isEdit ? BASEURL . '/people/detail/' . (int) $person['
     });
   }
 
-  if (search) search.addEventListener('input', syncStructureChoices);
+  form.addEventListener('submit', function (e) {
+    if (target.value) return;
+    e.preventDefault();
+    var help = document.getElementById('structure-help');
+    help.textContent = 'Pilih strukturnya dulu.'; help.classList.add('err');
+    var box = picker ? picker.querySelector('.sp-q') : null;
+    if (box) box.focus();
+  });
   target.addEventListener('change', loadTargetOptions);
   unit.addEventListener('change', syncPositionOptions);
   position.addEventListener('change', updatePreview);

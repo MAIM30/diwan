@@ -3,13 +3,131 @@
 // Periode kepengurusan. Halaman ini yang membuat riwayat antar periode bisa dilihat utuh.
 
 class TermsController extends Controller {
+    const PER_PAGE_OPTIONS = [25, 50, 100];
+
+    // Saringan status (?f=): kunci => label chip. Satu per satu, bukan gabungan.
+    const FILTERS = [
+        'berjalan' => 'Berjalan',
+        'arsip'    => 'Arsip',
+        'kosong'   => 'Belum ada pengurus',
+        'ada_sk'   => 'Ada SK',
+        'tanpa_sk' => 'Tanpa SK',
+    ];
+
+    // Daftar periode berhalaman dengan saringan seperti halaman Struktur: baris Jenjang (chip), Acuan periode (chip, bila lebih dari satu),
+    // kotak cari, dan chip status. Semuanya disaring di PHP dari satu daftar (TermModel::allInScope), tanpa perubahan database.
+    // ?structure=ID (tautan dari Struktur dan dasbor) membatasi pada satu struktur dan ikut terbawa di setiap tautan halaman ini.
+    // Angka tiap chip = jumlah baris yang tampil bila chip itu diketuk (mengikuti saringan lain).
     public function index() {
         $this->requireLogin();
-        $terms = $this->model('TermModel');
+        $all = $this->model('TermModel')->allInScope();
+        $structures = [];
+        foreach ($this->model('StructureModel')->allInScope() as $s) $structures[(int) $s['id']] = $s;   // induk di luar lingkup tak pernah tampil
+
+        // Parameter bisa datang sebagai larik (?lv[]=x): hanya teks yang dipakai, selebihnya dianggap kosong.
+        $param = function ($key) { $v = $_GET[$key] ?? ''; return is_string($v) ? trim($v) : ''; };
+
+        $items = [];
+        foreach ($all as $r) {
+            $p = $r['structure_parent_id'] !== null ? ($structures[(int) $r['structure_parent_id']] ?? null) : null;
+            $items[] = $r + [
+                'short'        => PeopleOverview::shortName($r['structure_name']),
+                'parent_text'  => $p ? $p['level'] . ' ' . PeopleOverview::shortName($p['name']) : '',
+                // Induk nasional (DPP, MWP) cukup jenjangnya; "Dewan Pimpinan Pusat" di bawah setiap DPW hanya memanjangkan baris.
+                'parent_label' => $p ? ((int) $p['tier'] <= 1 ? $p['level'] : $p['level'] . ' ' . PeopleOverview::shortName($p['name'])) : '',
+                'parent_short' => $p ? PeopleOverview::shortName($p['name']) : '',
+            ];
+        }
+
+        $levelsPresent = array_keys(array_count_values(array_column($items, 'level')));
+        $periods = [];   // id => nama
+        foreach ($items as $r) $periods[(int) $r['governance_period_id']] = $r['shared_period_name'];
+        krsort($periods);   // acuan terbaru lebih dulu
+
+        $lv = $param('lv');
+        if (!in_array($lv, $levelsPresent, true)) $lv = '';
+        $pr = (int) $param('pr');
+        if (!isset($periods[$pr]) || count($periods) < 2) $pr = 0;
+        $f = $param('f');
+        if (!isset(self::FILTERS[$f])) $f = '';
+        $structureId = (int) $param('structure');
+        $q = mb_substr($param('q'), 0, 100);
+        $words = array_slice(preg_split('/\s+/u', $q, -1, PREG_SPLIT_NO_EMPTY), 0, 4);
+
+        // Pencarian: setiap kata harus ada di jenjang, nama, induk, acuan periode, nama periode, atau nomor SK.
+        $matchQ = function (array $r) use ($words) {
+            if (!$words) return true;
+            $hay = $r['level'] . ' ' . $r['structure_name'] . ' ' . $r['parent_text'] . ' ' . $r['shared_period_name'] . ' ' . $r['name'] . ' ' . $r['sk_number'];
+            foreach ($words as $w) if (mb_stripos($hay, $w) === false) return false;
+            return true;
+        };
+        $status = function ($key, array $r) {
+            switch ($key) {
+                case 'berjalan': return !empty($r['is_current']);
+                case 'arsip':    return empty($r['is_current']);
+                case 'kosong':   return (int) $r['placement_count'] === 0;
+                case 'ada_sk':   return trim((string) $r['sk_number']) !== '';
+                case 'tanpa_sk': return trim((string) $r['sk_number']) === '';
+            }
+            return true;
+        };
+        $inStructure = function (array $r) use ($structureId) { return !$structureId || (int) $r['structure_id'] === $structureId; };
+
+        // Angka chip: tiap kelompok dihitung menurut SEMUA saringan lain, supaya angkanya = baris yang akan tampil bila diketuk.
+        $levelCounts = array_fill_keys($levelsPresent, 0);
+        $periodCounts = array_fill_keys(array_keys($periods), 0);
+        $filterCounts = array_fill_keys(array_keys(self::FILTERS), 0); $filterCounts[''] = 0;
+        foreach ($items as $r) {
+            if (!$inStructure($r) || !$matchQ($r)) continue;
+            $okLv = $lv === '' || $r['level'] === $lv;
+            $okPr = $pr === 0 || (int) $r['governance_period_id'] === $pr;
+            $okF = $f === '' || $status($f, $r);
+            if ($okPr && $okF) $levelCounts[$r['level']]++;
+            if ($okLv && $okF) $periodCounts[(int) $r['governance_period_id']]++;
+            if ($okLv && $okPr) {
+                $filterCounts['']++;
+                foreach (self::FILTERS as $k => $label) if ($status($k, $r)) $filterCounts[$k]++;
+            }
+        }
+
+        $matched = array_values(array_filter($items, function ($r) use ($lv, $pr, $f, $matchQ, $status, $inStructure) {
+            return $inStructure($r) && ($lv === '' || $r['level'] === $lv) && ($pr === 0 || (int) $r['governance_period_id'] === $pr)
+                && ($f === '' || $status($f, $r)) && $matchQ($r);
+        }));
+        $filtered = $lv !== '' || $pr !== 0 || $f !== '' || $q !== '' || $structureId !== 0;
+
+        // Urutan jenjang baku (DPP, DPW, DPLN, DPD, ...), induknya (kabupaten satu provinsi berdampingan), nama, lalu periode terbaru dulu.
+        $rank = array_flip(PeopleOverview::orderedLevels($levelsPresent));
+        usort($matched, function ($a, $b) use ($rank) {
+            return ($rank[$a['level']] <=> $rank[$b['level']]) ?: strnatcasecmp($a['parent_short'], $b['parent_short'])
+                ?: strnatcasecmp($a['short'], $b['short']) ?: strcmp($b['start_date'], $a['start_date']);
+        });
+
+        $perPage = in_array((int) $param('per_page'), self::PER_PAGE_OPTIONS, true) ? (int) $param('per_page') : 50;
+        $page = min(max(1, (int) $param('page')), max(1, (int) ceil(count($matched) / $perPage)));
+        $structureLabel = '';
+        if ($structureId && isset($structures[$structureId])) $structureLabel = $structures[$structureId]['level'] . ' ' . PeopleOverview::shortName($structures[$structureId]['name']);
 
         $this->view('admin/terms/index', [
-            'title' => 'Periode Kepengurusan',
-            'rows'  => $terms->allInScope(),
+            'title'          => 'Periode Kepengurusan',
+            'allCount'       => count($items),
+            'total'          => count($matched),
+            'rows'           => array_slice($matched, ($page - 1) * $perPage, $perPage),
+            'filtered'       => $filtered,
+            'levelCounts'    => $levelCounts,
+            'periods'        => count($periods) > 1 ? $periods : [],
+            'periodCounts'   => $periodCounts,
+            'filters'        => self::FILTERS,
+            'filterCounts'   => $filterCounts,
+            'lv'             => $lv,
+            'pr'             => $pr,
+            'f'              => $f,
+            'q'              => $q,
+            'structureId'    => $structureId,
+            'structureLabel' => $structureLabel,
+            'page'           => $page,
+            'perPage'        => $perPage,
+            'perPageOptions' => self::PER_PAGE_OPTIONS,
         ]);
     }
 

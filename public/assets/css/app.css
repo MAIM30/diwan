@@ -1401,3 +1401,26 @@ details[open] > .mon-row .caret { transform: rotate(90deg); }
 .sn-ctx > details > summary .sn-name { color: var(--muted); font-weight: 500; }
 /* Chip berangka nol (jenjang yang belum ada orangnya, saringan tanpa hasil): redup supaya yang berisi mudah dipindai; tetap bisa diketuk. */
 .chip.zero:not(.on) { opacity: .55; }
+
+/* ---- Pemilih struktur (Tambah Jabatan; app/Views/admin/_struktur_picker.php, app.js): chip jenjang + kotak cari + beberapa baris ---- */
+.sp-picked { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--primer-terang); border-radius: var(--radius-sm); background: var(--primer-pucat); }
+.sp-picked[hidden], .sp-find[hidden] { display: none; }
+.sp-picked-text, .sp-item-text { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
+.sp-picked-text b, .sp-item-text b { overflow-wrap: anywhere; }
+.sp-picked-text small, .sp-item-text small { color: var(--muted); font-size: 12.5px; }
+.sp-badge { flex: none; min-width: 44px; text-align: center; padding: 3px 8px; border-radius: 8px; background: var(--primer-muda); color: var(--primer-gelap); font-size: 12px; font-weight: 700; }
+.sp-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.sp-chips:empty { display: none; }
+.sp-chips .chip { padding: 5px 12px; font-family: inherit; cursor: pointer; }
+.sp-box { display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid #c8dce2; border-radius: var(--radius-sm); background: #fff; color: var(--muted); }
+.sp-box:focus-within { border-color: var(--primer); outline: 2px solid var(--primer-terang); }
+.sp-box input[type=search] { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; padding: 9px 0; }
+.sp-list { list-style: none; margin: 8px 0 0; padding: 4px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); max-height: 292px; overflow-y: auto; }
+.sp-list:empty { display: none; }
+.sp-item { width: 100%; display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: 0; border-radius: 8px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.sp-item:hover, .sp-item:focus-visible { background: var(--primer-pucat); }
+.sp-period { flex: none; font-size: 12px; font-weight: 600; color: var(--primer-tua); text-align: right; }
+.sp-period.other { color: var(--warn); }
+.sp-empty { padding: 12px; font-size: 13.5px; color: var(--muted); }
+.sp-note { margin: 6px 2px 0; font-size: 12.5px; color: var(--muted); }
+@media (max-width: 480px) { .sp-item { flex-wrap: wrap; } .sp-period { width: 100%; text-align: left; padding-left: 54px; } }

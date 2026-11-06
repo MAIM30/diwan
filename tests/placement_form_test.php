@@ -11,7 +11,7 @@ error_reporting(E_ALL);
 set_error_handler(function ($no, $msg, $file, $line) { throw new ErrorException($msg, 0, $no, $file, $line); });
 
 require ROOT_DIR . '/config/config.php';
-foreach (['Database', 'Controller', 'Audit', 'Text', 'Uuid', 'Csrf', 'Auth', 'Ui', 'Flash', 'AdminScope', 'Susunan'] as $c) require_once ROOT_DIR . "/app/Core/$c.php";
+foreach (['Database', 'Controller', 'Audit', 'Text', 'Uuid', 'Csrf', 'Auth', 'Ui', 'Flash', 'AdminScope', 'Susunan', 'PeopleOverview'] as $c) require_once ROOT_DIR . "/app/Core/$c.php";
 foreach (['WaNotify'] as $c) { $f = ROOT_DIR . "/app/Core/$c.php"; if (is_file($f)) require_once $f; }
 require_once ROOT_DIR . '/app/Controllers/PlacementsController.php';
 require_once ROOT_DIR . '/app/Models/PlacementModel.php';

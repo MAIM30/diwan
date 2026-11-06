@@ -621,6 +621,135 @@
     sync();
   });
 
+  /* ---------- Pemilih struktur (Tambah Jabatan) ----------
+     Markup: app/Views/admin/_struktur_picker.php. Jenjang (chip) + kotak cari + paling banyak beberapa baris dari placements/structures;
+     yang dipilih tampil sebagai kartu dengan tombol Ganti. Nilai (id periode) ada di <input type="hidden">; tiap pilihan memicu 'change'
+     di input itu dan 'sp:change' di elemen .sp. Teks dari server dimasukkan lewat textContent. Tanpa JavaScript halaman tuan rumah tak bisa
+     memilih struktur, sama seperti pemuatan SKUO dan jabatan yang memang butuh JavaScript. */
+  $$('[data-struct-picker]').forEach(function (root) {
+    var input = $('input[type=hidden]', root);
+    var picked = $('.sp-picked', root), find = $('.sp-find', root);
+    var chips = $('.sp-chips', root), box = $('.sp-q', root), list = $('.sp-list', root), note = $('.sp-note', root);
+    var url = root.getAttribute('data-url');
+    var state = { wing: root.getAttribute('data-wing') || '', lv: '', q: '' };
+    var seq = 0, timer = null, loaded = false;
+    var current = input.value ? { id: input.value, wing: root.getAttribute('data-selected-wing') || '' } : null;
+
+    function el(tag, cls, text) {
+      var n = document.createElement(tag);
+      if (cls) n.className = cls;
+      if (text !== undefined && text !== null) n.textContent = text;
+      return n;
+    }
+    function fireChange() {
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      root.dispatchEvent(new CustomEvent('sp:change', { bubbles: true, detail: { id: input.value, item: current } }));
+    }
+
+    function render(data) {
+      chips.textContent = '';
+      var levels = Object.keys(data.levels);
+      var sum = levels.reduce(function (n, l) { return n + data.levels[l]; }, 0);
+      if (levels.length > 1 || state.lv) {
+        var all = el('button', 'chip' + (state.lv === '' ? ' on' : ''), 'Semua ');
+        all.type = 'button'; all.setAttribute('aria-pressed', state.lv === '' ? 'true' : 'false'); all.appendChild(el('span', 'chip-n', String(sum)));
+        all.addEventListener('click', function () { state.lv = ''; fetchList(); });
+        chips.appendChild(all);
+        if (state.lv && levels.indexOf(state.lv) < 0) levels.push(state.lv);
+        levels.forEach(function (l) {
+          var on = state.lv === l, b = el('button', 'chip' + (on ? ' on' : ''), l + ' ');
+          b.type = 'button'; b.setAttribute('aria-pressed', on ? 'true' : 'false');
+          b.appendChild(el('span', 'chip-n', String(data.levels[l] || 0)));
+          b.addEventListener('click', function () { state.lv = on ? '' : l; fetchList(); });
+          chips.appendChild(b);
+        });
+      }
+
+      list.textContent = '';
+      data.items.forEach(function (it) {
+        var li = el('li'), b = el('button', 'sp-item');
+        b.type = 'button';
+        b.appendChild(el('span', 'sp-badge', it.level));
+        var t = el('span', 'sp-item-text');
+        t.appendChild(el('b', null, it.name));
+        if (it.parent) t.appendChild(el('small', null, 'di bawah ' + it.parent));
+        b.appendChild(t);
+        b.appendChild(el('span', 'sp-period' + (it.current ? '' : ' other'), it.period + (it.current ? '' : ' · periode lain')));
+        b.addEventListener('click', function () { choose(it); });
+        li.appendChild(b); list.appendChild(li);
+      });
+      if (!data.items.length) {
+        var empty = el('li', 'sp-empty', 'Tidak ada struktur yang cocok. Coba kata lain atau pilih jenjang lain.');
+        list.appendChild(empty);
+      }
+      note.textContent = data.total > data.items.length
+        ? 'Menampilkan ' + data.items.length + ' dari ' + data.total + '. Ketik nama atau pilih jenjang untuk mempersempit.'
+        : (data.total ? data.total + ' struktur.' : '');
+    }
+
+    function fetchList() {
+      var mine = ++seq;
+      var qs = '?q=' + encodeURIComponent(state.q) + '&lv=' + encodeURIComponent(state.lv) + '&wing=' + encodeURIComponent(state.wing)
+        + '&gp=' + encodeURIComponent(root.getAttribute('data-gp') || '0');
+      note.textContent = 'Memuat…';
+      fetch(url + qs, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+        .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        .then(function (data) { if (mine === seq) { loaded = true; render(data); } })
+        .catch(function () { if (mine === seq) note.textContent = 'Daftar struktur gagal dimuat. Coba lagi.'; });
+    }
+
+    function choose(it) {
+      current = it;
+      input.value = it.id;
+      $('.sp-badge', picked).textContent = it.level;
+      $('.sp-picked-text b', picked).textContent = it.name;
+      $('.sp-picked-text small', picked).textContent = it.period + (it.current ? ' · berjalan' : ' · periode lain');
+      picked.hidden = false; find.hidden = true;
+      fireChange();
+    }
+
+    function clear(focus) {
+      var had = input.value !== '';
+      input.value = ''; current = null;
+      picked.hidden = true; find.hidden = false;
+      if (!loaded) fetchList();
+      if (focus !== false) box.focus();
+      if (had) fireChange();
+    }
+
+    box.addEventListener('input', function () {
+      clearTimeout(timer);
+      timer = setTimeout(function () { state.q = box.value.trim(); fetchList(); }, 200);
+    });
+    // Enter di kotak cari memilih hasil pertama (tanpa mengirim formulir).
+    box.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      var first = $('.sp-item', list);
+      if (first) first.click();
+    });
+    $('[data-sp-change]', root).addEventListener('click', function () { clear(true); });
+
+    root.structPicker = {
+      value: function () { return input.value; },
+      setWing: function (w) {
+        w = w || '';
+        var changed = w !== state.wing;
+        state.wing = w;
+        // Struktur terpilih yang sayapnya tak cocok lagi (mis. orang diganti) dibatalkan.
+        if (current && w && current.wing && current.wing !== w) { state.lv = ''; clear(false); return; }
+        if (changed) { state.lv = ''; if (!find.hidden) fetchList(); }
+      },
+      clear: function () { clear(false); }
+    };
+
+    // Pilihan awal dari server yang sayapnya tak cocok dengan sayap yang diminta (mis. ?person_id= perempuan pada struktur Umum) dibuang.
+    if (current && state.wing && current.wing && current.wing !== state.wing) {
+      input.value = ''; current = null; picked.hidden = true; find.hidden = false;
+    }
+    if (input.value === '') fetchList();
+  });
+
   /* ---------- Tooltip grafik ---------- */
   var tip = $('#tip');
   var tipTitle = tip && $('.tl', tip), tipVal = tip && $('.tv', tip), tipKey = tip && $('.key', tip);

@@ -77,7 +77,7 @@ $akhiriPanel = function ($h, $prefix) use ($endReasons) {
     <?php if (Auth::canEdit()): ?>
       <div class="actions" style="display:flex;gap:8px;flex-wrap:wrap">
         <a class="btn secondary" href="<?= BASEURL ?>/people/form/<?= (int) $person['id'] ?>"><?= Ui::icon('edit', 16) ?> Ubah Data</a>
-        <?php if (!empty($availableTerms)): ?>
+        <?php if (!empty($canPlace)): ?>
           <button class="btn" type="button" data-placement-modal-open><?= Ui::icon('briefcase', 16) ?> Tambah Jabatan</button>
         <?php endif; ?>
         <?php if ($person['photo_path']): ?>
@@ -106,7 +106,7 @@ $akhiriPanel = function ($h, $prefix) use ($endReasons) {
   </div>
 </div>
 
-<?php if (Auth::canEdit() && !empty($availableTerms)): ?>
+<?php if (!empty($canPlace)): ?>
 <dialog class="biodata-roster-modal placement-modal" id="placement-modal" aria-labelledby="placement-modal-title">
   <div class="page-head">
     <h2 id="placement-modal-title">Tambah Jabatan untuk <?= e(Ui::fullName($person)) ?></h2>
@@ -123,15 +123,8 @@ $akhiriPanel = function ($h, $prefix) use ($endReasons) {
 
     <div class="field">
       <label for="placement-modal-structure">Struktur dan Periode</label>
-      <select id="placement-modal-structure" required>
-        <option value="">— pilih struktur —</option>
-        <?php foreach ($availableTerms as $availableTerm): ?>
-          <option value="<?= (int) $availableTerm['id'] ?>">
-            <?= e($availableTerm['level'] . ' · ' . $availableTerm['structure_name'] . ' · ' . $availableTerm['shared_period_name'] . (!empty($availableTerm['is_current']) ? ' (berjalan)' : ' (periode lain)')) ?>
-          </option>
-        <?php endforeach; ?>
-      </select>
-      <div class="help">Daftar mencakup seluruh struktur dalam lingkup akses Anda. Periode berjalan ditampilkan lebih dahulu.</div>
+      <?php $this->view('admin/_struktur_picker', ['id' => 'placement-modal-structure', 'wing' => $placementWing, 'gp' => 0, 'selected' => null]); ?>
+      <div class="help">Pilih jenjang atau ketik nama. Hanya struktur dalam lingkup akses Anda, sesuai sayap orangnya (<?= $placementWing === 'muslimah' ? 'Muslimah' : 'Umum' ?>).</div>
     </div>
 
     <div class="grid-2">
@@ -198,10 +191,14 @@ $akhiriPanel = function ($h, $prefix) use ($endReasons) {
     var termId = structure.value;
     baseTerm.value = targetTerm.value = termId;
     unit.disabled = position.disabled = true;
+    submit.disabled = true;
+    if (!termId) {   // struktur dibatalkan (Ganti): pilihan unit dan jabatan dikosongkan lagi
+      unit.innerHTML = '<option value="">PENGURUS INTI (tingkat struktur, tanpa unit)</option>';
+      position.innerHTML = '<option value="">— pilih jabatan —</option>';
+      return;
+    }
     unit.innerHTML = '<option value="">Memuat SKUO...</option>';
     position.innerHTML = '<option value="">Memuat jabatan...</option>';
-    submit.disabled = true;
-    if (!termId) return;
     fetch(<?= json_encode(BASEURL . '/placements/options/') ?> + encodeURIComponent(termId) + '/' + encodeURIComponent(termId), {
       credentials: 'same-origin', headers: { Accept: 'application/json' }
     }).then(function (response) {

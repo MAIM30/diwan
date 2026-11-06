@@ -44,7 +44,6 @@ class PlacementsController extends Controller {
             'term'      => $term,
             'row'       => $row,
             'person'    => $person,
-            'targetTerms' => $terms->termsForGovernancePeriod($term['governance_period_id']),
             'otherPlacements' => $otherPlacements,
             'landingNow' => $row ? $placements->landingLabel($row['structure_unit_id'], $row['position_id']) : null,
             'units'     => $units->unitsByTerm($row['term_id'] ?? $termId),
@@ -75,6 +74,23 @@ class PlacementsController extends Controller {
             ];
         }
         echo json_encode($out, JSON_UNESCAPED_UNICODE);
+    }
+
+    // Pemilih struktur untuk Tambah Jabatan (JSON): ketik nama, saring menurut jenjang. Pengganti dropdown yang memuat ratusan struktur sekaligus.
+    // Parameter: q, lv (jenjang), wing (umum | muslimah), gp (acuan periode). Hanya struktur dalam lingkup admin (TermModel::pickerSearch).
+    public function structures() {
+        $this->requireLogin();
+        if (!Auth::canEdit()) $this->denied();
+        header('Content-Type: application/json; charset=utf-8');
+
+        // Parameter bisa datang sebagai larik (?q[]=x): hanya teks yang dipakai.
+        $param = function ($key) { $v = $_GET[$key] ?? ''; return is_string($v) ? trim($v) : ''; };
+        echo json_encode($this->model('TermModel')->pickerSearch([
+            'q'    => $param('q'),
+            'lv'   => $param('lv'),
+            'wing' => $param('wing'),
+            'gp'   => (int) $param('gp'),
+        ]), JSON_UNESCAPED_UNICODE);
     }
 
     // Memuat SKUO dan konteks jabatan ketika struktur tujuan diganti pada formulir.

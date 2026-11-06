@@ -521,6 +521,22 @@ Kode wilayah, Periode berjalan, Admin, dan aksi ikon) dan **Pohon** (hierarki ya
 isi). Seluruhnya disaring di PHP dari satu daftar (`StructuresController::index`), tanpa perubahan database, dan hanya struktur dalam lingkup admin yang ikut (induk di luar lingkup tak
 pernah tampil). Hapus kembali ke daftar yang sama lewat `back` (hanya karakter query string biasa yang diterima). Diuji di `tests/structures_page_test.php`.
 
+**Periode Kepengurusan** (`/terms`) memakai pola saringan yang sama (dulu seluruh ~520 periode tampil sekaligus tanpa satu pun saringan): baris **Jenjang** (chip), baris **Acuan**
+(chip acuan periode, hanya bila ada lebih dari satu, mis. 2021-2026 dan 2026-2031; `?pr=`), kotak cari (`?q=`; setiap kata harus cocok di jenjang, nama, induk, acuan, nama periode, atau
+nomor SK, jadi "kab maros" menemukan "Kab. Maros"), dan chip status (`?f=`: Berjalan, Arsip, Belum ada pengurus, Ada SK, Tanpa SK). Angka tiap chip mengikuti semua saringan lain.
+Tabel berhalaman 25/50/100, terurut jenjang, induk, nama, periode terbaru; nama struktur ditulis sekali per struktur. `?structure=ID` (tautan dari Struktur dan dasbor) tetap berlaku dan
+ikut terbawa di setiap tautan. Nama induk di luar lingkup admin tak tampil dan tak bisa dicari. Seluruhnya disaring di PHP dari `TermModel::allInScope`, tanpa perubahan database.
+Diuji di `tests/terms_page_test.php`.
+
+**Pemilih struktur (Tambah Jabatan).** Dropdown "Struktur dan Periode" di modal Tambah Jabatan (profil orang) dan di formulir penempatan dulu memuat ratusan struktur sekaligus (modal:
+semua periode sayap orangnya, ±300 baris dimuat di halaman profil). Kini diganti pemilih (`app/Views/admin/_struktur_picker.php`, `app.js`): chip **jenjang** (dengan jumlah), kotak cari
+(kata-kata terpisah, termasuk nama induk), dan paling banyak 8 baris (`TermModel::PICKER_LIMIT`) berisi jenjang, nama, "di bawah {induk}", dan periode (yang bukan berjalan bertanda
+"periode lain"). Daftarnya dimuat dari `placements/structures?q=&lv=&wing=&gp=` (JSON; hanya struktur dalam lingkup admin, nama induk di luar lingkup tak bocor lewat pencarian);
+halaman profil tidak lagi memuat daftar struktur sama sekali. Sayap menurut orangnya (laki-laki: Umum, perempuan: Muslimah); di formulir penempatan acuan periode dibatasi pada acuan
+periode yang sedang dibuka dan sayap berubah mengikuti orang yang dipilih (pilihan yang tak cocok lagi dibuang). Yang dipilih tampil sebagai kartu kecil dengan tombol **Ganti**; nilainya
+(id periode) ada di `<input type="hidden">` yang memicu `change`, jadi pemuatan unit dan jabatan tak berubah. Enter di kotak cari memilih hasil pertama. Diuji di
+`tests/structure_picker_test.php` (pencarian, lingkup, titik JSON, pemasangan di profil dan formulir).
+
 **Pengelompokan Unit** (`/units/grouping`, menu samping "Pengelompokan Unit"; tombolnya juga ada di Katalog Unit dan di halaman Bidang & Unit tiap periode). Halaman tersendiri
 untuk menyusun DAN mengubah pengelompokan unit langsung di tempat, menurut STRUKTUR: tiap struktur dalam lingkup yang punya periode berjalan menjadi satu simpul (sayap umum dulu lalu
 Muslimah, dari Pusat ke Ranting), berisi Bidang/kelompok-nya (Bidang, Subbidang, lalu kelompok lain seperti Pengurus Harian, Biro-Biro, Pusat-Pusat) dan di tiap Bidang unit-unitnya

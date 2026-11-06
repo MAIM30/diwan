@@ -185,19 +185,10 @@ class PeopleController extends Controller {
             return !empty($h['is_current']) && (empty($h['end_date']) || $h['end_date'] >= $today);
         }));
 
-        // Tambah jabatan dari profil dapat memilih struktur lain tanpa harus memakai acuan
-        // periode yang sama dengan penempatan orang yang sedang dilihat.
+        // Tambah jabatan dari profil dapat memilih struktur lain tanpa harus memakai acuan periode yang sama dengan penempatan orang yang
+        // sedang dilihat. Daftarnya TIDAK dimuat di halaman ini: pemilih struktur mencarinya di placements/structures menurut sayap orangnya.
         $expectedWing = $person['gender'] === 'P' ? 'muslimah' : 'umum';
-        $availableTerms = array_values(array_filter(
-            $this->model('TermModel')->allInScope(),
-            function ($term) use ($expectedWing) {
-                return ($term['wing'] ?? '') === $expectedWing;
-            }
-        ));
-        usort($availableTerms, function ($a, $b) {
-            if ((int) $a['is_current'] !== (int) $b['is_current']) return (int) $b['is_current'] <=> (int) $a['is_current'];
-            return strcmp($a['structure_path'], $b['structure_path']);
-        });
+        $canPlace = Auth::canEdit() && $this->model('TermModel')->hasTermsForWing($expectedWing);
 
         $dash = $this->model('DashboardModel');
 
@@ -220,7 +211,8 @@ class PeopleController extends Controller {
             'hidden'   => $hidden,
             'allPlacementCount' => count($all),
             'current'  => $current,
-            'availableTerms' => $availableTerms,
+            'canPlace' => $canPlace,
+            'placementWing' => $expectedWing,
             'portal'     => $portal,
             'portalLast' => $portalLast,
             'activity' => $dash->activityForPerson($id, 8),
