@@ -3,11 +3,12 @@
 // Menyusun bahan tampilan "Per Struktur" di halaman Data Pengurus dari angka yang sudah dihitung PersonModel::overviewByStructure
 // dan PersonModel::intiFlags. Murni penyusunan larik, tanpa basis data, supaya mudah diuji.
 //
-//   jenjang (DPP, DPW, DPD, ...)  ->  kelompok induk (mis. DPW Sulawesi Selatan untuk para DPD-nya)  ->  struktur
+//   jenjang (DPP, DPW, MWW, MWD, ...)  ->  struktur  ->  daftar pengurus
 //
-// Jenjang yang hanya punya SATU struktur (DPP, MWP, DSO, DSY, DPK) tidak menampilkan baris struktur: baris jenjangnya sekaligus
-// baris strukturnya, dan isinya (Pengurus Inti, Bidang, unit) dimuat saat dibuka. Struktur yang induknya bukan akar dan masih dalam
-// lingkup admin dikelompokkan di bawah induknya (DPD di bawah DPW, MWD di bawah MWW); selain itu ia berdiri sendiri di bawah jenjangnya.
+// Menekan jenjang langsung menampilkan struktur-strukturnya: MWW = seluruh provinsi, MWD = seluruh kabupaten/kota (DPW dan DPD sama).
+// Tidak ada tingkatan perantara. Induk hanya KETERANGAN di bawah nama ("Kab. Barru" / "Sulawesi Selatan") dan pengurut, supaya kabupaten
+// satu provinsi berdampingan. Jenjang yang hanya punya SATU struktur (DPP, MWP, DSO, DSY, DPK) tidak menampilkan baris struktur: baris
+// jenjangnya sekaligus baris strukturnya.
 
 class PeopleOverview {
     // Urutan jenjang di halaman: sayap Umum, lalu Muslimah, lalu ketiga Dewan.
@@ -49,14 +50,17 @@ class PeopleOverview {
         return array_merge($known, $other);
     }
 
+    // Jenjang yang tidak dibuka sendiri bila strukturnya lebih banyak dari ini (DPD dan MWD ratusan baris): daftarnya baru dibuka bila
+    // orangnya memilih jenjang itu atau mengetuknya.
+    const OPEN_MAX_ROWS = 60;
+
     // $overview = PersonModel::overviewByStructure; $inti = PersonModel::intiFlags.
     // Hasil: daftar blok jenjang. Blok: level, name, wing, strukt (jumlah struktur), inti_lengkap (struktur yang Ketua, Sekretaris, dan
     // Bendahara-nya terisi), num (orang/lengkap/l/p seluruh jenjang), single (hanya satu struktur), flags dan term_id (hanya bila single),
-    // groups (kelompok induk: parent_id, title, strukt, inti_lengkap, num, rows), rows (struktur yang tak berkelompok).
-    // Baris struktur: id, term_id, name, sub ("5 DPD"), num, flags, inti_ok.
+    // rows (SEMUA struktur jenjang itu, rata, terurut induk lalu nama).
+    // Baris struktur: id, term_id, name, context (nama induk tingkat Wilayah ke bawah, mis. provinsi untuk sebuah kabupaten; kosong bila
+    // tak ada), sub ("5 MWD": jumlah struktur anak), num, flags, inti_ok.
     public static function build(array $overview, array $inti) {
-        $zero = ['orang' => 0, 'lengkap' => 0, 'l' => 0, 'p' => 0];
-
         $childrenOf = [];
         foreach ($overview['structures'] as $s) {
             if ($s['parent_id'] !== null) $childrenOf[$s['parent_id']][$s['level']] = ($childrenOf[$s['parent_id']][$s['level']] ?? 0) + 1;
@@ -67,13 +71,11 @@ class PeopleOverview {
             $sub = [];
             foreach ($childrenOf[$s['id']] ?? [] as $level => $n) $sub[] = $n . ' ' . $level;
             return [
-                'id' => $s['id'], 'term_id' => $s['term_id'], 'name' => self::shortName($s['name']), 'sub' => implode(', ', $sub),
+                'id' => $s['id'], 'term_id' => $s['term_id'], 'name' => self::shortName($s['name']),
+                'context' => $s['parent_name'] !== null ? self::shortName($s['parent_name']) : '', 'sub' => implode(', ', $sub),
                 'num' => ['orang' => $s['orang'], 'lengkap' => $s['lengkap'], 'l' => $s['l'], 'p' => $s['p']],
                 'flags' => $flags, 'inti_ok' => $flags['k'] && $flags['s'] && $flags['b'],
             ];
-        };
-        $intiOk = function (array $rows) {
-            return count(array_filter($rows, function ($r) { return $r['inti_ok']; }));
         };
 
         $byLevel = [];
@@ -82,45 +84,30 @@ class PeopleOverview {
         $blocks = [];
         foreach (self::orderedLevels(array_keys($overview['levels'])) as $level) {
             if (empty($byLevel[$level])) continue;
-            $list = $byLevel[$level];
 
-            $all = []; $loose = []; $groups = [];
-            foreach ($list as $s) {
-                $r = $row($s);
-                $all[] = $r;
-                if ($s['parent_id'] === null) { $loose[] = $r; continue; }
-                if (!isset($groups[$s['parent_id']])) {
-                    $groups[$s['parent_id']] = ['parent_id' => $s['parent_id'], 'title' => $s['parent_level'] . ' ' . self::shortName($s['parent_name']), 'rows' => []];
-                }
-                $groups[$s['parent_id']]['rows'][] = $r;
-            }
-            foreach ($groups as $pid => &$g) {
-                $g['strukt'] = count($g['rows']);
-                $g['inti_lengkap'] = $intiOk($g['rows']);
-                $g['num'] = $overview['parents'][$pid] ?? $zero;
-            }
-            unset($g);
-            $groups = array_values($groups);
-            usort($groups, function ($a, $b) { return strnatcasecmp($a['title'], $b['title']); });
+            $rows = array_map($row, $byLevel[$level]);
+            // Induknya dulu (kabupaten satu provinsi berdampingan), lalu nama; urutan alami supaya "Kab. 2" mendahului "Kab. 10".
+            usort($rows, function ($a, $b) { return strnatcasecmp($a['context'], $b['context']) ?: strnatcasecmp($a['name'], $b['name']); });
 
-            $single = count($all) === 1;
+            $single = count($rows) === 1;
             $blocks[] = [
                 'level' => $level, 'name' => self::LEVEL_NAMES[$level] ?? $level, 'wing' => self::wingOf($level),
-                'strukt' => count($all), 'inti_lengkap' => $intiOk($all), 'num' => $overview['levels'][$level],
-                'single' => $single, 'flags' => $single ? $all[0]['flags'] : null, 'term_id' => $single ? $all[0]['term_id'] : null,
-                'groups' => $groups, 'rows' => $loose,
+                'strukt' => count($rows), 'inti_lengkap' => count(array_filter($rows, function ($r) { return $r['inti_ok']; })),
+                'num' => $overview['levels'][$level],
+                'single' => $single, 'flags' => $single ? $rows[0]['flags'] : null, 'term_id' => $single ? $rows[0]['term_id'] : null,
+                'rows' => $rows,
             ];
         }
         return $blocks;
     }
 
-    // Jenjang yang terbuka sejak awal. Bila satu jenjang dipilih: hanya itu. Selain itu dua jenjang berstruktur banyak yang pertama
-    // (cukup untuk melihat bentuknya tanpa memenuhi layar). Jenjang satu-struktur (DPP, ...) tidak dibuka otomatis: isinya dimuat lewat
-    // jaringan dan bisa ratusan KB, jadi baru dimuat saat diketuk. Hanya bila tak ada jenjang berstruktur banyak (admin satu DPD),
-    // jenjang pertama dibuka supaya halamannya tak tampak kosong.
+    // Jenjang yang terbuka sejak awal. Bila satu jenjang dipilih: hanya itu. Selain itu dua jenjang berstruktur banyak yang pertama,
+    // kecuali yang lebih dari OPEN_MAX_ROWS struktur (daftar DPD dan MWD akan memanjangkan halaman; ringkasannya sudah ada di baris
+    // jenjangnya). Jenjang satu-struktur (DPP, ...) tidak dibuka otomatis: isinya dimuat lewat jaringan dan bisa ratusan KB, jadi baru
+    // dimuat saat diketuk. Hanya bila tak ada yang memenuhi (admin satu DPD), jenjang pertama dibuka supaya halamannya tak tampak kosong.
     public static function defaultOpen(array $blocks, $selected = '') {
         if ($selected !== '') return [$selected];
-        $open = array_slice(array_column(array_filter($blocks, function ($b) { return !$b['single']; }), 'level'), 0, 2);
+        $open = array_slice(array_column(array_filter($blocks, function ($b) { return !$b['single'] && $b['strukt'] <= self::OPEN_MAX_ROWS; }), 'level'), 0, 2);
         if (!$open && $blocks) $open = [$blocks[0]['level']];
         return $open;
     }

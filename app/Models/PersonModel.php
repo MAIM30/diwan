@@ -171,14 +171,14 @@ class PersonModel {
         ")->fetchAll(PDO::FETCH_KEY_PAIR));
     }
 
-    // Bahan tampilan "Per Struktur": angka per struktur, per jenjang, dan per induk, semuanya dari penempatan yang berlaku (periode
-    // berjalan, belum berakhir, dalam lingkup admin) milik orang yang cocok dengan pencarian dan penyaring yang sama dengan daftar.
-    // Baris penempatannya dibaca SEKALI (sekitar 4.500) lalu dikelompokkan di sini; tiga query COUNT(DISTINCT) terpisah untuk struktur,
-    // jenjang, dan induk terukur tiga kali lebih lambat. Orang dihitung sekali per kelompok walau rangkap di dalamnya. Hasil:
-    //   structures: id, term_id, level, name, parent_id / parent_level / parent_name (induk yang sendiri bukan akar dan masih dalam
-    //               lingkup, selain itu null), orang, lengkap, l, p; terurut nama
+    // Bahan tampilan "Per Struktur": angka per struktur dan per jenjang, dari penempatan yang berlaku (periode berjalan, belum berakhir,
+    // dalam lingkup admin) milik orang yang cocok dengan pencarian dan penyaring yang sama dengan daftar.
+    // Baris penempatannya dibaca SEKALI (sekitar 4.500) lalu dikelompokkan di sini; query COUNT(DISTINCT) terpisah untuk struktur dan
+    // jenjang terukur beberapa kali lebih lambat. Orang dihitung sekali per kelompok walau rangkap di dalamnya. Hasil:
+    //   structures: id, term_id, level, name, parent_id / parent_level / parent_name (induk tingkat Wilayah ke bawah yang masih dalam
+    //               lingkup, selain itu null; hanya KETERANGAN dan dasar hitung "5 MWD", bukan pengelompok), orang, lengkap, l, p;
+    //               terurut nama
     //   levels:     level => orang, lengkap, l, p
-    //   parents:    parent_id => orang, lengkap, l, p   (gabungan orang di struktur-struktur anaknya saja)
     public function overviewByStructure($keyword = '', array $filters = []) {
         $params = [];
         $where = $this->listWhere($keyword, $filters, $params);
@@ -187,9 +187,11 @@ class PersonModel {
         // Jenjang terpilih membatasi ORANGNYA (listWhere), bukan tempatnya: orang DPW juga menjabat di DPP, DPD, dst. Pohon hanya boleh
         // memuat jenjang yang dipilih, jadi penempatannya dibatasi juga (nilai sudah melalui quote, bukan placeholder: :f_level sudah terpakai).
         if (!empty($filters['level'])) $cond .= " AND s.level = " . $this->db->quote($filters['level']);
-        // Induk hanya dipakai bila ia sendiri bukan akar (DPP/MWP tak dijadikan kelompok) dan masih di dalam lingkup admin:
+        // Induk hanya dipakai bila ia sendiri tingkat Wilayah ke bawah (tier >= 2: DPW/MWW, DPD/MWD, ...). DPP dan MWP (tier 1) adalah
+        // pucuk nasional: "MWP" bukan keterangan yang berguna bagi 36 MWW. Dulu yang dipakai depth >= 1, padahal MWP anak DPP (depth 1),
+        // sehingga seluruh MWW tampil di bawah satu kelompok "MWP". Induk juga harus masih di dalam lingkup admin:
         // admin DPD tidak boleh melihat nama DPW di atasnya.
-        $parentOn = "sp.id = s.parent_id AND sp.deleted_at IS NULL AND sp.depth >= 1 AND " . AdminScope::sqlFilter('sp.id');
+        $parentOn = "sp.id = s.parent_id AND sp.deleted_at IS NULL AND sp.tier >= 2 AND " . AdminScope::sqlFilter('sp.id');
 
         $stmt = $this->db->prepare("
             SELECT pl.person_id, s.id AS structure_id, s.level, s.name, tr.id AS term_id,
@@ -215,7 +217,7 @@ class PersonModel {
             return $n;
         };
 
-        $structures = []; $byStructure = []; $byLevel = []; $byParent = [];
+        $structures = []; $byStructure = []; $byLevel = [];
         while ($r = $stmt->fetch()) {
             $pid = (int) $r['person_id'];
             $sid = (int) $r['structure_id'];
@@ -227,12 +229,11 @@ class PersonModel {
             }
             $byStructure[$sid][$pid] = $who;
             $byLevel[$r['level']][$pid] = $who;
-            if ($r['parent_id'] !== null) $byParent[(int) $r['parent_id']][$pid] = $who;
         }
         foreach ($structures as $sid => &$s) $s += $count($byStructure[$sid]);
         unset($s);
 
-        return ['structures' => array_values($structures), 'levels' => array_map($count, $byLevel), 'parents' => array_map($count, $byParent)];
+        return ['structures' => array_values($structures), 'levels' => array_map($count, $byLevel)];
     }
 
     // Apakah Ketua, Sekretaris, dan Bendahara sebuah struktur terisi (penempatan tingkat struktur, periode berjalan, belum berakhir).

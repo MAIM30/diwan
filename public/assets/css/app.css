@@ -1219,7 +1219,6 @@ details[open] > .mon-row .caret { transform: rotate(90deg); }
 .mon-lvl.dewan { --stripe: #6b8691; }
 .mon-lvl > .mon-row { padding-top: 12px; padding-bottom: 12px; border-left: 4px solid var(--stripe); background: linear-gradient(90deg, var(--primer-pucat), #fff 60%); }
 .mon-lvl > .mon-row b { font-size: 14.5px; color: var(--primer-gelap); }
-.mon-grp > .mon-row { background: #fafdfe; }
 
 /* Isi struktur (potongan dari PeopleController::struktur): pohon Susunan dengan kolom yang sama. */
 .mon-roster .stree.mon, .mon-roster .stree.mon ul { margin: 0; padding: 0; border: 0; }
@@ -1233,6 +1232,12 @@ details[open] > .mon-row .caret { transform: rotate(90deg); }
 }
 .mon-gap a { font-weight: 600; color: var(--danger); text-decoration: underline; }
 .mon-retry { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: var(--primer-tua); text-decoration: underline; cursor: pointer; }
+/* Struktur tanpa Bidang dan unit (MWW, MWD, DPW, DPD, ...): nama dan jabatan pengurus langsung, tanpa simpul untuk dibuka. */
+.mon-flat { padding: 2px 16px 12px calc((var(--base, 0) + 1) * 22px + 16px); background: #fbfdfe; border-bottom: 1px solid var(--border); }
+.mon-flat-h { display: flex; align-items: baseline; gap: 8px; margin: 12px 0 2px; font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.mon-flat-h span { font-weight: 500; letter-spacing: 0; text-transform: none; }
+.mon-flat th, .mon-flat td { padding: 8px 12px; }
+.mon-flat thead th { background: transparent; border-bottom: 1px solid var(--border); }
 
 /* Bilah kelengkapan, kotak Ketua/Sekretaris/Bendahara, ringkasan inti */
 .mon-meter { width: 72px; height: 7px; border-radius: 4px; background: var(--t-slate-bg); overflow: hidden; flex: none; }

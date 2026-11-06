@@ -4,14 +4,27 @@
 // Variabel: $tree (simpul dari Susunan::arrange), $treeId (id elemen, sasaran tombol Buka semua / Tutup semua).
 // Opsional: $metrics (true = tiap simpul menampilkan kolom Orang / Inti / Data lengkap / L·P yang sejajar dengan baris Per Struktur,
 // bukan keterangan teks), $intiFlags (K/S/B terisi, ditampilkan pada simpul Pengurus Inti saat $metrics), $toolbar (false = tanpa tombol
-// Buka semua / Tutup semua).
+// Buka semua / Tutup semua), $flat (true = tanpa simpul untuk dibuka: daftar nama dan jabatan langsung, Pengurus Inti dulu lalu Pimpinan
+// Lainnya; untuk struktur yang tak punya Bidang dan unit, mis. MWW dan MWD).
 // Tautan Ubah memakai term_id milik barisnya sendiri, jadi satu daftar boleh memuat penempatan dari beberapa periode.
+// Lencana "rangkap" (penempatan tak bertanda "utama") tidak ditampilkan saat $metrics: bendera itu kosong di hampir semua penempatan
+// (seluruh DPD, MWD, DSO, DSY, DPK), jadi hampir setiap baris akan salah disebut rangkap; rangkap yang sebenarnya (lebih dari satu
+// penempatan berjalan) dihitung kartu "Rangkap" di halaman Data Pengurus.
 $canEdit = Auth::canEdit();
 $metrics = !empty($metrics);
+$flat = !empty($flat);
 $toolbar = !isset($toolbar) || $toolbar;
 $intiFlags = $intiFlags ?? null;
 
-$roster = function (array $n) use ($canEdit) {
+// $compact (daftar rata): kolom Kontak selalu ada, kolom Masa hanya bila ada penempatan yang bertanggal (selebihnya "penuh periode"
+// berulang di setiap baris).
+$roster = function (array $n, $compact = false) use ($canEdit, $metrics) {
+    $showPhone = $compact || $n['phone'];
+    $showMasa = true;
+    if ($compact) {
+        $showMasa = false;
+        foreach ($n['rows'] as $r) if ($r['start_date'] || $r['end_date']) { $showMasa = true; break; }
+    }
     ?>
     <div class="table-wrap">
       <table>
@@ -19,8 +32,8 @@ $roster = function (array $n) use ($canEdit) {
           <tr>
             <th>Jabatan</th>
             <th>Nama</th>
-            <?php if ($n['phone']): ?><th>Kontak</th><?php endif; ?>
-            <th>Masa</th>
+            <?php if ($showPhone): ?><th>Kontak</th><?php endif; ?>
+            <?php if ($showMasa): ?><th>Masa</th><?php endif; ?>
             <?php if ($canEdit): ?><th></th><?php endif; ?>
           </tr>
         </thead>
@@ -30,12 +43,13 @@ $roster = function (array $n) use ($canEdit) {
             <td class="nowrap"><?= e($r['position_name']) ?></td>
             <td>
               <?= Ui::personCell($r, BASEURL . '/people/detail/' . (int) $r['person_id'], null, 'sm') ?>
-              <?php if (!$r['is_primary']): ?><span class="badge" style="margin-left:46px">rangkap</span><?php endif; ?>
+              <?php if (!$metrics && !$r['is_primary']): ?><span class="badge" style="margin-left:46px">rangkap</span><?php endif; ?>
               <?php if (!empty($r['memimpin'])): ?>
                 <div class="small muted" style="margin-left:46px">Memimpin <?= e(implode(', ', $r['memimpin'])) ?></div>
               <?php endif; ?>
             </td>
-            <?php if ($n['phone']): ?><td class="small mono"><?= e($r['phone'] ?: '—') ?></td><?php endif; ?>
+            <?php if ($showPhone): ?><td class="small mono"><?= e($r['phone'] ?: '—') ?></td><?php endif; ?>
+            <?php if ($showMasa): ?>
             <td class="small">
               <?php if ($r['end_date']): ?>
                 <span class="badge ended">berakhir <?= e($r['end_date']) ?></span>
@@ -46,6 +60,7 @@ $roster = function (array $n) use ($canEdit) {
                 <span class="muted">penuh periode</span>
               <?php endif; ?>
             </td>
+            <?php endif; ?>
             <?php if ($canEdit): ?>
               <td class="nowrap">
                 <a class="btn small secondary" href="<?= BASEURL ?>/placements/form/<?= (int) $r['term_id'] ?>/<?= (int) $r['id'] ?>">Ubah</a>
@@ -67,6 +82,18 @@ $roster = function (array $n) use ($canEdit) {
     </div>
     <?php
 };
+
+// Daftar rata: tanpa simpul <details>. Tiap bagian yang berisi (Pengurus Inti, Pimpinan Lainnya) diberi judul kecil dan tabelnya langsung.
+if ($flat) {
+    echo '<div class="mon-flat">';
+    foreach ($tree as $n) {
+        if (empty($n['rows'])) continue;
+        echo '<div class="mon-flat-h">' . e($n['title']) . ' <span>' . Ui::n($n['m']['orang']) . ' orang</span></div>';
+        $roster($n, true);
+    }
+    echo '</div>';
+    return;
+}
 
 $node = function (array $n, $depth = 0) use (&$node, $roster, $metrics, $intiFlags) {
     $meta = [];

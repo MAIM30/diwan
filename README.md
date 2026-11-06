@@ -462,13 +462,20 @@ tiga kelompok kartu rekap, lalu satu dari dua tampilan (`?susun=struktur|daftar`
   `PersonModel::COMPLETE_SQL`), *Jenis kelamin*. Angkanya selalu saling cocok: Menjabat + Tidak menjabat = total, Rangkap + tunggal = Menjabat, Lengkap + Belum = total.
   Rekap mengikuti **pencarian dan jenjang** yang dipilih, tetapi tidak mengikuti penyaring kartunya sendiri (jenis kelamin, kelengkapan, rangkap): kartu-kartu itu memecah himpunan
   yang sama, kalau ikut menyaring maka memilih "Perempuan" akan menolkan kartu "Laki-laki". Lencana judul tetap total seluruh lingkup admin.
-- **Per Struktur** (bawaan bila tak ada pencarian atau penyaring daftar): jenjang, lalu struktur (DPD dikelompokkan di bawah DPW induknya, MWD di bawah MWW, selama induknya
-  dalam lingkup admin). Setiap baris punya kolom yang sama: Orang, **Inti** (kotak K·S·B: Ketua, Sekretaris, Bendahara terisi di tingkat struktur; kode jabatannya di
-  `PositionModel::INTI_*`; sifat struktur, tidak ikut penyaring), Data lengkap (bilah: hijau mulai 90%, kuning mulai 75%), dan L · P. Angka dihitung satu query per tingkat
-  (`PersonModel::overviewByStructure`) dan disusun `PeopleOverview::build`. Isi sebuah struktur (Pengurus Inti, Bidang beserta unitnya) **dimuat saat barisnya diketuk**
-  (`GET /people/struktur/{term_id}`, potongan HTML; kerangka dan penyajiannya dipakai bersama halaman detail periode: `Susunan::arrange` dan `views/admin/_susunan.php`).
-  Jenjang satu-struktur (DPP, MWP, DSO, DSY, DPK) tidak terbuka otomatis karena isinya berat. Tombol "Buka semua jenjang" hanya membuka jenjang dan kelompok induk, bukan
-  ratusan baris struktur. Pencarian dan penyaring ikut ke isi struktur (`PersonModel::idsInScope`), jadi isinya cocok dengan angka barisnya.
+- **Per Struktur** (bawaan bila tak ada pencarian atau penyaring daftar): jenjang, lalu struktur, tanpa tingkatan perantara. Menekan **MWW** langsung menampilkan seluruh provinsi,
+  **MWD** seluruh kabupaten/kota (DPW dan DPD sama); induknya (provinsi) hanya keterangan kecil di bawah nama ("Kab. Barru" / "Sulawesi Selatan") dan pengurut, jadi kabupaten satu
+  provinsi berdampingan. Induk dipakai hanya bila tingkat Wilayah ke bawah (`structures.tier >= 2`) dan dalam lingkup admin: DPP dan MWP adalah pucuk nasional (dulu aturannya
+  `depth >= 1`, sehingga seluruh MWW tampil di bawah kelompok "MWP"). Setiap baris punya kolom yang sama: Orang, **Inti** (kotak K·S·B: Ketua, Sekretaris, Bendahara terisi di
+  tingkat struktur; kode jabatannya di `PositionModel::INTI_*`; sifat struktur, tidak ikut penyaring), Data lengkap (bilah: hijau mulai 90%, kuning mulai 75%), dan L · P. Angka
+  dihitung satu query (`PersonModel::overviewByStructure`) dan disusun `PeopleOverview::build`. Isi sebuah struktur **dimuat saat barisnya diketuk**
+  (`GET /people/struktur/{term_id}`, potongan HTML): struktur **tanpa Bidang dan unit** (kebanyakan DPW, DPD, MWW, MWD) menampilkan **nama dan jabatan pengurusnya langsung**
+  (judul kecil Pengurus Inti, lalu Pimpinan Lainnya; kolom Jabatan, Nama, Kontak, dan Masa hanya bila ada penempatan bertanggal), tanpa simpul untuk dibuka; struktur yang punya
+  Bidang atau unit (DPP, MWP, dan yang berunit seperti MWW Sulawesi Tenggara) tetap berupa pohon Susunan (Pengurus Inti, Bidang, unit; kerangka dan penyajiannya dipakai bersama
+  halaman detail periode: `Susunan::arrange` dan `views/admin/_susunan.php`). Di halaman ini lencana "rangkap" per baris tidak ditampilkan: bendera "utama" yang menjadi dasarnya
+  kosong di hampir semua penempatan (100% DPD, MWD, DSO, DSY, DPK), jadi hampir setiap baris akan salah disebut rangkap; rangkap yang sebenarnya dihitung kartu "Rangkap".
+  Jenjang satu-struktur (DPP, MWP, DSO, DSY, DPK) tidak terbuka otomatis karena isinya berat, begitu juga jenjang dengan lebih dari 60 struktur (DPD dan MWD; ringkasannya sudah ada
+  di baris jenjangnya): daftar itu terbuka bila jenjangnya dipilih atau diketuk. Tombol "Buka semua jenjang" hanya membuka jenjang, bukan ratusan baris struktur.
+  Pencarian dan penyaring ikut ke isi struktur (`PersonModel::idsInScope`), jadi isinya cocok dengan angka barisnya.
 - **Daftar** (bawaan bila ada pencarian, atau tautan dari luar seperti dasbor dan "Tanpa SKUO"): tabel A-Z dengan label jenjang, kolom Kontak (WA dan NIK), Kelengkapan
   (menyebut apa yang kurang), dan aksi berupa ikon.
 

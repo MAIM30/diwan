@@ -145,7 +145,12 @@ class PeopleController extends Controller {
 
         $flags = $people->intiFlags((int) $term['structure_id'])[(int) $term['structure_id']] ?? ['k' => false, 's' => false, 'b' => false];
 
-        $this->view('admin/people/_roster', ['term' => $term, 'tree' => $tree, 'flags' => $flags, 'facet' => $facet]);
+        // Struktur tanpa Bidang dan unit (kebanyakan DPW, DPD, MWW, MWD) hanya punya Pengurus Inti dan Pimpinan Lainnya: tak ada tingkatan
+        // untuk dibuka, jadi nama dan jabatan pengurusnya langsung ditampilkan. Penyaringan yang membuang semua Bidang dan unit juga
+        // membuatnya "rata". Struktur yang punya Bidang atau unit (DPP, MWP, ...) tetap berupa pohon.
+        $flat = !array_filter($tree, function ($n) { return !empty($n['children']); });
+
+        $this->view('admin/people/_roster', ['term' => $term, 'tree' => $tree, 'flags' => $flags, 'facet' => $facet, 'flat' => $flat]);
     }
 
     public function detail($id) {

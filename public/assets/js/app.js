@@ -560,8 +560,9 @@
     var tree = b ? document.getElementById(b.getAttribute('data-mon-tree')) : null;
     if (!tree) return;
     var open = b.getAttribute('data-mon-all') === 'open';
-    // Dibuka: hanya jenjang dan kelompok induk. Baris struktur memuat isinya lewat jaringan dan dibuka satu per satu; kalau ikut
-    // dibuka semua, satu ketukan memicu ratusan permintaan. Ditutup: semuanya.
+    // Dibuka: hanya jenjang (daftar strukturnya sudah ada di halaman; jenjang satu-struktur seperti DPP memuat isinya saat dibuka). Baris
+    // struktur memuat isinya lewat jaringan dan dibuka satu per satu; kalau ikut dibuka semua, satu ketukan memicu ratusan permintaan.
+    // Ditutup: semuanya.
     $$(open ? 'details.mon-g' : 'details', tree).forEach(function (d) { d.open = open; });
   });
 

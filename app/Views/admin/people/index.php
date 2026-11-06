@@ -1,7 +1,7 @@
 <?php
 // PATH LOKASI FILE: app/Views/admin/people/index.php
 // Data Pengurus: baris Jenjang, rekap tiga kelompok (Status jabatan, Kelengkapan data, Jenis kelamin), lalu satu dari dua tampilan:
-// "Per Struktur" (terkelompok jenjang -> struktur, untuk memantau) atau "Daftar" (tabel A-Z, untuk mencari satu orang).
+// "Per Struktur" (jenjang -> struktur -> daftar pengurus, untuk memantau) atau "Daftar" (tabel A-Z, untuk mencari satu orang).
 //
 // Dari controller: $keyword, $gender, $filter, $serving, $level (jenjang terpilih atau ''), $levelCounts (jenjang => orang),
 // $perStruktur, $totalAll (seluruh lingkup), $recap (PersonModel::recapCounts untuk pencarian + jenjang), $showL/$showP,
@@ -177,12 +177,15 @@ $intiSum = function ($lengkap, $strukt) {
 $rosterUrl = function ($termId) use ($facetQuery) {
     return BASEURL . '/people/struktur/' . (int) $termId . ($facetQuery !== '' ? '?' . $facetQuery : '');
 };
-// Baris satu struktur; isinya (Pengurus Inti, Bidang, unit) dimuat saat dibuka. $d = kedalaman untuk indentasi.
+// Baris satu struktur; daftar pengurusnya dimuat saat dibuka (struktur tanpa Bidang dan unit: nama dan jabatan langsung; selain itu
+// Pengurus Inti, Bidang, unit). Di bawah nama: induknya ("Sulawesi Selatan" untuk sebuah kabupaten) dan jumlah struktur anaknya ("5 MWD").
+// $d = kedalaman untuk indentasi.
 $structureRow = function (array $r, $d) use ($caret, $cols, $rosterUrl) {
+    $small = implode(' · ', array_filter([$r['context'], $r['sub']], function ($x) { return $x !== ''; }));
     ob_start(); ?>
     <details class="mon-s" data-roster-url="<?= e($rosterUrl($r['term_id'])) ?>">
       <summary class="mon-row" style="--d:<?= (int) $d ?>">
-        <span class="mon-t"><?= $caret ?><span class="mon-ttl"><b><?= e($r['name']) ?></b><?= $r['sub'] !== '' ? '<small>' . e($r['sub']) . '</small>' : '' ?></span></span>
+        <span class="mon-t"><?= $caret ?><span class="mon-ttl"><b><?= e($r['name']) ?></b><?= $small !== '' ? '<small>' . e($small) . '</small>' : '' ?></span></span>
         <?= $cols($r['num'], Ui::ksb($r['flags'])) ?>
       </summary>
       <div class="mon-roster" style="--base:<?= (int) $d + 1 ?>"></div>
@@ -209,7 +212,7 @@ $structureRow = function (array $r, $d) use ($caret, $cols, $rosterUrl) {
 <div class="card mon-card">
   <div class="mon-scroll">
     <div class="mon-tree" id="mon-tree">
-      <div class="mon-head"><span>Kelompok</span><span>Orang</span><span>Inti (K &middot; S &middot; B)</span><span>Data lengkap</span><span>L &middot; P</span></div>
+      <div class="mon-head"><span>Jenjang &middot; struktur</span><span>Orang</span><span>Inti (K &middot; S &middot; B)</span><span>Data lengkap</span><span>L &middot; P</span></div>
 
       <?php foreach ($blocks as $b):
         $open = in_array($b['level'], $openLevels, true);
@@ -227,17 +230,6 @@ $structureRow = function (array $r, $d) use ($caret, $cols, $rosterUrl) {
           <?php else: ?>
             <div class="mon-body">
               <?php foreach ($b['rows'] as $r) echo $structureRow($r, 1); ?>
-              <?php foreach ($b['groups'] as $g): ?>
-                <details class="mon-g mon-grp"<?= count($b['groups']) === 1 && !$b['rows'] ? ' open' : '' ?>>
-                  <summary class="mon-row" style="--d:1">
-                    <span class="mon-t"><?= $caret ?><span class="mon-ttl"><b><?= e($g['title']) ?></b><small><?= Ui::n($g['strukt']) ?> <?= e($b['level']) ?></small></span></span>
-                    <?= $cols($g['num'], $intiSum($g['inti_lengkap'], $g['strukt'])) ?>
-                  </summary>
-                  <div class="mon-body">
-                    <?php foreach ($g['rows'] as $r) echo $structureRow($r, 2); ?>
-                  </div>
-                </details>
-              <?php endforeach; ?>
             </div>
           <?php endif; ?>
         </details>

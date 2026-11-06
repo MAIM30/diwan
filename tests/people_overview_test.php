@@ -37,46 +37,56 @@ $overview = [
         $s(21, 'DPD', 'Kab. Barru', 6, [11, 'DPW', 'Sulawesi Selatan']),
         $s(22, 'DPD', 'Kota Banda Aceh', 9, [10, 'DPW', 'Aceh']),
         $s(23, 'DPD', 'Kab. Tanpa Induk', 3),
-        $s(30, 'MWD', 'Muslimah Wahdah Islamiyah Daerah Kab. Gowa', 7, [31, 'MWW', 'Sulawesi Selatan']),
+        $s(30, 'MWD', 'Muslimah Wahdah Islamiyah Daerah Kab. Gowa', 7, [31, 'MWW', 'Muslimah Wahdah Islamiyah Wilayah Sulawesi Selatan']),
+        $s(31, 'MWW', 'Muslimah Wahdah Islamiyah Wilayah Sulawesi Selatan', 12),
+        $s(32, 'MWW', 'Muslimah Wahdah Islamiyah Wilayah Aceh', 5),
         $s(40, 'DSO', 'Dewan Syura', 75),
     ],
-    'levels' => ['DPP' => $n(568), 'DPW' => $n(177), 'DPD' => $n(98), 'MWD' => $n(7), 'DSO' => $n(75)],
-    'parents' => [11 => $n(86), 10 => $n(9), 31 => $n(7)],
+    'levels' => ['DPP' => $n(568), 'DPW' => $n(177), 'DPD' => $n(98), 'MWW' => $n(17), 'MWD' => $n(7), 'DSO' => $n(75)],
 ];
 $inti = [1 => $full, 10 => $full, 11 => $full, 20 => $full, 21 => ['k' => true, 's' => true, 'b' => false], 22 => $full, 40 => $full];
 $blocks = PeopleOverview::build($overview, $inti);
 $by = array_column($blocks, null, 'level');
 
-ok('urutan jenjang mengikuti LEVEL_ORDER', array_column($blocks, 'level') === ['DPP', 'DPW', 'DPD', 'MWD', 'DSO'], js(array_column($blocks, 'level')));
+ok('urutan jenjang mengikuti LEVEL_ORDER', array_column($blocks, 'level') === ['DPP', 'DPW', 'DPD', 'MWW', 'MWD', 'DSO'], js(array_column($blocks, 'level')));
 ok('jenjang tunggal: single, membawa term_id dan flags', $by['DPP']['single'] === true && $by['DPP']['term_id'] === 1001 && $by['DPP']['flags'] === $full);
 ok('jenjang banyak struktur: bukan single, tanpa term_id', $by['DPW']['single'] === false && $by['DPW']['term_id'] === null && $by['DPW']['strukt'] === 2);
 ok('angka jenjang diambil dari overview.levels (orang tanpa dobel)', $by['DPW']['num']['orang'] === 177 && $by['DPD']['num']['orang'] === 98);
-ok('DPW tidak dikelompokkan (induknya akar)', $by['DPW']['groups'] === [] && count($by['DPW']['rows']) === 2);
+ok('tak ada lagi kelompok induk di blok mana pun: struktur langsung di bawah jenjang', array_reduce($blocks, function ($c, $b) { return $c && !array_key_exists('groups', $b); }, true));
+ok('jumlah baris = jumlah struktur jenjang', array_reduce($blocks, function ($c, $b) { return $c && count($b['rows']) === $b['strukt']; }, true));
 ok('DPW: keterangan jumlah DPD per baris', array_column($by['DPW']['rows'], 'sub', 'name') === ['Aceh' => '1 DPD', 'Sulawesi Selatan' => '2 DPD'], js(array_column($by['DPW']['rows'], 'sub', 'name')));
-ok('DPD dikelompokkan di bawah DPW induknya, urut nama', array_column($by['DPD']['groups'], 'title') === ['DPW Aceh', 'DPW Sulawesi Selatan'], js(array_column($by['DPD']['groups'], 'title')));
-ok('DPD tanpa induk berdiri sendiri di bawah jenjang', count($by['DPD']['rows']) === 1 && $by['DPD']['rows'][0]['name'] === 'Kab. Tanpa Induk');
-$g = array_column($by['DPD']['groups'], null, 'parent_id');
-ok('angka kelompok induk dari overview.parents; struktur anak dihitung', $g[11]['num']['orang'] === 86 && $g[11]['strukt'] === 2 && $g[10]['strukt'] === 1);
-ok('inti lengkap per kelompok: Sulsel 1 dari 2 (Barru tanpa Bendahara)', $g[11]['inti_lengkap'] === 1 && $g[10]['inti_lengkap'] === 1);
+ok('DPW: tanpa induk, keterangan induk kosong', array_column($by['DPW']['rows'], 'context') === ['', '']);
+
+// DPD: semua struktur dalam satu daftar rata; induknya (provinsi) hanya keterangan dan pengurut, supaya satu provinsi berdampingan.
+ok('DPD: daftar rata terurut induk lalu nama (tanpa induk lebih dulu)', array_column($by['DPD']['rows'], 'name') === ['Kab. Tanpa Induk', 'Kota Banda Aceh', 'Kab. Barru', 'Kab. Bone'], js(array_column($by['DPD']['rows'], 'name')));
+ok('DPD: keterangan = nama provinsi induknya', array_column($by['DPD']['rows'], 'context', 'name') === ['Kab. Tanpa Induk' => '', 'Kota Banda Aceh' => 'Aceh', 'Kab. Barru' => 'Sulawesi Selatan', 'Kab. Bone' => 'Sulawesi Selatan'], js(array_column($by['DPD']['rows'], 'context', 'name')));
 ok('inti lengkap per jenjang: DPD 2 dari 4 (Barru kurang, "Tanpa Induk" tanpa data inti)', $by['DPD']['inti_lengkap'] === 2 && $by['DPD']['strukt'] === 4, js([$by['DPD']['inti_lengkap'], $by['DPD']['strukt']]));
-$barru = array_column($g[11]['rows'], null, 'name')['Kab. Barru'];
+$barru = array_column($by['DPD']['rows'], null, 'name')['Kab. Barru'];
 ok('struktur tanpa Bendahara: inti_ok false, flags apa adanya', $barru['inti_ok'] === false && $barru['flags']['b'] === false);
-$tanpa = $by['DPD']['rows'][0];
+$tanpa = array_column($by['DPD']['rows'], null, 'name')['Kab. Tanpa Induk'];
 ok('struktur tanpa catatan inti sama sekali: ketiganya kosong', $tanpa['flags'] === ['k' => false, 's' => false, 'b' => false] && $tanpa['inti_ok'] === false);
-ok('nama baris MW dipendekkan; induk MWW tanpa nama panjang', $by['MWD']['groups'][0]['rows'][0]['name'] === 'Kab. Gowa' && $by['MWD']['groups'][0]['title'] === 'MWW Sulawesi Selatan', js($by['MWD']['groups'][0]));
+
+// MWW = provinsi, MWD = kabupaten/kota: nama dipendekkan, tanpa awalan "Muslimah Wahdah Islamiyah ...".
+ok('MWW: seluruh provinsi langsung, terurut nama', array_column($by['MWW']['rows'], 'name') === ['Aceh', 'Sulawesi Selatan'], js(array_column($by['MWW']['rows'], 'name')));
+ok('MWW: tanpa keterangan induk; jumlah MWD per provinsi', array_column($by['MWW']['rows'], 'sub', 'name') === ['Aceh' => '', 'Sulawesi Selatan' => '1 MWD'] && array_column($by['MWW']['rows'], 'context') === ['', ''], js(array_column($by['MWW']['rows'], 'sub', 'name')));
+ok('MWD: nama kabupaten dipendekkan, provinsinya jadi keterangan', $by['MWD']['rows'][0]['name'] === 'Kab. Gowa' && $by['MWD']['rows'][0]['context'] === 'Sulawesi Selatan', js($by['MWD']['rows'][0]));
 ok('Dewan: sayap dewan, nama resmi', $by['DSO']['wing'] === 'dewan' && $by['DSO']['name'] === 'Dewan Syura');
-ok('kelompok induk tanpa angka di parents -> nol, bukan galat', (function () use ($s, $n) {
-    $o = ['structures' => [$s(5, 'DPD', 'X', 1, [9, 'DPW', 'Y'])], 'levels' => ['DPD' => $n(1)], 'parents' => []];
-    return PeopleOverview::build($o, [])[0]['groups'][0]['num'] === ['orang' => 0, 'lengkap' => 0, 'l' => 0, 'p' => 0];
+ok('urutan alami: "Kab. 2" mendahului "Kab. 10"', (function () use ($s) {
+    $o = ['structures' => [$s(1, 'DPD', 'Kab. 10', 1, [9, 'DPW', 'X']), $s(2, 'DPD', 'Kab. 2', 1, [9, 'DPW', 'X'])], 'levels' => ['DPD' => ['orang' => 2, 'lengkap' => 2, 'l' => 2, 'p' => 0]]];
+    return array_column(PeopleOverview::build($o, [])[0]['rows'], 'name') === ['Kab. 2', 'Kab. 10'];
 })());
-ok('hasil kosong untuk overview kosong', PeopleOverview::build(['structures' => [], 'levels' => [], 'parents' => []], []) === []);
-ok('jenjang tanpa struktur diabaikan (levels tanpa baris struktur)', PeopleOverview::build(['structures' => [], 'levels' => ['DPW' => $n(1)], 'parents' => []], []) === []);
+ok('hasil kosong untuk overview kosong', PeopleOverview::build(['structures' => [], 'levels' => []], []) === []);
+ok('jenjang tanpa struktur diabaikan (levels tanpa baris struktur)', PeopleOverview::build(['structures' => [], 'levels' => ['DPW' => $n(1)]], []) === []);
 
 // ---- jenjang terbuka sejak awal ----
 ok('defaultOpen: dua jenjang berstruktur banyak yang pertama (DPP satu-struktur tidak dibuka otomatis)', PeopleOverview::defaultOpen($blocks) === ['DPW', 'DPD'], js(PeopleOverview::defaultOpen($blocks)));
 ok('defaultOpen: jenjang terpilih saja', PeopleOverview::defaultOpen($blocks, 'DPD') === ['DPD']);
 ok('defaultOpen: hanya jenjang satu-struktur -> jenjang pertama dibuka (halaman tak tampak kosong)', PeopleOverview::defaultOpen(array_slice($blocks, 0, 1)) === ['DPP']);
 ok('defaultOpen: tanpa jenjang sama sekali', PeopleOverview::defaultOpen([]) === []);
-
+$big = ['level' => 'DPD', 'single' => false, 'strukt' => PeopleOverview::OPEN_MAX_ROWS + 1];
+$small = ['level' => 'MWW', 'single' => false, 'strukt' => 36];
+$mixed = [['level' => 'DPW', 'single' => false, 'strukt' => 37], $big, $small];
+ok('defaultOpen: jenjang yang terlalu panjang (DPD/MWD ratusan baris) dilewati', PeopleOverview::defaultOpen($mixed) === ['DPW', 'MWW'], js(PeopleOverview::defaultOpen($mixed)));
+ok('defaultOpen: jenjang panjang tetap terbuka bila dipilih', PeopleOverview::defaultOpen([$big], 'DPD') === ['DPD']);
 echo "\nLULUS: $pass    GAGAL: $fail\n";
 exit($fail ? 1 : 0);
