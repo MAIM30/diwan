@@ -187,15 +187,16 @@ $rosterUrl = function ($termId) use ($facetQuery) {
 // Pengurus Inti, Bidang, unit). Di bawah nama: induknya ("Sulawesi Selatan" untuk sebuah kabupaten) dan jumlah struktur anaknya ("5 MWD").
 // $d = kedalaman untuk indentasi. Struktur yang belum punya periode berjalan (term_id null) tak punya isi untuk dimuat: barisnya tidak bisa dibuka
 // dan hanya menunjukkan bahwa strukturnya ada (dengan tautan Buat periode bagi yang boleh mengubah).
-$noTermNote = function ($structureId) {
-    return 'Belum punya periode berjalan' . (Auth::canEdit()
-        ? ' &middot; <a href="' . BASEURL . '/terms/form/0/' . (int) $structureId . '">Buat periode</a>' : '');
+// Periode yang sudah dibuat tetapi belum ditandai berjalan ($pending) ditulis apa adanya dengan tombol Tandai berjalan; Buat periode hanya bila belum ada (Ui::termGap).
+$backPath = substr($qs(), strlen(BASEURL) + 1);
+$noTermNote = function ($structureId, $pending) use ($backPath) {
+    return Ui::termGap($structureId, $pending, $backPath);
 };
 $structureRow = function (array $r, $d) use ($caret, $cols, $rosterUrl, $noTermNote) {
     $small = implode(' · ', array_filter([$r['context'], $r['sub']], function ($x) { return $x !== ''; }));
     if ($r['term_id'] === null) {
         return '<div class="mon-row mon-noterm" style="--d:' . (int) $d . '"><span class="mon-t"><span class="mon-caret-gap"></span>'
-            . '<span class="mon-ttl"><b>' . e($r['name']) . '</b><small>' . ($small !== '' ? e($small) . ' &middot; ' : '') . $noTermNote($r['id']) . '</small></span></span>'
+            . '<span class="mon-ttl"><b>' . e($r['name']) . '</b><small>' . ($small !== '' ? e($small) . ' &middot; ' : '') . $noTermNote($r['id'], $r['pending']) . '</small></span></span>'
             . $cols($r['num'], Ui::ksb($r['flags'])) . '</div>';
     }
     ob_start(); ?>
@@ -239,7 +240,7 @@ $structureRow = function (array $r, $d) use ($caret, $cols, $rosterUrl, $noTermN
         <div class="mon-g mon-lvl <?= e($b['wing']) ?>">
           <div class="mon-row mon-noterm" style="--d:0">
             <span class="mon-t"><span class="mon-caret-gap"></span><span class="mon-ttl"><b><?= e($b['level']) ?></b>
-              <small><?= e($b['name']) ?> &middot; <?= $noTermNote($b['rows'][0]['id']) ?></small></span></span>
+              <small><?= e($b['name']) ?> &middot; <?= $noTermNote($b['rows'][0]['id'], $b['pending']) ?></small></span></span>
             <?= $cols($b['num'], $inti) ?>
           </div>
         </div>

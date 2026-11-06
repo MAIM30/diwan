@@ -283,6 +283,34 @@ class TermModel {
         }
     }
 
+    // Menandai satu periode sebagai yang berjalan (satu aksi, tanpa membuka formulir): tanda dilepas dari periode lain di struktur yang sama
+    // dan statusnya menjadi Aktif bila masih Draf (berjalan = aktif, sama seperti attachGovernancePeriodToStructures). Data periode lain utuh.
+    public function markCurrent($id) {
+        $id = (int) $id;
+        $before = $this->findById($id);
+        if (!$before) return false;
+        if ((int) $before['is_current'] === 1) return true;
+
+        $this->db->beginTransaction();
+        try {
+            $this->clearCurrent((int) $before['structure_id'], $id);
+            $this->db->prepare("UPDATE terms SET is_current = 1, status = IF(status = 'draft', 'active', status) WHERE id = :id")->execute([':id' => $id]);
+            $this->db->commit();
+            Audit::log('terms', $id, 'update', $before, $this->findById($id));
+            return true;
+        } catch (PDOException $e) {
+            $this->db->rollBack();
+            throw $e;
+        }
+    }
+
+    // Sudah ada periode berjalan di struktur ini?
+    public function hasCurrent($structureId) {
+        $stmt = $this->db->prepare("SELECT 1 FROM terms WHERE structure_id = :sid AND is_current = 1 AND deleted_at IS NULL LIMIT 1");
+        $stmt->execute([':sid' => (int) $structureId]);
+        return (bool) $stmt->fetchColumn();
+    }
+
     private function clearCurrent($structureId, $exceptId = null) {
         $sql = "UPDATE terms SET is_current = 0 WHERE structure_id = :sid AND is_current = 1";
         $params = [':sid' => (int) $structureId];

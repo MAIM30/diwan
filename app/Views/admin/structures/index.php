@@ -20,10 +20,11 @@ $qs = function (array $over = []) use ($base, $keep) {
     return BASEURL . '/structures' . ($p ? '?' . http_build_query($p) : '');
 };
 $backQuery = http_build_query(array_filter($base + ['page' => $page > 1 ? $page : ''], $keep));   // dikirim aksi Hapus supaya kembali ke daftar yang sama
+$backPath = 'structures' . ($backQuery !== '' ? '?' . $backQuery : '');                          // dan tombol Tandai berjalan
 $chipGroups = PeopleOverview::chipGroups($levelCounts);
 
 // Simpul pohon: <details>; mengetuknya membuka keterangan dan anak-anaknya (tanpa JavaScript pun berfungsi).
-$node = function (array $r) use (&$node, $kids, $openIds, $matchIds, $filtered, $canEdit, $backQuery) {
+$node = function (array $r) use (&$node, $kids, $openIds, $matchIds, $filtered, $canEdit, $backQuery, $backPath) {
     $id = (int) $r['id'];
     $children = $kids[$id] ?? [];
     $context = $filtered && !isset($matchIds[$id]);   // hanya induk dari yang cocok (jalan menuju yang cocok): tampil redup, tanpa isi
@@ -45,7 +46,8 @@ $node = function (array $r) use (&$node, $kids, $openIds, $matchIds, $filtered, 
         <div class="sn-body">
           <dl class="sn-facts">
             <?php if ($r['region_code']): ?><div><dt>Kode wilayah</dt><dd class="mono"><?= e($r['region_code']) ?></dd></div><?php endif; ?>
-            <div><dt>Periode</dt><dd><a href="<?= BASEURL ?>/terms?structure=<?= $id ?>"><?= $r['term'] ? e($r['term']['name']) . ' (berjalan)' : 'Lihat periode' ?></a></dd></div>
+            <div><dt>Periode</dt><dd><?php if ($r['term']): ?><a href="<?= BASEURL ?>/terms?structure=<?= $id ?>"><?= e($r['term']['name']) ?> (berjalan)</a>
+              <?php else: ?><span class="small"><?= Ui::termGap($id, $r['pending'], $backPath) ?></span><?php endif; ?></dd></div>
             <?php if ($canEdit): ?>
               <div>
                 <dt>Admin struktur ini</dt>
@@ -185,8 +187,7 @@ $node = function (array $r) use (&$node, $kids, $openIds, $matchIds, $filtered, 
               <?php if ($r['term']): ?>
                 <a href="<?= BASEURL ?>/terms?structure=<?= $id ?>"><?= e($r['term']['name']) ?></a>
               <?php else: ?>
-                <span class="muted">belum ada</span>
-                <?php if ($canEdit): ?> &middot; <a href="<?= BASEURL ?>/terms/form/0/<?= $id ?>">Buat periode</a><?php endif; ?>
+                <span class="muted"><?= Ui::termGap($id, $r['pending'], $backPath) ?></span>
               <?php endif; ?>
             </td>
             <?php if ($canEdit): ?>

@@ -253,7 +253,11 @@ class PersonModel {
             $empty = $this->db->query("
                 SELECT s.id, s.level, s.name, sp.id AS parent_id, sp.level AS parent_level, sp.name AS parent_name,
                        (SELECT tr.id FROM terms tr WHERE tr.structure_id = s.id AND tr.is_current = 1 AND tr.deleted_at IS NULL
-                         ORDER BY tr.start_date DESC, tr.id DESC LIMIT 1) AS term_id
+                         ORDER BY tr.start_date DESC, tr.id DESC LIMIT 1) AS term_id,
+                       (SELECT tr.id FROM terms tr WHERE tr.structure_id = s.id AND tr.is_current = 0 AND tr.status <> 'ended' AND tr.deleted_at IS NULL
+                         ORDER BY tr.start_date DESC, tr.id DESC LIMIT 1) AS pending_id,
+                       (SELECT tr.name FROM terms tr WHERE tr.structure_id = s.id AND tr.is_current = 0 AND tr.status <> 'ended' AND tr.deleted_at IS NULL
+                         ORDER BY tr.start_date DESC, tr.id DESC LIMIT 1) AS pending_name
                 FROM structures s
                 LEFT JOIN structures sp ON $parentOn
                 WHERE s.deleted_at IS NULL AND " . AdminScope::sqlFilter('s.id')
@@ -263,7 +267,10 @@ class PersonModel {
             foreach ($empty as $r) {
                 $sid = (int) $r['id'];
                 if (isset($structures[$sid])) continue;
-                $structures[$sid] = ['id' => $sid, 'term_id' => $r['term_id'] !== null ? (int) $r['term_id'] : null, 'level' => $r['level'], 'name' => $r['name'],
+                $hasTerm = $r['term_id'] !== null;
+                // Periode yang ada tetapi belum ditandai berjalan: hanya berarti bila strukturnya belum punya periode berjalan.
+                $structures[$sid] = ['id' => $sid, 'term_id' => $hasTerm ? (int) $r['term_id'] : null, 'level' => $r['level'], 'name' => $r['name'],
+                                     'pending' => !$hasTerm && $r['pending_id'] !== null ? ['id' => (int) $r['pending_id'], 'name' => $r['pending_name']] : null,
                                      'parent_id' => $r['parent_id'] !== null ? (int) $r['parent_id'] : null,
                                      'parent_level' => $r['parent_level'], 'parent_name' => $r['parent_name']];
                 $byStructure[$sid] = [];

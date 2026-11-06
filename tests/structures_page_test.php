@@ -40,6 +40,7 @@ function scoped(array $roots) {
 function page(array $get) { $_GET = $get; $_SERVER['REQUEST_METHOD'] = 'GET'; ob_start(); (new TST)->index(); return ob_get_clean(); }
 function dataRows($h) { return max(0, substr_count($h, '<tr>') - 1); }   // tanpa baris judul
 function sql($pdo, $q) { return (int) $pdo->query($q)->fetchColumn(); }
+function chipCountS($h, $label) { return preg_match('/<a class="chip[^"]*"[^>]*>' . preg_quote($label, '/') . ' <span class="chip-n">([\d.]+)<\/span>/u', $h, $m) ? (int) str_replace('.', '', $m[1]) : -1; }
 
 $pdo = Database::getInstance()->getConnection();
 national();
@@ -91,17 +92,30 @@ ok(preg_match('/>MWD <span class="chip-n">1<\/span>/', $h) === 1 && preg_match('
 ok(strpos($h, 'chip zero') !== false, 'chip berangka nol dibuat redup (kelas zero)');
 
 // ---------- Status ----------
-$noTerm = sql($pdo, "SELECT COUNT(*) FROM structures s WHERE s.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM terms t WHERE t.structure_id = s.id AND t.is_current = 1 AND t.deleted_at IS NULL)");
+// Tiga keadaan periode yang saling lepas: berjalan; ada periode (draf/aktif) tetapi belum ditandai berjalan; belum punya periode (atau hanya yang sudah selesai).
+$hasCur = "EXISTS (SELECT 1 FROM terms t WHERE t.structure_id = s.id AND t.is_current = 1 AND t.deleted_at IS NULL)";
+$hasPend = "EXISTS (SELECT 1 FROM terms t WHERE t.structure_id = s.id AND t.is_current = 0 AND t.status <> 'ended' AND t.deleted_at IS NULL)";
+$withTerm = sql($pdo, "SELECT COUNT(*) FROM structures s WHERE s.deleted_at IS NULL AND $hasCur");
+$pendN = sql($pdo, "SELECT COUNT(*) FROM structures s WHERE s.deleted_at IS NULL AND NOT $hasCur AND $hasPend");
+$noTerm = sql($pdo, "SELECT COUNT(*) FROM structures s WHERE s.deleted_at IS NULL AND NOT $hasCur AND NOT $hasPend");
+ok($withTerm + $pendN + $noTerm === $total, 'tiga keadaan periode saling lepas dan menjumlah ke seluruh struktur', "$withTerm + $pendN + $noTerm vs $total");
 $h = page(['f' => 'tanpa_periode']);
-ok(strpos($h, 'Menampilkan <b>' . Ui::n($noTerm) . '</b>') !== false && substr_count($h, 'belum ada</span>') >= 40, 'f=tanpa_periode: tepat yang belum punya periode berjalan (' . $noTerm . ')');
-$withTerm = $total - $noTerm;
+ok(strpos($h, 'Menampilkan <b>' . Ui::n($noTerm) . '</b>') !== false && substr_count($h, 'Belum punya periode berjalan') >= 40, 'f=tanpa_periode: tepat yang belum punya periode sama sekali (' . $noTerm . ')');
 $h = page(['f' => 'berperiode']);
 ok(strpos($h, 'Menampilkan <b>' . Ui::n($withTerm) . '</b>') !== false, 'f=berperiode: tepat yang punya periode berjalan (' . $withTerm . ')');
+if ($pendN > 0) {
+    $h = page(['f' => 'belum_berjalan']);
+    ok(strpos($h, 'Menampilkan <b>' . Ui::n($pendN) . '</b>') !== false && strpos($h, 'belum ditandai berjalan') !== false && strpos($h, 'Tandai berjalan') !== false
+        && strpos($h, 'Buat periode') === false, 'f=belum_berjalan: ' . $pendN . ' struktur, tertulis "belum ditandai berjalan" + Tandai berjalan, tanpa Buat periode');
+    ok(chipCountS(page([]), 'Periode belum ditandai berjalan') === $pendN, 'chip "Periode belum ditandai berjalan" = SQL');
+} else {
+    ok(strpos(page([]), 'Periode belum ditandai berjalan') === false, 'tanpa struktur seperti itu, chipnya tidak ditawarkan');
+}
 $admins = sql($pdo, "SELECT COUNT(DISTINCT scope_structure_id) FROM account_roles WHERE role = 'admin_struktur'");
 $h = page(['f' => 'punya_admin']);
 ok($admins > 0 && dataRows($h) === $admins, 'f=punya_admin: tepat struktur yang punya admin (' . $admins . ')', (string) dataRows($h));
 $h = page(['f' => 'tanpa_periode', 'lv' => 'DPD']);
-$wantBoth = sql($pdo, "SELECT COUNT(*) FROM structures s WHERE s.deleted_at IS NULL AND s.level = 'DPD' AND NOT EXISTS (SELECT 1 FROM terms t WHERE t.structure_id = s.id AND t.is_current = 1 AND t.deleted_at IS NULL)");
+$wantBoth = sql($pdo, "SELECT COUNT(*) FROM structures s WHERE s.deleted_at IS NULL AND s.level = 'DPD' AND NOT $hasCur AND NOT $hasPend");
 ok(strpos($h, 'Menampilkan <b>' . Ui::n($wantBoth) . '</b>') !== false, 'jenjang + status digabung (' . $wantBoth . ' DPD tanpa periode)');
 $h = page(['f' => 'asal']);
 ok(dataRows($h) === 50, 'status tak sah diabaikan');

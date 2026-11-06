@@ -315,6 +315,9 @@ class TermsController extends Controller {
         $this->view('admin/terms/form', [
             'title'       => $id ? 'Ubah Periode' : 'Tambah Periode',
             'row'         => $row,
+            // Periode baru untuk struktur yang belum punya periode berjalan: tanda berjalan dicentang dari awal. Dulu tak tercentang, sehingga
+            // strukturnya tetap tampil "belum punya periode berjalan" walau periodenya sudah dibuat.
+            'markCurrentDefault' => !$id && $structureId && !$terms->hasCurrent($structureId),
             'structures'  => $structures->allInScope(),
             'governancePeriods' => $terms->governancePeriodsInScope(),
             'governancePeriodId' => (int) ($_GET['governance_period_id'] ?? 0),
@@ -354,6 +357,15 @@ class TermsController extends Controller {
             Flash::set('error', 'Pilih acuan Periode Kepengurusan yang tersedia.');
             $this->redirect('terms/form' . ($id ? '/' . $id : '/0/' . $structureId));
         }
+        // Struktur yang sudah memakai acuan itu: bukan galat buntu, melainkan ke periode yang sudah ada (biasanya tinggal ditandai berjalan).
+        if (!$id && ($dup = $terms->termForStructureAndPeriod($structureId, $data['governance_period_id']))) {
+            Flash::set('warning', $dup['level'] . ' ' . $dup['structure_name'] . ' sudah memakai periode ' . $dup['name'] . ($dup['is_current']
+                ? '. Ubah periode itu di sini.'
+                : ', hanya belum ditandai berjalan. Centang "Tandai sebagai periode yang sedang berjalan" di sini bila memang berjalan, lalu simpan.'));
+            $this->redirect('terms/form/' . (int) $dup['id']);
+        }
+        // Berjalan = Aktif (sama seperti saat menautkan acuan ke banyak struktur): Draf yang ditandai berjalan menjadi Aktif.
+        if ($data['is_current'] && $data['status'] === 'draft') $data['status'] = 'active';
         $dateAnchor = $id ? $terms->findById($id) : $terms->governancePeriodFindById($data['governance_period_id']);
         if (!empty($data['end_date_actual']) && $data['end_date_actual'] < $dateAnchor['start_date']) {
             Flash::set('error', 'Tanggal akhir aktual tidak boleh lebih awal dari tanggal mulai periode.');
@@ -365,12 +377,16 @@ class TermsController extends Controller {
                 $terms->update($id, $data);
                 $skErr = $this->handleSkUpload($id, $terms);
                 Flash::set($skErr ? 'error' : 'success', $skErr ? 'Periode diperbarui, tetapi berkas SK ditolak: ' . $skErr : 'Periode diperbarui.');
+                if (!$skErr && !$terms->hasCurrent($structureId)) Flash::set('warning', 'Periode diperbarui. Struktur ini belum punya periode berjalan; tandai salah satu periodenya.');
                 $this->redirect('terms/detail/' . $id);
             } else {
                 $newId = $terms->create($data);
                 $skErr = $this->handleSkUpload($newId, $terms);
                 Flash::set($skErr ? 'error' : 'success', $skErr ? 'Periode dibuat, tetapi berkas SK ditolak: ' . $skErr
                     : 'Periode dibuat. Langkah berikutnya: susun Bidang & unit, atau salin dari periode sebelumnya.');
+                if (!$skErr && !$terms->hasCurrent($structureId)) {
+                    Flash::set('warning', 'Periode dibuat, tetapi belum ditandai berjalan, jadi struktur ini masih tampil "belum punya periode berjalan". Tandai lewat Ubah periode, atau tombol "Tandai berjalan" di halaman Struktur.');
+                }
                 $this->redirect('terms/detail/' . $newId);
             }
         } catch (PDOException $e) {
@@ -385,6 +401,38 @@ class TermsController extends Controller {
             Flash::set('error', $e->getMessage());
             $this->redirect('terms/form' . ($id ? '/' . $id : '/0/' . $structureId));
         }
+    }
+
+    // Tandai berjalan dengan satu klik (dari halaman Struktur dan Data Pengurus), tanpa membuka formulir periode. $_POST['back'] = halaman asal.
+    public function mark_current() {
+        $this->requireLogin();
+        if (!Auth::canEdit()) $this->denied();
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') $this->redirect('terms');
+
+        $terms = $this->model('TermModel');
+        $term = $terms->findById((int) ($_POST['id'] ?? 0));
+        if (!$term) $this->notFound('Periode tidak ditemukan.');
+        $this->requireScope($term['structure_id']);
+
+        $back = $this->safeBack($_POST['back'] ?? '');
+        if ($term['status'] === 'ended') {
+            Flash::set('error', 'Periode yang sudah selesai tidak ditandai berjalan dengan tombol ini. Ubah periodenya bila memang perlu.');
+            $this->redirect($back);
+        }
+        try {
+            $terms->markCurrent($term['id']);
+            Flash::set('success', $term['level'] . ' ' . $term['structure_name'] . ': periode ' . $term['name'] . ' ditandai berjalan.');
+        } catch (PDOException $e) {
+            error_log('Tandai berjalan gagal: ' . $e->getMessage());
+            Flash::set('error', 'Periode tidak bisa ditandai berjalan.');
+        }
+        $this->redirect($back);
+    }
+
+    // Halaman tujuan kembali: hanya halaman daftar yang dikenal (atau profil satu orang, people/detail/ID) dengan query string biasa; selain itu daftar periode.
+    private function safeBack($back) {
+        $back = is_string($back) ? trim($back) : '';
+        return preg_match('/^(structures|people(\/detail\/\d+)?|terms)(\?[A-Za-z0-9_=&%.+\-]*)?$/', $back) ? $back : 'terms';
     }
 
     // Menyalin susunan Bidang & unit dari periode lain pada struktur yang sama. Dibutuhkan karena

@@ -515,11 +515,23 @@ Lingkup admin berlaku di semuanya; nama struktur induk di luar lingkup tidak per
 
 **Struktur Organisasi** (`/structures`) punya saringan supaya yang dicari mudah ditemukan (dulu hanya pohon dengan Buka/Tutup semua, dan seluruh ~1.100 simpul dimuat sekaligus, sekitar 2 MB):
 baris **Jenjang** (chip per jenjang yang ADA, dikelompokkan Umum / Muslimah / Dewan, dengan jumlah struktur), kotak cari (nama, kode wilayah, atau nama induk; `?q=`), dan chip status
-(`?f=`: Punya periode berjalan, Belum punya periode, Punya admin untuk yang boleh mengelola akun, dan Nonaktif bila ada). Angka tiap chip mengikuti penyaring lain, jadi sama dengan
+(`?f=`: Punya periode berjalan, **Periode belum ditandai berjalan** bila ada, Belum punya periode, Punya admin untuk yang boleh mengelola akun, dan Nonaktif bila ada). Angka tiap chip mengikuti penyaring lain, jadi sama dengan
 baris yang tampil bila diketuk; chip berangka nol redup. Dua tampilan (`?tampil=`): **Daftar** (bawaan; tabel berhalaman 25/50/100, terurut jenjang, induk, nama; kolom Struktur, Jenjang,
 Kode wilayah, Periode berjalan, Admin, dan aksi ikon) dan **Pohon** (hierarki yang bisa dibuka; dengan saringan hanya yang cocok beserta induk-induknya, yang dibuka dan tampil redup tanpa
 isi). Seluruhnya disaring di PHP dari satu daftar (`StructuresController::index`), tanpa perubahan database, dan hanya struktur dalam lingkup admin yang ikut (induk di luar lingkup tak
 pernah tampil). Hapus kembali ke daftar yang sama lewat `back` (hanya karakter query string biasa yang diterima). Diuji di `tests/structures_page_test.php`.
+
+**Periode yang sudah dibuat tetapi belum ditandai berjalan.** Kolom "Periode berjalan" di Struktur dan baris struktur di Data Pengurus hanya melihat periode bertanda `is_current`.
+Periode yang dibuat tanpa mencentang "Tandai sebagai periode yang sedang berjalan" (status Draf) dulu tampil "belum ada" + Buat periode, padahal membuat periode itu lagi gagal
+("sudah menggunakan Periode Kepengurusan tersebut"; kasus DPLN baru). Kini tiga keadaan dibedakan (`StructureModel::pendingTermsInScope`, `Ui::termGap`): **berjalan** (nama periode),
+**ada tetapi belum ditandai** (tertulis "Periode 2026-2031 belum ditandai berjalan" + tombol **Tandai berjalan**, satu klik, `TermsController::mark_current`: tanda dilepas dari periode
+lain di struktur itu, Draf menjadi Aktif, kembali ke halaman asal yang dikenal saja), dan **belum ada** ("Belum punya periode berjalan" + Buat periode; juga bila hanya ada periode yang
+sudah selesai). Pencegahan di sumbernya: formulir periode baru mencentang "berjalan" bila strukturnya belum punya periode berjalan; menandai berjalan pada Draf menjadikannya Aktif;
+Buat periode untuk acuan yang sudah dipakai struktur itu mengarahkan ke periode yang ada (bukan galat buntu); dan menyimpan periode yang membuat struktur tanpa periode berjalan memberi
+peringatan. **Profil orang** (`/people/detail/ID`): penempatan yang belum berakhir di periode seperti itu tak terhitung "Jabatan Saat Ini" (hanya periode berjalan yang dihitung), padahal tercatat
+di Riwayat; kartunya dulu tampak kosong ("Tidak sedang menjabat di periode berjalan"). Kini kartu menjelaskannya ("Belum terhitung menjabat", struktur, periode, dan tombol Tandai berjalan yang
+kembali ke profil itu), dan Riwayat memberi lencana "belum ditandai berjalan". Hanya periode milik struktur yang BELUM punya periode berjalan yang dihitung menunggu; periode berikutnya milik
+struktur yang sudah punya periode berjalan bukan masalah. Diuji di `tests/term_current_test.php`.
 
 **Periode Kepengurusan** (`/terms`) memakai pola saringan yang sama (dulu seluruh ~520 periode tampil sekaligus tanpa satu pun saringan): baris **Jenjang** (chip), baris **Acuan**
 (chip acuan periode, hanya bila ada lebih dari satu, mis. 2021-2026 dan 2026-2031; `?pr=`), kotak cari (`?q=`; setiap kata harus cocok di jenjang, nama, induk, acuan, nama periode, atau

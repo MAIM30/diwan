@@ -185,6 +185,15 @@ class PeopleController extends Controller {
             return !empty($h['is_current']) && (empty($h['end_date']) || $h['end_date'] >= $today);
         }));
 
+        // Penempatan yang belum berakhir di periode yang BELUM ditandai berjalan (strukturnya belum punya periode berjalan): tak terhitung "jabatan saat
+        // ini", padahal tercatat di Riwayat. Biasanya periode itu dibuat tanpa mencentang "berjalan". Kunci: id penempatan.
+        $pending = $this->model('StructureModel')->pendingTermsInScope();
+        $waiting = [];
+        foreach ($history as $h) {
+            $p = $pending[(int) $h['structure_id']] ?? null;
+            if ($p && $p['id'] === (int) $h['term_id'] && (empty($h['end_date']) || $h['end_date'] >= $today)) $waiting[(int) $h['id']] = $h;
+        }
+
         // Tambah jabatan dari profil dapat memilih struktur lain tanpa harus memakai acuan periode yang sama dengan penempatan orang yang
         // sedang dilihat. Daftarnya TIDAK dimuat di halaman ini: pemilih struktur mencarinya di placements/structures menurut sayap orangnya.
         $expectedWing = $person['gender'] === 'P' ? 'muslimah' : 'umum';
@@ -211,6 +220,7 @@ class PeopleController extends Controller {
             'hidden'   => $hidden,
             'allPlacementCount' => count($all),
             'current'  => $current,
+            'waiting'  => $waiting,
             'canPlace' => $canPlace,
             'placementWing' => $expectedWing,
             'portal'     => $portal,

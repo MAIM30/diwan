@@ -90,9 +90,10 @@ $selectedStructure = (int) ($row['structure_id'] ?? $structureId ?? 0);
       <div class="field">
         <label>Periode Berjalan</label>
         <label class="check">
-          <input type="checkbox" name="is_current" value="1" <?= !empty($row['is_current']) ? 'checked' : '' ?>>
+          <input type="checkbox" name="is_current" value="1" <?= !empty($row['is_current']) || !empty($markCurrentDefault) ? 'checked' : '' ?>>
           <span>Tandai sebagai periode yang sedang berjalan</span>
         </label>
+        <?php if (!empty($markCurrentDefault)): ?><div class="help">Dicentang karena struktur ini belum punya periode berjalan.</div><?php endif; ?>
         <div class="help">Hanya satu periode per struktur yang bisa ditandai berjalan. Menandai yang
           ini otomatis melepas tanda dari periode sebelumnya &mdash; datanya tetap utuh.</div>
       </div>

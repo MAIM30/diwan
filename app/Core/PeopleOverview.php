@@ -74,7 +74,7 @@ class PeopleOverview {
             $sub = [];
             foreach ($childrenOf[$s['id']] ?? [] as $level => $n) $sub[] = $n . ' ' . $level;
             return [
-                'id' => $s['id'], 'term_id' => $s['term_id'], 'name' => self::shortName($s['name']),
+                'id' => $s['id'], 'term_id' => $s['term_id'], 'pending' => $s['pending'] ?? null, 'name' => self::shortName($s['name']),
                 'context' => $s['parent_name'] !== null ? self::shortName($s['parent_name']) : '', 'sub' => implode(', ', $sub),
                 'num' => ['orang' => $s['orang'], 'lengkap' => $s['lengkap'], 'l' => $s['l'], 'p' => $s['p']],
                 'flags' => $flags, 'inti_ok' => $flags['k'] && $flags['s'] && $flags['b'],
@@ -98,6 +98,7 @@ class PeopleOverview {
                 'strukt' => count($rows), 'inti_lengkap' => count(array_filter($rows, function ($r) { return $r['inti_ok']; })),
                 'num' => $overview['levels'][$level],
                 'single' => $single, 'flags' => $single ? $rows[0]['flags'] : null, 'term_id' => $single ? $rows[0]['term_id'] : null,
+                'pending' => $single ? $rows[0]['pending'] : null,
                 'rows' => $rows,
             ];
         }

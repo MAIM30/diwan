@@ -248,8 +248,20 @@ $akhiriPanel = function ($h, $prefix) use ($endReasons) {
     <div class="split">
       <section class="card">
         <div class="card-head"><h2><?= Ui::icon('briefcase', 19) ?> Jabatan Saat Ini</h2></div>
+        <?php if (!empty($waiting)): ?>
+          <?php // Tercatat di Riwayat tetapi periodenya belum ditandai berjalan, jadi belum terhitung "jabatan saat ini". Tanpa keterangan ini kartunya tampak kosong. ?>
+          <div class="alert warning" style="margin:0 0 14px">
+            <strong>Belum terhitung menjabat.</strong> Penempatan berikut ada di periode yang belum ditandai berjalan:
+            <ul style="margin:8px 0 0;padding-left:18px">
+              <?php foreach ($waiting as $w): ?>
+                <li><?= e($w['position_name']) ?> &middot; <?= e($w['level'] . ' ' . $w['structure_name']) ?> &middot; periode <a href="<?= BASEURL ?>/terms/detail/<?= (int) $w['term_id'] ?>"><?= e($w['term_name']) ?></a>
+                  <?php if (Auth::canEdit()): ?> &middot; <?= Ui::markCurrentForm($w['term_id'], 'people/detail/' . (int) $person['id']) ?><?php endif; ?></li>
+              <?php endforeach; ?>
+            </ul>
+          </div>
+        <?php endif; ?>
         <?php if (empty($current)): ?>
-          <div class="empty"><?= Ui::icon('briefcase', 26) ?><span>Tidak sedang menjabat di periode berjalan.</span></div>
+          <?php if (empty($waiting)): ?><div class="empty"><?= Ui::icon('briefcase', 26) ?><span>Tidak sedang menjabat di periode berjalan.</span></div><?php endif; ?>
         <?php else: ?>
           <div class="tiles">
             <?php foreach ($current as $h): ?>
@@ -369,7 +381,8 @@ $akhiriPanel = function ($h, $prefix) use ($endReasons) {
                 <strong><?= e($h['position_name']) ?></strong>
                 <?php if ($h['is_core'] && !$h['unit_name']): ?><span class="badge core">inti</span><?php endif; ?>
                 <?php if ($now): ?><span class="badge current">berjalan</span>
-                <?php elseif ($h['term_status'] === 'ended'): ?><span class="badge ended">arsip</span><?php endif; ?>
+                <?php elseif ($h['term_status'] === 'ended'): ?><span class="badge ended">arsip</span>
+                <?php elseif (isset($waiting[(int) $h['id']])): ?><span class="badge" title="Periodenya belum ditandai berjalan, jadi belum terhitung jabatan saat ini">belum ditandai berjalan</span><?php endif; ?>
                 <?php if ($h['wing'] === 'muslimah'): ?><span class="badge muslimah">Muslimah</span><?php endif; ?>
               </div>
               <div class="l-sub">

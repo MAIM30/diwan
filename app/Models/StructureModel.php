@@ -90,6 +90,24 @@ class StructureModel {
         return $out;
     }
 
+    // Struktur yang BELUM punya periode berjalan tetapi sudah punya periode (draf atau aktif, belum selesai) yang belum ditandai berjalan:
+    // structure_id => ['id', 'name'] (yang terbaru). Tanpa ini halaman Struktur dan Data Pengurus menulis "belum ada periode" untuk struktur
+    // yang periodenya sudah dibuat, lalu "Buat periode" gagal ("sudah menggunakan periode tersebut"); yang kurang hanya tandanya.
+    public function pendingTermsInScope() {
+        $rows = $this->db->query("
+            SELECT t.structure_id, t.id, t.name FROM terms t
+            WHERE t.deleted_at IS NULL AND t.is_current = 0 AND t.status <> 'ended' AND " . AdminScope::sqlFilter('t.structure_id') . "
+              AND NOT EXISTS (SELECT 1 FROM terms c WHERE c.structure_id = t.structure_id AND c.is_current = 1 AND c.deleted_at IS NULL)
+            ORDER BY t.start_date DESC, t.id DESC
+        ")->fetchAll();
+        $out = [];
+        foreach ($rows as $r) {
+            $sid = (int) $r['structure_id'];
+            if (!isset($out[$sid])) $out[$sid] = ['id' => (int) $r['id'], 'name' => $r['name']];
+        }
+        return $out;
+    }
+
     // Tingkat yang sudah ada di lingkup admin dan tingkat yang dapat dibuat sebagai anaknya.
     public function levelsInScope() {
         if (AdminScope::isUnbounded()) return self::LEVELS;

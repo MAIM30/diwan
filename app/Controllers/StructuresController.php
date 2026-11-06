@@ -3,8 +3,11 @@
 
 class StructuresController extends Controller {
     const PER_PAGE_OPTIONS = [25, 50, 100];
-    // Saringan status (?f=), satu pilihan. 'punya_admin' hanya untuk yang boleh mengelola akun; 'nonaktif' hanya ditawarkan bila ada yang nonaktif.
-    const FILTERS = ['berperiode' => 'Punya periode berjalan', 'tanpa_periode' => 'Belum punya periode', 'punya_admin' => 'Punya admin', 'nonaktif' => 'Nonaktif'];
+    // Saringan status (?f=), satu pilihan. Tiga keadaan periode yang saling lepas: berjalan; ada periode tetapi belum ditandai berjalan (draf/aktif,
+    // mis. periode yang dibuat tanpa mencentang "berjalan"); dan belum punya periode sama sekali. 'punya_admin' hanya untuk yang boleh mengelola akun;
+    // 'nonaktif' hanya ditawarkan bila ada yang nonaktif.
+    const FILTERS = ['berperiode' => 'Punya periode berjalan', 'belum_berjalan' => 'Periode belum ditandai berjalan', 'tanpa_periode' => 'Belum punya periode',
+                     'punya_admin' => 'Punya admin', 'nonaktif' => 'Nonaktif'];
 
     // Struktur dalam lingkup admin, dengan saringan supaya yang dicari mudah ditemukan: jenjang (?lv=), nama / kode wilayah / induk (?q=) dan
     // status (?f=). Dua tampilan (?tampil=): "daftar" (tabel berhalaman, bawaan: ringan dan mudah dipindai) dan "pohon" (hierarki; dengan
@@ -19,6 +22,7 @@ class StructuresController extends Controller {
         // Admin tiap struktur hanya ditampilkan kepada yang boleh mengelola akun.
         $admins = $canEdit ? $this->model('AccountModel')->adminsByStructure(array_column($all, 'id')) : [];
         $terms = $structures->currentTermsInScope();
+        $pending = $structures->pendingTermsInScope();
 
         // Parameter bisa datang sebagai larik (?lv[]=x): hanya teks yang dipakai, selebihnya dianggap kosong.
         $param = function ($key) { $v = $_GET[$key] ?? ''; return is_string($v) ? trim($v) : ''; };
@@ -36,6 +40,7 @@ class StructuresController extends Controller {
                 'parent_label' => $p ? ((int) $p['tier'] <= 1 ? $p['level'] : $p['level'] . ' ' . PeopleOverview::shortName($p['name'])) : '',
                 'parent_short' => $p ? PeopleOverview::shortName($p['name']) : '',
                 'term'         => $terms[$id] ?? null,
+                'pending'      => isset($terms[$id]) ? null : ($pending[$id] ?? null),   // periode yang ada tetapi belum ditandai berjalan
                 'admins'       => $admins[$id] ?? [],
             ];
         }
@@ -47,7 +52,7 @@ class StructuresController extends Controller {
         $nonaktif = count(array_filter($items, function ($r) { return !$r['is_active']; }));
         $filters = [];
         foreach (self::FILTERS as $k => $label) {
-            if (($k === 'punya_admin' && !$canEdit) || ($k === 'nonaktif' && $nonaktif === 0)) continue;
+            if (($k === 'punya_admin' && !$canEdit) || ($k === 'nonaktif' && $nonaktif === 0) || ($k === 'belum_berjalan' && !$pending)) continue;
             $filters[$k] = $label;
         }
         $f = $param('f');
@@ -59,8 +64,9 @@ class StructuresController extends Controller {
         };
         $status = function ($key, array $r) {
             switch ($key) {
-                case 'berperiode':    return $r['term'] !== null;
-                case 'tanpa_periode': return $r['term'] === null;
+                case 'berperiode':      return $r['term'] !== null;
+                case 'belum_berjalan':  return $r['term'] === null && $r['pending'] !== null;
+                case 'tanpa_periode':   return $r['term'] === null && $r['pending'] === null;
                 case 'punya_admin':   return !empty($r['admins']);
                 case 'nonaktif':      return !$r['is_active'];
             }

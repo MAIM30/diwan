@@ -217,6 +217,27 @@ class Ui {
         return '<span class="mon-ksb">' . $out . '</span>';
     }
 
+    // Keterangan untuk struktur yang belum punya periode BERJALAN, dengan tindakan yang benar: bila periodenya sudah dibuat tetapi belum
+    // ditandai berjalan ($pending = ['id', 'name']) tampil namanya + tombol "Tandai berjalan"; bila belum ada periode sama sekali, tautan "Buat
+    // periode". Dulu keduanya ditulis "belum ada" + "Buat periode", sehingga membuat periode yang sudah ada gagal. $back = halaman asal
+    // (tanpa BASEURL, mis. "structures?lv=DPLN") tempat kembali sesudah menandai. Tindakan hanya untuk yang boleh mengubah.
+    public static function termGap($structureId, $pending, $back = '') {
+        $canEdit = Auth::canEdit();
+        if ($pending) {
+            $out = 'Periode <a href="' . BASEURL . '/terms/detail/' . (int) $pending['id'] . '">' . e($pending['name']) . '</a> belum ditandai berjalan';
+            if ($canEdit) $out .= ' &middot; ' . self::markCurrentForm($pending['id'], $back);
+            return $out;
+        }
+        return 'Belum punya periode berjalan' . ($canEdit ? ' &middot; <a href="' . BASEURL . '/terms/form/0/' . (int) $structureId . '">Buat periode</a>' : '');
+    }
+
+    // Formulir satu tombol "Tandai berjalan" (POST terms/mark_current). $back = halaman asal tanpa BASEURL (TermsController::safeBack).
+    public static function markCurrentForm($termId, $back = '', $class = 'linkbtn') {
+        return '<form class="inline" method="post" action="' . BASEURL . '/terms/mark_current">' . Csrf::field()
+            . '<input type="hidden" name="id" value="' . (int) $termId . '"><input type="hidden" name="back" value="' . e($back) . '">'
+            . '<button type="submit" class="' . e($class) . '">Tandai berjalan</button></form>';
+    }
+
     // Durasi dari jumlah hari sebagai bagian-bagiannya: [[55, 'hari']], [[9, 'bulan']], [[2, 'tahun'], [4, 'bulan']].
     // Bulan dihitung 30 hari -- cukup untuk sisa masa jabatan, bukan untuk akuntansi tanggal. Satu-satunya tempat
     // ambang hari/bulan/tahun ditetapkan; span() (singkatan) dan angka besar di Beranda sama-sama bertumpu padanya.
