@@ -7,6 +7,7 @@
 // baru berarti MENAMBAH baris, bukan memperbarui baris lama.
 
 require_once ROOT_DIR . '/app/Models/PositionModel.php'; // PositionModel::CORE_SQL: batas Pengurus Inti
+require_once ROOT_DIR . '/app/Models/UnitModel.php';     // landingLabel: nama unit dan kelompoknya
 
 class PlacementModel {
     private $db;
@@ -34,6 +35,19 @@ class PlacementModel {
         ");
         $stmt->execute([':id' => (int) $id]);
         return $stmt->fetch() ?: null;
+    }
+
+    // Di mana sebuah penempatan tampil di susunan periode (cermin Susunan::arrange, tanpa menyusun seluruhnya): tingkat struktur
+    // -> "Pengurus Inti" bila jabatannya inti, selain itu "Pimpinan Lainnya"; di dalam unit -> "<Bidang/kelompok> › <unit>"
+    // ("Unit tanpa Bidang" bila belum dinaungi). Kategorinya ditentukan JABATAN dan UNIT, bukan nama pilihan di formulir: pesan sesudah
+    // menyimpan memakainya supaya pengguna tahu persis di mana penempatan itu kini muncul.
+    public function landingLabel($unitId, $positionId) {
+        if (!empty($unitId)) {
+            $u = (new UnitModel())->unitFindById((int) $unitId);
+            if ($u) return ($u['group_name'] ?: 'Unit tanpa Bidang') . ' › ' . ($u['display_name'] ?: $u['catalog_name']);
+        }
+        $p = (new PositionModel())->findById((int) $positionId);
+        return $p && !empty($p['is_core']) ? 'Pengurus Inti' : 'Pimpinan Lainnya';
     }
 
     // Seluruh riwayat jabatan satu orang, lintas periode dan lintas struktur. Inilah tampilan yang
@@ -98,7 +112,7 @@ class PlacementModel {
 
     public function byGovernancePeriod($periodId, $personId) {
         $stmt = $this->db->prepare("SELECT pl.*, p.full_name, p.title_prefix, p.name, p.title_suffix,
-                   po.name AS position_name, c.name AS unit_name, g.name AS group_name,
+                   po.name AS position_name, " . PositionModel::CORE_SQL . " AS is_core, c.name AS unit_name, g.name AS group_name,
                    s.level, s.name AS structure_name, t.name AS term_name,
                    t.start_date AS term_start, t.end_date_planned, t.end_date_actual
             FROM placements pl

@@ -30,32 +30,51 @@ class PlacementsController extends Controller {
         $units = $this->model('UnitModel');
         $positions = $this->model('PositionModel');
         $people = $this->model('PersonModel');
-        $peopleOptions = $people->optionsInScope();
-        $selectedPersonId = !$id ? (int) ($_GET['person_id'] ?? 0) : 0;
-        $selectedPerson = null;
-        if ($selectedPersonId > 0) {
-            foreach ($peopleOptions as $personOption) {
-                if ((int) $personOption['id'] === $selectedPersonId) {
-                    $selectedPerson = $personOption;
-                    break;
-                }
-            }
-            // Jangan menerima person_id dari URL jika orang tersebut di luar lingkup akses.
-            if (!$selectedPerson) $selectedPersonId = 0;
-        }
+
+        // Orangnya ditampilkan sebagai kartu: yang punya penempatan ini (mengubah) atau ?person_id= dari profil (menambah); tanpa itu
+        // dicari lewat placements/orang. Dulu orang dicari di 2.000 nama pertama menurut abjad, jadi untuk sebagian besar pengurus
+        // kolom Orang kosong (dan ?person_id= diam-diam dibuang).
+        $personId = $row ? (int) $row['person_id'] : (int) ($_GET['person_id'] ?? 0);
+        $person = null;
+        // Jangan menerima person_id dari URL jika orang tersebut di luar lingkup akses.
+        if ($personId > 0 && $people->isVisible($personId)) $person = $people->findById($personId);
 
         $this->view('admin/placements/form', [
             'title'     => $id ? 'Ubah Penempatan' : 'Tambah Penempatan',
             'term'      => $term,
             'row'       => $row,
+            'person'    => $person,
             'targetTerms' => $terms->termsForGovernancePeriod($term['governance_period_id']),
             'otherPlacements' => $otherPlacements,
+            'landingNow' => $row ? $placements->landingLabel($row['structure_unit_id'], $row['position_id']) : null,
             'units'     => $units->unitsByTerm($row['term_id'] ?? $termId),
             'positions' => $positions->all(),
-            'people'    => $peopleOptions,
-            'selectedPersonId' => $selectedPersonId,
-            'selectedPerson' => $selectedPerson,
         ]);
+    }
+
+    // Pencarian orang untuk formulir Tambah Penempatan (JSON): nama, nomor WA, atau NIK lengkap, di dalam lingkup admin. Pengganti daftar
+    // pilihan 2.000 nama yang memotong sebagian besar pengurus. Paling banyak 15 hasil; jabatan terkininya ikut, untuk membedakan nama kembar.
+    public function orang() {
+        $this->requireLogin();
+        if (!Auth::canEdit()) $this->denied();
+        header('Content-Type: application/json; charset=utf-8');
+
+        $q = $_GET['q'] ?? '';
+        $q = is_string($q) ? trim($q) : '';
+        if (mb_strlen($q) < 2) { echo '[]'; return; }
+
+        $out = [];
+        foreach ($this->model('PersonModel')->searchInScope($q, 15, 0, []) as $p) {
+            $out[] = [
+                'id'      => (int) $p['id'],
+                'name'    => Ui::fullName($p),
+                'gender'  => (string) $p['gender'],
+                'sub'     => $p['position_name'] ? $p['position_name'] . ' · ' . $p['structure_label'] : 'Belum menjabat',
+                'initial' => mb_strtoupper(mb_substr(trim((string) Ui::nameParts($p)[1]), 0, 1)),   // untuk avatar kartu orang
+                'hue'     => abs(crc32((string) ($p['uuid'] ?? $p['id']))) % 6,                    // sama dengan Ui::avatar
+            ];
+        }
+        echo json_encode($out, JSON_UNESCAPED_UNICODE);
     }
 
     // Memuat SKUO dan konteks jabatan ketika struktur tujuan diganti pada formulir.
@@ -164,15 +183,37 @@ class PlacementsController extends Controller {
 
         // Kecocokan jabatan dengan tempatnya (tingkat struktur / di dalam SKUO / jenis unitnya) dijaga PlacementModel, di setiap jalur
         // penulisan, jadi tak bergantung pada pilihan yang difilter di browser. Penolakannya tiba sebagai RuntimeException di bawah.
+        // Simpanan tanpa perubahan apa pun jangan dilaporkan "berhasil": pengguna yang mengira sudah memindahkan sesuatu akan mengira
+        // sistemnya yang salah. Dikatakan terus terang, berikut tempat penempatan itu tampil sekarang dan apa yang menentukannya.
+        if ($id && $termId === $baseTermId) {
+            $same = function ($a, $b) { return (string) ($a ?? '') === (string) ($b ?? ''); };
+            $unchanged = (int) ($existing['structure_unit_id'] ?? 0) === (int) ($data['structure_unit_id'] ?? 0)
+                && (int) $existing['position_id'] === (int) $data['position_id']
+                && !empty($existing['is_primary']) === !empty($data['is_primary'])
+                && $same($existing['start_date'], $data['start_date']) && $same($existing['end_date'], $data['end_date'])
+                && $same($existing['end_reason'], $data['end_reason']) && $same($existing['sk_reference'], $data['sk_reference'])
+                && $same($existing['notes'], $data['notes']);
+            if ($unchanged) {
+                Flash::set('warning', 'Tidak ada yang diubah, jadi tidak ada yang disimpan. Penempatan ini tetap tampil di: '
+                    . $placements->landingLabel($existing['structure_unit_id'], $existing['position_id']) . '. '
+                    . 'Tempatnya ditentukan oleh Unit Organisasi (di dalam unit: Bidang / Badan / Biro / ...) dan oleh Jabatan (tanpa unit: '
+                    . 'Pengurus Inti bila jabatannya inti, selain itu Pimpinan Lainnya).');
+                $returnTo();
+            }
+        }
+
         try {
+            $after = $placements->landingLabel($data['structure_unit_id'], $data['position_id']);
             if ($id) {
+                $from = $placements->landingLabel($existing['structure_unit_id'], $existing['position_id']);
                 if ($termId !== $baseTermId) $placements->updateWithinGovernancePeriod($id, $data);
                 else $placements->update($id, $data);
-                Flash::set('success', $termId !== $baseTermId ? 'Penempatan dipindahkan ke struktur tujuan dalam acuan periode yang sama.' : 'Penempatan diperbarui.');
+                $head = $termId !== $baseTermId ? 'Penempatan dipindahkan ke struktur tujuan dalam acuan periode yang sama.' : 'Penempatan diperbarui.';
+                Flash::set('success', $head . ($termId === $baseTermId && $from !== $after ? ' Dipindah dari ' . $from . ' ke ' . $after . '.' : ' Tampil di: ' . $after . '.'));
             } else {
                 $newId = $placements->create($data);
                 WaNotify::placementCreated((int) $data['person_id'], $newId);
-                Flash::set('success', 'Penempatan ditambahkan.');
+                Flash::set('success', 'Penempatan ditambahkan. Tampil di: ' . $after . '.');
             }
         } catch (RuntimeException $e) {
             Flash::set('error', $e->getMessage());

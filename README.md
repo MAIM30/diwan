@@ -447,6 +447,14 @@ Setiap penempatan masuk tepat satu simpul (yang tak terpetakan jatuh ke Pimpinan
 "N orang" menghitung orang yang masih menjabat (penempatan belum berakhir), satu orang dengan dua jabatan di satu simpul dihitung sekali; baris yang sudah berakhir
 tetap tampil dengan lencana "berakhir". Kolom Ubah/Akhiri tetap hanya untuk yang boleh mengubah data.
 
+**Form Penempatan** (`/placements/form/{periode}[/{penempatan}]`) disusun Siapa / Di mana dan sebagai apa / Kapan / Dokumen. Orangnya selalu tampil sebagai kartu bernama: yang punya
+penempatan itu (mengubah), `?person_id=` dari profil, atau hasil **pencarian** `placements/orang?q=` (JSON, nama / WA / NIK lengkap, paling banyak 15, dalam lingkup admin) saat
+menambah; dulu orang dicari di 2.000 nama pertama menurut abjad sehingga kolomnya kosong untuk sebagian besar pengurus. Jenis kelamin dan sayap mengikuti orangnya (laki-laki: Umum,
+perempuan: Muslimah), bukan isian tersendiri. Karena nama pilihan di form tidak sama dengan nama simpul di susunan, kotak **Akan tampil di** menunjukkan simpul tujuannya menurut Unit dan
+Jabatan yang dipilih (`PlacementModel::landingLabel`, cermin `Susunan::arrange`): di dalam unit = Bidang/kelompok › unit; tanpa unit = Pengurus Inti bila jabatannya inti, selain itu Pimpinan
+Lainnya. Pesan sesudah menyimpan menyebut tempat itu juga ("Dipindah dari A ke B"), dan simpanan yang tidak mengubah apa pun dijawab peringatan, bukan "berhasil". Panel **Penempatan lain**
+berada di luar form simpan: form di dalam form tidak sah di HTML, dan browser membuang yang di dalam, sehingga tombol Anulir dulu menyimpan form alih-alih menganulir.
+
 **Data Pengurus: rekap dan dua tampilan.** Halaman `/people` punya baris **Jenjang** (DPP, DPW, DPD, MWP, MWW, MWD, DSO, DSY, DPK: jumlah orang yang sedang menjabat di jenjang itu; `?lv=DPW`),
 tiga kelompok kartu rekap, lalu satu dari dua tampilan (`?susun=struktur|daftar`):
 
