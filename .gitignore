@@ -12,9 +12,7 @@ public/uploads/people/
 deploy/dump/
 database/data_dewan2.csv
 
-# Dump basis data mentah di root (data produksi/legacy, besar & sensitif)
-/db_fruwit.sql
-/wahdah_muktamar.sql
+# Dump basis data mentah (besar & sensitif)
 *.sql.gz
 
 # Cache lokal (dibangun ulang otomatis)
