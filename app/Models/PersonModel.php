@@ -408,7 +408,7 @@ class PersonModel {
         return $where;
     }
 
-    // Daftar orang dalam lingkup admin, lengkap dengan jabatan terkininya. Jabatan yang ditampilkan
+    // Daftar orang dalam lingkup admin, lengkap dengan jabatan utamanya. Jabatan yang ditampilkan
     // dibatasi pada penempatan DI DALAM lingkup admin -- struktur lain tidak dibocorkan lewat daftar.
     public function searchInScope($keyword = '', $limit = 50, $offset = 0, array $filters = []) {
         $params = [];
@@ -417,10 +417,12 @@ class PersonModel {
         $activeScope = AdminScope::sqlFilter('pla.structure_id');
         $latest = "pl.person_id = p.id AND pl.deleted_at IS NULL AND t.is_current = 1 AND t.deleted_at IS NULL
                    AND (pl.end_date IS NULL OR pl.end_date >= CURDATE()) AND $inScope
-                   ORDER BY t.start_date DESC, po.sort_order, pl.id LIMIT 1";
+                   ORDER BY (po.is_core = 1 AND pl.structure_unit_id IS NULL) DESC,
+                            t.start_date DESC, po.sort_order, pl.id LIMIT 1";
         $activeLatest = "pla.person_id = p.id AND pla.deleted_at IS NULL AND ta.is_current = 1 AND ta.deleted_at IS NULL
                          AND (pla.end_date IS NULL OR pla.end_date >= CURDATE()) AND $activeScope
-                         ORDER BY ta.start_date DESC, poa.sort_order, pla.id LIMIT 1";
+                         ORDER BY (poa.is_core = 1 AND pla.structure_unit_id IS NULL) DESC,
+                                  ta.start_date DESC, poa.sort_order, pla.id LIMIT 1";
 
         $stmt = $this->db->prepare("
             SELECT p.*,
@@ -432,6 +434,10 @@ class PersonModel {
                       JOIN positions poa ON poa.id = pla.position_id WHERE $activeLatest) AS current_placement_id,
                    (SELECT po.name FROM placements pl JOIN terms t ON t.id = pl.term_id
                       JOIN positions po ON po.id = pl.position_id WHERE $latest) AS position_name,
+                   (SELECT COALESCE(su.display_name, uc.name) FROM placements pl JOIN terms t ON t.id = pl.term_id
+                      JOIN positions po ON po.id = pl.position_id
+                      LEFT JOIN structure_units su ON su.id = pl.structure_unit_id
+                      LEFT JOIN unit_catalog uc ON uc.id = su.unit_catalog_id WHERE $latest) AS unit_name,
                    (SELECT CONCAT(s.level, ' ', s.name) FROM placements pl JOIN terms t ON t.id = pl.term_id
                       JOIN positions po ON po.id = pl.position_id JOIN structures s ON s.id = pl.structure_id WHERE $latest) AS structure_label,
                    EXISTS (SELECT 1 FROM placements pl JOIN terms t ON t.id = pl.term_id

@@ -289,7 +289,7 @@ $structureRow = function (array $r, $d) use ($caret, $cols, $rosterUrl, $noTermN
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>Nama</th><th>Jabatan Terkini</th><th>Kontak</th><th title="<?= e('Lengkap = ' . PersonModel::COMPLETE_RULE) ?>">Kelengkapan</th><th>Status</th><th></th></tr>
+          <tr><th>Nama</th><th>Jabatan / Penempatan Utama</th><th>Kontak</th><th title="<?= e('Lengkap = ' . PersonModel::COMPLETE_RULE) ?>">Kelengkapan</th><th>Status</th><th></th></tr>
         </thead>
         <tbody>
         <?php foreach ($rows as $r):
@@ -304,7 +304,7 @@ $structureRow = function (array $r, $d) use ($caret, $cols, $rosterUrl, $noTermN
             <td class="small">
               <?php if ($r['position_name']): ?>
                 <strong><?= e($r['position_name']) ?></strong>
-                <div class="muted"><span class="badge lv"><?= e($rowLevel) ?></span> <?= e(PeopleOverview::shortName($rowStructure)) ?><?php $otherPlacementCount = max(0, (int) ($r['current_placement_count'] ?? 0) - 1); ?><?php if ($otherPlacementCount > 0): ?> · <button type="button" class="placement-more" data-placement-recap-url="<?= BASEURL ?>/people/other_placements/<?= (int) $r['id'] ?>?featured=<?= (int) ($r['current_placement_id'] ?? 0) ?>" data-person-name="<?= e(Ui::fullName($r)) ?>">+<?= $otherPlacementCount ?> lainnya</button><?php endif; ?></div>
+                <div class="muted"><?php if (!empty($r['unit_name'])): ?><?= e($r['unit_name']) ?> &middot; <?php endif; ?><span class="badge lv"><?= e($rowLevel) ?></span> <?= e(PeopleOverview::shortName($rowStructure)) ?><?php $otherPlacementCount = max(0, (int) ($r['current_placement_count'] ?? 0) - 1); ?><?php if ($otherPlacementCount > 0): ?> · <button type="button" class="placement-more" data-placement-recap-url="<?= BASEURL ?>/people/other_placements/<?= (int) $r['id'] ?>?featured=<?= (int) ($r['current_placement_id'] ?? 0) ?>" data-person-name="<?= e(Ui::fullName($r)) ?>">+<?= $otherPlacementCount ?> lainnya</button><?php endif; ?></div>
               <?php else: ?>
                 <span class="muted">Belum ditempatkan</span>
               <?php endif; ?>
