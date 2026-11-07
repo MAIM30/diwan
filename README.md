@@ -641,6 +641,7 @@ mengubah data master dari jauh. Autentikasi: `Authorization: Bearer pgr_<prefix>
 | `GET /api/v1/whoami` | — | Memastikan token & izinnya tanpa menarik data |
 | `GET /api/v1/structures` | `structures:read` | Seluruh struktur, terurut mengikuti pohon |
 | `GET /api/v1/structures/{uuid}` | `structures:read` | Satu struktur |
+| `GET /api/v1/skuos` | `structures:read` | Katalog SKUO terurut, dikelompokkan, dengan ID dan UUID |
 | `GET /api/v1/terms?structure={uuid}` | `structures:read` | Periode, bisa disaring per struktur |
 | `GET /api/v1/people` | `people:read` | Berhalaman dengan kursor |
 | `GET /api/v1/people/{uuid}` | `people:read` | Satu orang |

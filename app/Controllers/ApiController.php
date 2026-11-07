@@ -34,6 +34,7 @@ class ApiController extends Controller {
         try {
             switch ($resource) {
                 case 'structures': $this->structures($segments); break;
+                case 'skuos':      $this->skuos(); break;
                 case 'terms':      $this->terms(); break;
                 case 'people':     $this->people($segments); break;
                 case 'placements': $this->placements(); break;
@@ -41,7 +42,7 @@ class ApiController extends Controller {
                 case 'whoami':     $this->whoami(); break;
                 default:
                     $this->api->fail(404, 'unknown_resource',
-                        'Endpoint tidak dikenal. Tersedia: structures, terms, people, placements, sync, whoami.');
+                        'Endpoint tidak dikenal. Tersedia: structures, skuos, terms, people, placements, sync, whoami.');
             }
         } catch (InvalidArgumentException $e) {
             // Kesalahan parameter dari klien -> 400, dengan pesan yang menjelaskan cara benarnya.
@@ -56,6 +57,78 @@ class ApiController extends Controller {
     private function newSync() {
         require_once ROOT_DIR . '/app/Models/SyncModel.php';
         return new SyncModel($this->api->clientScopeStructureId());
+    }
+
+    // GET /api/v1/skuos -- katalog SKUO tingkat pusat dengan urutan dan kelompok baku.
+    // ID internal disertakan untuk integrasi yang meminta ID, sedangkan UUID tetap kunci stabil
+    // lintas instalasi. Relasi unit ke kelompok aktual per struktur/periode tetap ada di placements.
+    private function skuos() {
+        $this->api->requireScope('structures:read');
+
+        $groups = [
+            ['code' => 'PI', 'name' => 'PENGURUS INTI', 'units' => []],
+            ['code' => 'BIDANG I', 'name' => 'BIDANG I', 'units' => [
+                'Departemen Dakwah dan Pembinaan Masjid', 'Departemen Kaderisasi dan Pembinaan Murabbi',
+                'Lembaga Pendidikan Dai dan Murabbi', 'Departemen Pengembangan Sumber Daya Manusia']],
+            ['code' => 'BIDANG II', 'name' => 'BIDANG II', 'units' => [
+                'Lembaga Pengembangan Pendidikan Dasar Al-Qur’an', 'Lembaga Pengembangan Pengajaran Tahsinul Qira’ah',
+                'Lembaga Pengembangan Pengajaran Fahmul Qur’an', 'Lembaga Pengembangan Tahfizh Al-Qur\'an']],
+            ['code' => 'BIDANG III', 'name' => 'BIDANG III', 'units' => [
+                'Lembaga Pembinaan dan Pengembangan Anak dan Remaja', 'Lembaga Pernikahan dan Pembinaan Keluarga Sakinah', 'Lembaga Pembinaan Lanjut Usia']],
+            ['code' => 'BIDANG IV', 'name' => 'BIDANG IV', 'units' => [
+                'Departemen Pendidikan Anak Usia Dini, Nonformal dan Informal', 'Departemen Pendidikan Dasar dan Menengah',
+                'Departemen Pendidikan Tinggi', 'Lembaga Pembinaan Yayasan Pendidikan']],
+            ['code' => 'BIDANG V', 'name' => 'BIDANG V', 'units' => [
+                'Departemen Urusan Wilayah dan Daerah', 'Departemen Urusan Luar Negeri', 'Lembaga Pembinaan dan Pengembangan Organisasi Otonom']],
+            ['code' => 'BIDANG VI', 'name' => 'BIDANG VI', 'units' => [
+                'Departemen Kesehatan', 'Departemen Olahraga dan Seni', 'Departemen Lingkungan Hidup', 'Departemen Sosial']],
+            ['code' => 'BIDANG VII', 'name' => 'BIDANG VII', 'units' => [
+                'Departemen Pengembangan Usaha', 'Departemen Pembinaan Koperasi, Usaha Mikro, Kecil dan Menengah',
+                'Lembaga Amil Zakat Wahdah Inspirasi Zakat', 'Lembaga Perencanaan dan Pengawasan Pembangunan',
+                'Departemen Pertanian', 'Lembaga Wakaf', 'Lembaga Pendamping Proses Produk Halal']],
+            ['code' => 'BIDANG VIII', 'name' => 'BIDANG VIII', 'units' => [
+                'Departemen Pembinaan Pemuda', 'Departemen Pembinaan Pelajar', 'Departemen Pembinaan Mahasiswa']],
+            ['code' => 'BIDANG IX', 'name' => 'BIDANG IX', 'units' => [
+                'Departemen Data dan Teknologi Informasi', 'Departemen Media Informasi dan Komunikasi']],
+            ['code' => 'PUSAT-PUSAT', 'name' => 'PUSAT-PUSAT', 'units' => [
+                'Pusat Penelitian dan Pengembangan', 'Pusat Penjaminan Mutu']],
+            ['code' => 'SPI', 'name' => 'SATUAN PENGAWAS INTERNAL', 'units' => ['Satuan Pengawas Internal']],
+            ['code' => 'BADAN', 'name' => 'BADAN', 'units' => [
+                'Badan Anggaran', 'Badan Pencegahan dan Penanggulangan Stunting']],
+            ['code' => 'BIRO', 'name' => 'BIRO', 'units' => [
+                'Biro Administrasi Umum dan Kesekretariatan', 'Biro Kearsipan Digital dan Pustaka', 'Biro Hukum dan Advokasi',
+                'Biro Hubungan Masyarakat dan Kerja Sama', 'Biro Protokoler Pimpinan', 'Biro Kepegawaian',
+                'Biro Keuangan dan Aset', 'Biro Kantor Pusat', 'Biro Kantor DPP Jakarta']],
+        ];
+
+        $db = Database::getInstance()->getConnection();
+        $rows = $db->query("SELECT id, uuid, name, abbreviation, kind, wing, sort_order FROM unit_catalog WHERE wing = 'umum' ORDER BY sort_order, id")->fetchAll(PDO::FETCH_ASSOC);
+        $normalize = function ($name) { return preg_replace('/[^a-z0-9]/', '', mb_strtolower((string) $name)); };
+        $byName = [];
+        foreach ($rows as $row) $byName[$normalize($row['name'])] = $row;
+        $byOrder = [];
+        foreach ($rows as $row) $byOrder[(int) $row['sort_order']] = $row;
+
+        $sequence = 0;
+        foreach ($groups as $groupIndex => &$group) {
+            $group['order'] = $groupIndex + 1;
+            $units = [];
+            foreach ($group['units'] as $name) {
+                $sequence++;
+                // Nama dapat memiliki variasi apostrof Unicode antar sumber; urutan katalog SKUO
+                // (kelipatan 10) menjadi fallback deterministik dari seed/migrasi resmi.
+                $row = $byName[$normalize($name)] ?? ($byOrder[$sequence * 10] ?? null);
+                if (!$row) continue;
+                $units[] = [
+                    'id' => (int) $row['id'], 'uuid' => $row['uuid'], 'name' => $row['name'],
+                    'abbreviation' => $row['abbreviation'], 'kind' => $row['kind'], 'wing' => $row['wing'],
+                    'order' => $sequence,
+                ];
+            }
+            $group['units'] = $units;
+        }
+        unset($group);
+        $this->api->ok($groups, ['sequence' => 'SKUO pusat; id adalah ID internal, uuid adalah kunci stabil. Kelompok aktual per periode tersedia pada /placements.']);
     }
 
     // GET /api/v1/whoami -- untuk konsumen memastikan token & izinnya tanpa menarik data.

@@ -77,9 +77,9 @@ yang melewati verifikasi manusia. Artinya: bug separah apa pun di aplikasi Anda 
 bisa merusak data sumber. Jangan merancang alur yang mengandaikan Anda bisa menulis balik.
 
 **2. Setiap objek dikunci `uuid`, bukan id angka.**
-Id internal DIWAN tidak pernah keluar. Simpan `uuid` sebagai kunci di salinan lokal Anda; nilainya
-dijamin tidak pernah berubah sepanjang umur baris. Ini yang membuat basis data DIWAN bisa dirapikan
-atau di-reindex tanpa memutus salinan Anda.
+Simpan `uuid` sebagai kunci stabil di salinan lokal Anda. Endpoint katalog SKUO juga menyediakan
+`id` angka untuk kebutuhan pemetaan aplikasi yang sudah memakai ID; nilai itu hanya berlaku pada
+instalasi DIWAN tersebut dan bukan kunci sinkronisasi.
 
 **3. Penghapusan dikabarkan, bukan didiamkan.**
 Baris yang dihapus tetap dikirim, dengan `"deleted": true`. Kalau Anda hanya menyaring
@@ -133,7 +133,7 @@ Token membawa daftar izin. Endpoint yang butuh izin yang tidak dimiliki menjawab
 
 | Izin | Membuka |
 |---|---|
-| `structures:read` | `/structures`, `/terms` |
+| `structures:read` | `/structures`, `/skuos`, `/terms` |
 | `people:read` | `/people`, `/people/{uuid}`, `/people/by-phone/{phone}` |
 | `placements:read` | `/placements` |
 | `people:nik` | `/people/by-nik/{nik}` |
@@ -237,6 +237,18 @@ Tidak berhalaman — selalu lengkap dalam satu response.
 
 Satu struktur. `404` bila tidak ada, sudah dihapus, atau di luar lingkup token.
 
+### `GET /skuos`
+
+Katalog SKUO pusat beserta urutan dan pengelompokan bakunya. Token memerlukan `structures:read`.
+Respons berupa daftar kelompok (`PI`, `BIDANG I`â€“`BIDANG IX`, `PUSAT-PUSAT`, `SPI`, `BADAN`,
+`BIRO`), masing-masing memiliki `units` berurutan. Setiap unit memuat `id` (ID internal katalog),
+`uuid` (kunci stabil), `name`, `abbreviation`, `kind`, `wing`, dan `order`. `PI` adalah kategori
+Pengurus Inti dan tidak berisi unit katalog.
+
+Endpoint ini menyajikan daftar induk katalog SKUO sayap umum, bukan susunan aktual suatu periode.
+Untuk melihat unit yang terpasang pada struktur/periode dan Bidang aktualnya, gunakan `/placements`
+(`unit_uuid` dan `unit_group`).
+
 ### `GET /terms`
 
 Periode kepengurusan.
@@ -280,6 +292,133 @@ sudah ikut terbuka apa adanya di `/people`).
 > pengurus muslimah). Nomor yang dipakai lebih dari satu orang menjawab `404 not_found` — **ambigu
 > diperlakukan sama dengan tidak ditemukan**, bukan mengembalikan salah satu secara sembarang. Jangan
 > asumsikan nomor HP selalu mengidentifikasi tepat satu orang.
+
+### Contoh hasil tarik: Muhammad Adhan
+
+Contoh ini memakai data yang cocok dengan nama **Muhammad Adhan** dan nomor `082192295676` pada
+basis data saat contoh disusun. Lookup orang dan penarikan penempatannya adalah dua request karena
+API memisahkan data orang dari relasi jabatan.
+
+| Data | Nilai |
+|---|---|
+| Nama lengkap | Muhammad Adhan, S.AP., M.Pd |
+| UUID orang | `b757e8bf-ff94-4f43-a6a9-d21dd197874e` |
+| WhatsApp | `6282192295676` (API menormalkan `08...` menjadi `62...`) |
+| Jenis kelamin | L |
+| Email | muhammad.adhan.im@gmail.com |
+| Lahir | 1993-05-30 |
+| Domisili | Kota Kendari, Sulawesi Tenggara |
+| Status | active |
+| Penempatan aktif | Ketua Departemen di DPW Sulawesi Tenggara; Ketua Departemen di DPP Dewan Pimpinan Pusat |
+
+Request pertama:
+
+```http
+GET /api/v1/people/by-phone/082192295676
+Authorization: Bearer <token dengan scope people:read>
+```
+
+Response JSON:
+
+```json
+{
+  "data": {
+    "uuid": "b757e8bf-ff94-4f43-a6a9-d21dd197874e",
+    "title_prefix": null,
+    "name": "Muhammad Adhan",
+    "title_suffix": "S.AP., M.Pd",
+    "full_name": "Muhammad Adhan, S.AP., M.Pd",
+    "gender": "L",
+    "phone": "6282192295676",
+    "email": "muhammad.adhan.im@gmail.com",
+    "birth_date": "1993-05-30",
+    "city": "Kota Kendari",
+    "province": "Sulawesi Tenggara",
+    "status": "active",
+    "updated_at": "2026-11-06T16:33:42+08:00",
+    "deleted": false
+  },
+  "meta": {
+    "count": 1,
+    "server_time": "2026-11-07T10:40:35+08:00"
+  }
+}
+```
+
+Untuk menarik seluruh penempatan orang itu, gunakan UUID dari hasil pertama:
+
+```http
+GET /api/v1/placements?person=b757e8bf-ff94-4f43-a6a9-d21dd197874e
+Authorization: Bearer <token dengan scope placements:read>
+```
+
+Response JSON:
+
+```json
+{
+  "data": [
+    {
+      "uuid": "5a4da589-64fe-4810-8629-0445dac51804",
+      "person_uuid": "b757e8bf-ff94-4f43-a6a9-d21dd197874e",
+      "person_name": "Muhammad Adhan, S.AP., M.Pd",
+      "structure_uuid": "e47d81cd-f4c8-489b-a351-e0c2d7b9ce27",
+      "structure": "DPW Sulawesi Tenggara",
+      "term_uuid": "66e27939-bb32-4df0-879f-a0dedded6145",
+      "term_name": "2021-2026",
+      "governance_period_uuid": "4a0eaf24-d296-11f1-a308-525400dcd674",
+      "term_is_current": true,
+      "position_code": "ketua_departemen",
+      "position_name": "Ketua Departemen",
+      "is_core": false,
+      "order": 11,
+      "unit_uuid": "25057aae-5a95-4db4-8d99-34916a6e54f9",
+      "unit_name": "Departemen Media Informasi dan Komunikasi dan Hubungan Masyarakat",
+      "unit_abbr": "Medikhums",
+      "unit_group": null,
+      "unit_group_kind": null,
+      "is_primary": true,
+      "start_date": null,
+      "end_date": null,
+      "end_reason": null,
+      "updated_at": "2026-11-05T13:43:49+08:00",
+      "deleted": false
+    },
+    {
+      "uuid": "712f5fd0-18ce-4161-9e46-a5e202d2fd68",
+      "person_uuid": "b757e8bf-ff94-4f43-a6a9-d21dd197874e",
+      "person_name": "Muhammad Adhan, S.AP., M.Pd",
+      "structure_uuid": "f8641bc8-20fc-49db-a62c-8bf981d84b47",
+      "structure": "DPP Dewan Pimpinan Pusat",
+      "term_uuid": "d0665b49-03b2-4650-81ce-6c2e61b377fb",
+      "term_name": "2026-2031",
+      "governance_period_uuid": "4a0eb151-d296-11f1-a308-525400dcd674",
+      "term_is_current": true,
+      "position_code": "ketua_departemen",
+      "position_name": "Ketua Departemen",
+      "is_core": false,
+      "order": 11,
+      "unit_uuid": "ffda0a15-ea3c-4cf6-8f66-d60f67d0a174",
+      "unit_name": "Departemen Data dan Teknologi Informasi",
+      "unit_abbr": "DATIN",
+      "unit_group": "Bidang Transformasi Digital",
+      "unit_group_kind": "bidang",
+      "is_primary": true,
+      "start_date": null,
+      "end_date": null,
+      "end_reason": null,
+      "updated_at": "2026-11-05T13:43:49+08:00",
+      "deleted": false
+    }
+  ],
+  "meta": {
+    "count": 2,
+    "server_time": "2026-11-07T10:40:35+08:00",
+    "next_cursor": null
+  }
+}
+```
+
+`server_time` pada kedua contoh di atas adalah waktu sampel dan akan berbeda pada request berikutnya.
 
 ### `GET /placements`
 
