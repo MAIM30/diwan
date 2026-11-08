@@ -743,9 +743,20 @@ class PersonModel {
     //
     // $fullName boleh bergelar maupun tidak: pencocokan "tanpa gelar" memakai NAMA ASLI, sehingga
     // "Rahmat Hidayat" menemukan "Rahmat Hidayat, S.Pd." dan sebaliknya.
-    public function matchCandidates($fullName, $nik = null, $excludeId = null) {
+    public function matchCandidates($fullName, $nik = null, $excludeId = null, $phone = null) {
         $nik = Text::normalizeNik($nik);
+        $phone = Text::normalizePhone($phone);
         $ex = (int) $excludeId;
+
+        // Nomor WA menjadi sinyal pencocokan utama pada pendaftaran. Bila data lama memiliki
+        // beberapa pemilik nomor yang sama, tampilkan semuanya agar tidak memilih orang otomatis.
+        if ($phone !== null) {
+            $stmt = $this->db->prepare("SELECT * FROM people WHERE phone = :phone AND deleted_at IS NULL AND id <> :ex");
+            $stmt->execute([':phone' => $phone, ':ex' => $ex]);
+            $byPhone = $stmt->fetchAll();
+            if (count($byPhone) === 1) return ['confidence' => 'exact', 'candidates' => $byPhone, 'matched_on' => 'phone'];
+            if (count($byPhone) > 1) return ['confidence' => 'ambiguous', 'candidates' => $byPhone, 'matched_on' => 'phone'];
+        }
 
         // 1. NIK cocok = sinyal terkuat yang kita punya, dan unik di database.
         if ($nik !== null) {

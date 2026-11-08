@@ -721,13 +721,16 @@ Rate limit per klien, bawaan 60/menit. Response membawa `X-RateLimit-Limit` dan
 `Diajukan → Diverifikasi → Aktif`, atau `Ditolak`.
 
 Pengajuan disimpan di `registration_requests` dan **tidak pernah langsung menulis** ke `people`.
-Data master tetap bersih (API tidak pernah menyajikan orang yang belum diverifikasi), setiap
-pengajuan punya pemeriksa/waktu/alasannya sendiri, dan satu orang bisa mengajukan lagi di periode
-berikutnya tanpa menimpa apa pun.
+Data master tetap bersih (API tidak pernah menyajikan orang yang belum diverifikasi), dan setiap
+pengajuan punya pemeriksa/waktu/alasannya sendiri. Nomor WA dinormalisasi dan menjadi kunci anti-duplikat:
+nomor yang sudah dimiliki orang di `people` atau pengajuan aktif lain ditolak saat dikirim, sehingga
+tidak membuat antrean verifikasi baru. Untuk memperbarui penempatan/data orang yang sudah terdaftar,
+hubungi admin struktur.
 
-Pencocokan duplikat otomatis hanya **mengusulkan** — mengikuti aturan impor SK syuro yang terbukti
-pada ~600 baris: exact match, normalized match (gelar dibuang), dan kasus `ambiguous` yang sengaja
-tidak memilih sendiri. Keputusan "ini orang yang sama" selalu diambil verifikator.
+Pencocokan calon di pengajuan lama yang masih ditinjau memakai nomor WA, NIK, dan nama (termasuk nama
+setelah gelar dibuang). Sistem hanya mengusulkan orang yang cocok; bila ada beberapa orang dengan
+nomor WA yang sama, verifikator tetap memilih secara manual. Saat aktivasi, nomor WA diperiksa lagi
+agar perubahan yang terjadi selama peninjauan tidak membuat orang duplikat.
 
 Status **Aktif** di aplikasi ini adalah **syarat, bukan jaminan** mendapat akun di syuro atau
 aplikasi lain. Aktivasi tidak membuat baris `accounts` dan tidak mengirim apa pun ke syuro.

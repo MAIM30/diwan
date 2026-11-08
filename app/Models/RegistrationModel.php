@@ -115,7 +115,7 @@ class RegistrationModel {
         }
         $fullName = Text::joinName($pre, $name, $suf);
 
-        $match = $people->matchCandidates($fullName, $nik);
+        $match = $people->matchCandidates($fullName, $nik, null, $phone);
         $matchedId = count($match['candidates']) === 1 ? (int) $match['candidates'][0]['id'] : null;
         $selectedPersonId = (int) ($data['selected_person_id'] ?? 0);
         $extraData = !empty($data['notes']) ? ['catatan' => $data['notes']] : [];
@@ -133,14 +133,19 @@ class RegistrationModel {
             $extraData['registrant_selected_person_id'] = $selectedPersonId;
         }
 
-        // Cegah pengiriman ulang pengajuan yang sama. Nomor WA yang sama tetap boleh dipakai
-        // oleh orang berbeda; yang dibandingkan di sini adalah nomor DAN nama dasar.
-        $samePhone = $this->db->prepare("SELECT full_name FROM registration_requests WHERE phone = :phone AND status IN ('submitted','verified','activated')");
+        // Nomor WA menjadi kunci pencocokan pendaftaran. Jika sudah menjadi nomor orang di data
+        // master, jangan buat pengajuan kedua untuk orang itu; perubahan penempatan ditangani admin.
+        $existingPerson = $this->db->prepare("SELECT id FROM people WHERE phone = :phone AND deleted_at IS NULL LIMIT 1");
+        $existingPerson->execute([':phone' => $phone]);
+        if ($existingPerson->fetchColumn()) {
+            throw new RuntimeException('Nomor WhatsApp ini sudah terdaftar. Anda tidak perlu mendaftar lagi; hubungi admin struktur jika ada data atau penempatan yang perlu diperbarui.');
+        }
+
+        // Cegah pengajuan kedua dengan nomor yang sama, meskipun nama yang diisi berbeda.
+        $samePhone = $this->db->prepare("SELECT id FROM registration_requests WHERE phone = :phone AND status IN ('submitted','verified','activated') LIMIT 1");
         $samePhone->execute([':phone' => $phone]);
-        foreach ($samePhone->fetchAll(PDO::FETCH_COLUMN) as $existingName) {
-            if (Text::normalizeBase($existingName) === Text::normalizeBase($fullName)) {
-                throw new RuntimeException('Pengajuan dengan nama dan nomor WhatsApp ini sudah pernah dikirim. Silakan hubungi admin struktur tujuan.');
-            }
+        if ($samePhone->fetchColumn()) {
+            throw new RuntimeException('Nomor WhatsApp ini sudah pernah diajukan. Silakan hubungi admin struktur tujuan untuk memeriksa pengajuan Anda.');
         }
 
         // full_name adalah kolom turunan (gabungan tiga bagian), jadi tidak ikut di INSERT.
@@ -252,6 +257,17 @@ class RegistrationModel {
 
         $this->db->beginTransaction();
         try {
+            // Data bisa berubah setelah pengajuan dikirim. Kunci kecocokan nomor WA diperiksa
+            // kembali saat aktivasi agar jeda tinjauan tidak menghasilkan orang duplikat.
+            $phoneOwners = $this->db->prepare("SELECT id FROM people WHERE phone = :phone AND deleted_at IS NULL FOR UPDATE");
+            $phoneOwners->execute([':phone' => $reg['phone']]);
+            $phoneOwnerIds = array_map('intval', $phoneOwners->fetchAll(PDO::FETCH_COLUMN));
+            foreach ($phoneOwnerIds as $phoneOwnerId) {
+                if (!$personId || $phoneOwnerId !== (int) $personId) {
+                    throw new RuntimeException('Nomor WhatsApp ini sudah dipakai orang lain. Periksa kecocokan data sebelum mengaktifkan.');
+                }
+            }
+
             if ($personId) {
                 // Dipakaikan ke orang yang sudah ada. Biodata yang sudah tercatat TIDAK ditimpa
                 // oleh isian formulir -- data master biasanya lebih lengkap dan sudah terverifikasi.
@@ -324,6 +340,6 @@ class RegistrationModel {
     public function matchesFor($reg) {
         require_once ROOT_DIR . '/app/Models/PersonModel.php';
         $people = new PersonModel();
-        return $people->matchCandidates($reg['full_name'], $reg['nik']);
+        return $people->matchCandidates($reg['full_name'], $reg['nik'], null, $reg['phone']);
     }
 }

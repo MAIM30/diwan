@@ -60,6 +60,7 @@ $this->view('layouts/header', ['title' => $title]);
   <div class="card">
     <h2>Kemungkinan Orang yang Sudah Ada
       <span class="hint">&mdash; <?= e([
+        'phone' => 'nomor WA cocok',
         'nik' => 'NIK cocok',
         'nama_lengkap' => 'nama lengkap cocok',
         'nama_tanpa_gelar' => 'nama cocok setelah gelar diabaikan',
