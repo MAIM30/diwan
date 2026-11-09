@@ -44,7 +44,8 @@ $matchLabels = [
           <td><?= Ui::personCell($r, Auth::canVerify() ? BASEURL . '/registrations/review/' . (int) $r['id'] : null,
                 '<span class="mono">' . e($r['phone']) . '</span>' . (Ui::titlesLine($r) !== '' ? ' · ' . e(Ui::titlesLine($r)) : '')) ?></td>
           <td><?= $r['gender'] === 'P' ? 'P' : 'L' ?></td>
-          <td class="small"><?= e($r['level'] . ' ' . $r['structure_name']) ?></td>
+          <td class="small"><?= e($r['level'] . ' ' . $r['structure_name']) ?>
+            <?php if (!empty($r['requested_unit_name'])): ?><div class="muted"><?= e($r['requested_unit_name']) ?></div><?php endif; ?></td>
           <td class="small">
             <?php $matchInfo = $matchLabels[$r['match_confidence']] ?? ['Tidak diketahui', '']; ?>
             <?php if ($r['match_confidence'] === 'none'): ?>

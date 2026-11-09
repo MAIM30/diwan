@@ -34,6 +34,17 @@ $this->view('layouts/header', ['title' => $title]);
       <td class="mono"><?= e($reg['nik'] ?: '—') ?></td>
     </tr>
     <tr><th>Struktur Tujuan</th><td><?= e($reg['level'] . ' ' . $reg['structure_name']) ?></td></tr>
+    <tr><th>Unit Organisasi</th><td>
+      <?php if (!empty($reg['requested_unit_name'])): ?>
+        <strong><?= e($reg['requested_unit_name']) ?></strong>
+        <?php if (!$suggestedUnitId && $defaultTermId): ?>
+          <div class="small muted">Unit ini belum terpasang di <?= e($reg['level'] . ' ' . $reg['structure_name']) ?> pada periode yang dipilih.
+            Pasang lewat <a href="<?= BASEURL ?>/units/grouping">Pengelompokan Unit</a> bila memang ada di sana.</div>
+        <?php endif; ?>
+      <?php else: ?>
+        <span class="muted">Tidak dipilih (pimpinan struktur atau tidak diisi)</span>
+      <?php endif; ?>
+    </td></tr>
     <?php if (!empty($extra['catatan'])): ?>
       <tr><th>Catatan Pendaftar</th><td><?= e($extra['catatan']) ?></td></tr>
     <?php endif; ?>
@@ -191,7 +202,7 @@ $this->view('layouts/header', ['title' => $title]);
             <select id="structure_unit_id" name="structure_unit_id">
               <option value="">— pucuk pimpinan struktur (tanpa unit) —</option>
               <?php foreach ($units as $u): ?>
-                <option value="<?= (int) $u['id'] ?>" <?= (int) ($reg['target_unit_id'] ?? 0) === (int) $u['id'] ? 'selected' : '' ?>>
+                <option value="<?= (int) $u['id'] ?>" <?= (int) ($reg['target_unit_id'] ?: $suggestedUnitId) === (int) $u['id'] ? 'selected' : '' ?>>
                   <?= e(($u['group_name'] ? $u['group_name'] . ' — ' : '') . ($u['display_name'] ?: $u['catalog_name'])) ?>
                 </option>
               <?php endforeach; ?>

@@ -84,6 +84,14 @@ if (!empty($_SESSION['daftar_phone'])) {
         <div class="help">Ketik minimal 2 huruf untuk mencari. Laki-laki memilih struktur DPP/DPW/DPLN/DPD/DPC/DPRa; perempuan memilih MWP/MWW/MWD/MWC/MWRa.</div>
       </div>
 
+      <div class="field">
+        <label for="unit_catalog_id">Unit Organisasi</label>
+        <select id="unit_catalog_id" name="unit_catalog_id" disabled>
+          <option value="">Pilih struktur terlebih dahulu</option>
+        </select>
+        <div class="help">Departemen, lembaga, atau biro tempat Anda bertugas. Kosongkan bila Anda di pimpinan struktur dan tidak di unit tertentu. Pilihan ini membantu admin memeriksa jabatan Anda.</div>
+      </div>
+
       <div class="btn-row">
         <button type="submit" class="btn">Kirim Pengajuan</button>
         <a class="btn secondary" href="<?= BASEURL ?>/pengurus/login">Sudah terdaftar? Masuk</a>
@@ -204,11 +212,38 @@ if (!empty($_SESSION['daftar_phone'])) {
             'id'    => (int) $s['id'],
             'label' => $s['level'] . ' ' . $s['name'],
             'level' => $s['level'],
+            'wing'  => $s['wing'],
             'parent'=> $s['parent_name'] ? ($s['parent_level'] . ' ' . $s['parent_name']) : '',
         ];
     }
     echo json_encode($list, JSON_UNESCAPED_UNICODE);
   ?>;
+
+  // Unit Organisasi menurut sayap struktur: [{label: 'Departemen', items: [{id, name}]}, ...]
+  var unitsByWing = <?= json_encode($unitsByWing, JSON_UNESCAPED_UNICODE) ?>;
+  var unitSelect = document.getElementById('unit_catalog_id');
+
+  // Struktur belum dipilih: kolom unit dikunci (dan tidak ikut terkirim). Sudah dipilih: isinya unit sayap struktur itu.
+  function fillUnits(wing) {
+    unitSelect.innerHTML = '';
+    var groups = wing ? (unitsByWing[wing] || []) : [];
+    var first = document.createElement('option');
+    first.value = '';
+    first.textContent = wing ? '— Tidak di unit tertentu —' : 'Pilih struktur terlebih dahulu';
+    unitSelect.appendChild(first);
+    groups.forEach(function (g) {
+      var og = document.createElement('optgroup');
+      og.label = g.label;
+      g.items.forEach(function (u) {
+        var o = document.createElement('option');
+        o.value = u.id;
+        o.textContent = u.name;
+        og.appendChild(o);
+      });
+      unitSelect.appendChild(og);
+    });
+    unitSelect.disabled = !wing;
+  }
 
   var input = document.getElementById('structure_search');
   var hidden = document.getElementById('target_structure_id');
@@ -239,6 +274,7 @@ if (!empty($_SESSION['daftar_phone'])) {
     input.value = s.label;
     results.style.display = 'none';
     input.setCustomValidity('');
+    fillUnits(s.wing);
   }
 
   function esc(t) {
@@ -259,6 +295,7 @@ if (!empty($_SESSION['daftar_phone'])) {
   }
 
   input.addEventListener('input', function () {
+    if (hidden.value) fillUnits('');   // struktur diganti/dihapus: pilihan unit lama tak berlaku lagi
     hidden.value = '';
     input.setCustomValidity('Pilih salah satu struktur dari daftar');
     var q = this.value.trim().toLowerCase();

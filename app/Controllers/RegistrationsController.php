@@ -35,6 +35,16 @@ class RegistrationsController extends Controller {
 
         $termList = $terms->byStructure($reg['target_structure_id']);
         $defaultTermId = $reg['target_term_id'] ?: ($terms->currentOfStructure($reg['target_structure_id'])['id'] ?? null);
+        $termUnits = $defaultTermId ? $units->unitsByTerm($defaultTermId) : [];
+
+        // Unit yang dipilih pendaftar (katalog) dicocokkan dengan unit yang SUDAH terpasang di struktur ini pada periode itu, supaya
+        // langkah aktivasi langsung memilihnya. Bila belum terpasang, verifikator diberi tahu (tidak dipasang otomatis).
+        $suggestedUnitId = null;
+        if (!empty($reg['requested_unit_catalog_id'])) {
+            foreach ($termUnits as $u) {
+                if ((int) $u['unit_catalog_id'] === (int) $reg['requested_unit_catalog_id']) { $suggestedUnitId = (int) $u['id']; break; }
+            }
+        }
 
         $this->view('admin/registrations/review', [
             'title'     => 'Verifikasi: ' . $reg['full_name'],
@@ -44,7 +54,8 @@ class RegistrationsController extends Controller {
             'match'     => $match,
             'terms'     => $termList,
             'defaultTermId' => $defaultTermId,
-            'units'     => $defaultTermId ? $units->unitsByTerm($defaultTermId) : [],
+            'units'     => $termUnits,
+            'suggestedUnitId' => $suggestedUnitId,
             'positions' => $positions->all(),
         ]);
     }

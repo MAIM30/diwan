@@ -737,6 +737,16 @@ setelah gelar dibuang). Sistem hanya mengusulkan orang yang cocok; bila ada bebe
 nomor WA yang sama, verifikator tetap memilih secara manual. Saat aktivasi, nomor WA diperiksa lagi
 agar perubahan yang terjadi selama peninjauan tidak membuat orang duplikat.
 
+**Unit Organisasi di Form Pengajuan.** Setelah memilih struktur, pendaftar boleh memilih Unit Organisasi tempatnya bertugas
+(opsional; kosong = pimpinan struktur atau tidak diisi). Daftarnya katalog `unit_catalog` yang aktif, **menurut sayap struktur
+yang dipilih** (Umum untuk DPP/DPW/DPD/..., Muslimah untuk MWP/MWW/MWD/...), dikelompokkan per jenis. Yang ditawarkan adalah
+katalog, bukan `structure_units`, karena hampir semua struktur daerah belum memasang unit apa pun. Pilihan disimpan di
+`registration_requests.extra_data.unit_catalog_id` dan divalidasi di server (aktif dan sayapnya sama dengan struktur tujuan; yang
+tak cocok ditolak). Admin melihatnya di daftar pengajuan (di bawah Struktur Tujuan) dan di baris *Unit Organisasi* halaman
+tinjau. Pada langkah aktivasi, bila unit itu **sudah terpasang** di struktur tujuan pada periode yang dipilih, kolom Unit langsung
+memilihnya; bila belum, halaman tinjau memberi catatan dan tidak memasangnya otomatis. Unit tetap bukan bukti: verifikator yang
+memutuskan penempatannya.
+
 Status **Aktif** di aplikasi ini adalah **syarat, bukan jaminan** mendapat akun di syuro atau
 aplikasi lain. Aktivasi tidak membuat baris `accounts` dan tidak mengirim apa pun ke syuro.
 

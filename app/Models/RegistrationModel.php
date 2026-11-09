@@ -9,6 +9,10 @@
 //     pendaftar ini orang yang sudah ada atau orang baru -- persis aturan impor SK di syuro.
 
 class RegistrationModel {
+    // Unit Organisasi yang dipilih pendaftar di formulir (extra_data.unit_catalog_id = unit_catalog.id), bukan structure_units: kebanyakan
+    // struktur belum memasang unit apa pun, jadi yang bisa dipilih pendaftar adalah katalognya. Alias "uc" dipakai di dua query di bawah.
+    const REQUESTED_UNIT_JOIN = "LEFT JOIN unit_catalog uc ON uc.id = CAST(JSON_UNQUOTE(JSON_EXTRACT(r.extra_data, '\$.unit_catalog_id')) AS UNSIGNED)";
+
     private $db;
 
     public function __construct() {
@@ -19,6 +23,7 @@ class RegistrationModel {
         $stmt = $this->db->prepare("
             SELECT r.*, s.level, s.name AS structure_name,
                    t.name AS term_name, po.name AS position_name, c.name AS unit_name,
+                   uc.id AS requested_unit_catalog_id, uc.name AS requested_unit_name,
                    m.full_name AS matched_name, m.uuid AS matched_uuid,
                    rev.display_name AS reviewer_name
             FROM registration_requests r
@@ -27,6 +32,7 @@ class RegistrationModel {
             LEFT JOIN positions po ON po.id = r.target_position_id
             LEFT JOIN structure_units su ON su.id = r.target_unit_id
             LEFT JOIN unit_catalog c ON c.id = su.unit_catalog_id
+            " . self::REQUESTED_UNIT_JOIN . "
             LEFT JOIN people m ON m.id = r.matched_person_id
             LEFT JOIN accounts rev ON rev.id = r.reviewed_by
             WHERE r.id = :id
@@ -47,10 +53,11 @@ class RegistrationModel {
 
         $stmt = $this->db->prepare("
             SELECT r.*, s.level, s.name AS structure_name, po.name AS position_name,
-                   m.full_name AS matched_name
+                   uc.name AS requested_unit_name, m.full_name AS matched_name
             FROM registration_requests r
             JOIN structures s ON s.id = r.target_structure_id
             LEFT JOIN positions po ON po.id = r.target_position_id
+            " . self::REQUESTED_UNIT_JOIN . "
             LEFT JOIN people m ON m.id = r.matched_person_id
             WHERE " . implode(' AND ', $where) . "
             ORDER BY FIELD(r.status,'submitted','verified','rejected','activated'), r.created_at DESC
@@ -119,6 +126,20 @@ class RegistrationModel {
         $matchedId = count($match['candidates']) === 1 ? (int) $match['candidates'][0]['id'] : null;
         $selectedPersonId = (int) ($data['selected_person_id'] ?? 0);
         $extraData = !empty($data['notes']) ? ['catatan' => $data['notes']] : [];
+
+        // Unit Organisasi (opsional): membantu verifikator memeriksa jabatan pendaftar. Harus entri katalog yang aktif dan
+        // sayapnya sama dengan struktur tujuan; pilihan yang tak cocok ditolak, bukan diam-diam dibuang.
+        $unitCatalogId = (int) ($data['unit_catalog_id'] ?? 0);
+        if ($unitCatalogId > 0) {
+            require_once ROOT_DIR . '/app/Models/UnitModel.php';
+            $units = new UnitModel();
+            $unit = $units->catalogFindById($unitCatalogId);
+            if (!$unit || !(int) $unit['is_active'] || $unit['wing'] !== $units->wingOfStructure($data['target_structure_id'])) {
+                throw new RuntimeException('Unit Organisasi yang dipilih tidak sesuai dengan struktur tujuan. Pilih ulang dari daftar.');
+            }
+            $extraData['unit_catalog_id'] = $unitCatalogId;
+        }
+
         if ($selectedPersonId > 0) {
             $selected = $this->db->prepare("SELECT id, name_normalized, gender, phone FROM people WHERE id = :id AND deleted_at IS NULL");
             $selected->execute([':id' => $selectedPersonId]);

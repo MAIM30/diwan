@@ -13,7 +13,25 @@ class DaftarController extends Controller {
         $this->view('public/daftar', [
             'title'      => 'Pendaftaran Data Pengurus',
             'structures' => $structures->allOrdered(),
+            'unitsByWing' => $this->unitsByWing(),
         ]);
+    }
+
+    // Katalog Unit Organisasi yang aktif, per sayap lalu per jenis (Departemen, Lembaga, Biro, ...), untuk pilihan di formulir.
+    // Sayap mengikuti struktur yang dipilih: unit Muslimah hanya dipasang pada struktur Muslimah, dan sebaliknya.
+    private function unitsByWing() {
+        $out = ['umum' => [], 'muslimah' => []];
+        foreach ($this->model('UnitModel')->catalogAll(true) as $u) {
+            $out[$u['wing']][$u['kind']][] = ['id' => (int) $u['id'], 'name' => $u['name']];
+        }
+        $groups = [];
+        foreach ($out as $wing => $byKind) {
+            $groups[$wing] = [];
+            foreach (PositionModel::UNIT_KINDS as $kind => $label) {
+                if (!empty($byKind[$kind])) $groups[$wing][] = ['label' => $label, 'items' => $byKind[$kind]];
+            }
+        }
+        return $groups;
     }
 
     public function submit() {
@@ -53,6 +71,7 @@ class DaftarController extends Controller {
                 'nik'                 => '',
                 'notes'               => '',
                 'target_structure_id' => $structureId,
+                'unit_catalog_id'     => (int) ($_POST['unit_catalog_id'] ?? 0),
                 'target_term_id'      => null,
                 'target_unit_id'      => null,
                 'target_position_id'  => null,
