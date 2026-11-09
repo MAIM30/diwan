@@ -67,6 +67,16 @@ class Ui {
         return BASEURL . '/assets/' . $path . (is_file($file) ? '?v=' . filemtime($file) : '');
     }
 
+    // Tag ikon aplikasi (lambang DIWAN) untuk <head> SEMUA halaman, termasuk halaman galat. Berkasnya: public/favicon.ico (16/32/48 px,
+    // juga disajikan di /favicon.ico untuk klien yang memintanya tanpa membaca HTML), assets/img/icon-192.png, dan apple-touch-icon.png
+    // (180 px berlatar putih: iOS tidak menerima transparan). Berversi ?v= seperti asset(): nginx menyajikannya "immutable" 30 hari.
+    public static function favicons() {
+        $ico = ROOT_DIR . '/public/favicon.ico';
+        return '<link rel="icon" href="' . BASEURL . '/favicon.ico' . (is_file($ico) ? '?v=' . filemtime($ico) : '') . '" sizes="any">' . "\n"
+             . '<link rel="icon" type="image/png" sizes="192x192" href="' . self::asset('img/icon-192.png') . '">' . "\n"
+             . '<link rel="apple-touch-icon" href="' . self::asset('img/apple-touch-icon.png') . '">' . "\n";
+    }
+
     public static function icon($name, $size = 18, $class = '') {
         $body = self::$icons[$name] ?? self::$icons['circle'];
         return '<svg class="ic' . ($class !== '' ? ' ' . e($class) : '') . '" width="' . (int) $size . '" height="' . (int) $size

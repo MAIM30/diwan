@@ -7,6 +7,7 @@
 <meta name="theme-color" content="#0f96b0">
 <meta name="robots" content="noindex">
 <title>Verifikasi OTP &middot; <?= e(APP_NAME) ?></title>
+<?= Ui::favicons() ?>
 <link rel="stylesheet" href="<?= Ui::asset('css/app.css') ?>">
 </head>
 <body>

@@ -6,6 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0f96b0">
 <title>Akses Ditolak</title>
+<?= Ui::favicons() ?>
 <link rel="stylesheet" href="<?= Ui::asset('css/app.css') ?>">
 </head>
 <body>

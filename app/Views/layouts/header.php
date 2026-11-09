@@ -33,6 +33,7 @@ $nav = function ($key, $href, $icon, $label, $badge = 0) use ($navKey) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0f96b0">
 <title><?= isset($title) ? e($title) . ' &middot; ' : '' ?><?= e(APP_NAME) ?></title>
+<?= Ui::favicons() ?>
 <link rel="stylesheet" href="<?= Ui::asset('css/app.css') ?>">
 </head>
 <body>

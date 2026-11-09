@@ -62,6 +62,11 @@ putih logo sidebar dan bilah atas portal), dan `diwan-logo-full.png` (berkas asl
 Islamiyah"** dan **"Sistem Tata Kelola Data Kepengurusan Wahdah Islamiyah"**, sengaja dipasang sebagai teks HTML (dari `APP_ACRONYM` dan `APP_TAGLINE`), bukan bagian
 gambar, supaya tajam di semua ukuran layar, bisa disalin, dan terbaca pembaca layar.
 
+**Ikon aplikasi (favicon)** memakai lambang saja (tanpa tulisan, yang tak terbaca pada 16 px), dipotong dari `diwan-logo.png` yang transparan: `public/favicon.ico` (16/32/48 px;
+juga disajikan di `/favicon.ico`), `public/assets/img/icon-192.png`, dan `apple-touch-icon.png` (180 px, berlatar putih karena iOS tak menerima transparan). Tag-nya dibuat oleh
+`Ui::favicons()` dan dipasang di `<head>` semua halaman, termasuk halaman galat 403/404. Berversi `?v=` (waktu ubah berkas) karena nginx menyajikannya "immutable" 30 hari:
+setelah mengganti berkasnya, ikon di peramban ikut berganti saat deploy. Mengganti logo berarti membuat ulang ketiga berkas ini dari lambang yang baru.
+
 Panel halaman masuk (kiri di layar lebar, kepala atas bertepi bergelombang di ponsel) sengaja **terang**: tulisan "DIWAN" pada logo berwarna teal gelap, jadi di atas
 latar teal gelap ia tidak terbaca. Judul dan kalimat konteks di panel itu opsional (`$headline`/`$tagline` pada `auth/_brand.php`); hanya halaman Ganti kata sandi
 yang memakainya.

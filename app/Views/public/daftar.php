@@ -13,6 +13,7 @@ if (!empty($_SESSION['daftar_phone'])) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0f96b0">
 <title>Pendaftaran Data Pengurus &middot; <?= e(APP_NAME) ?></title>
+<?= Ui::favicons() ?>
 <link rel="stylesheet" href="<?= Ui::asset('css/app.css') ?>">
 </head>
 <body>
