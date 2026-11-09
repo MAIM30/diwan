@@ -7,12 +7,15 @@
 function migrate_015_struktur_dpln_mwra(PDO $pdo, callable $say) {
     $say('Migrasi 015: menambahkan tingkat DPLN dan MWRa...');
 
-    // Periksa apakah nilai dari migrasi 017 (DSO/DSY/DPK) sudah ada di ENUM.
-    // Bila ya, sertakan agar MODIFY tidak memotong data yang sudah ada.
+    // Nilai ENUM yang ditambahkan migrasi LEBIH BARU (DSO/DSY/DPK dari 017, MWLN dari 023, dst.) dipertahankan apa adanya, urutan
+    // semula: migrate.php menjalankan ulang semua migrasi, dan MODIFY tanpa nilai-nilai itu memotong (atau menolak) baris yang memakainya.
     $curEnum = $pdo->query("SELECT COLUMN_TYPE FROM information_schema.columns
         WHERE table_schema = DATABASE() AND table_name = 'structures'
           AND column_name = 'level'")->fetchColumn();
-    $extra = (strpos($curEnum, 'DSO') !== false) ? ",'DSO','DSY','DPK'" : '';
+    preg_match_all("/'([^']+)'/", (string) $curEnum, $found);
+    $base = ['DPP', 'DPW', 'DPLN', 'DPD', 'DPC', 'DPRa', 'MWP', 'MWW', 'MWD', 'MWC', 'MWRa'];
+    $newer = array_values(array_diff($found[1], $base));
+    $extra = $newer ? ",'" . implode("','", $newer) . "'" : '';
 
     $pdo->exec("ALTER TABLE structures
         MODIFY level ENUM('DPP','DPW','DPLN','DPD','DPC','DPRa','MWP','MWW','MWD','MWC','MWRa'$extra) NOT NULL,

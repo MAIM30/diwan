@@ -92,6 +92,7 @@ database/
   020_ketua_bidang_inti_dpp.php migrasi: Ketua Bidang / Wakil Ketua Bidang di Pengurus Inti DPP + urutan resmi Pengurus Inti DPP
   021_ketua_menurut_jenis_unit.php  migrasi: Ketua Departemen / Lembaga / Biro / Badan + positions.unit_kinds (batas jenis unit)
   022_katalog_unit_per_sayap.php    migrasi: katalog Unit Organisasi dipisah per sayap (unit_catalog.wing: Umum / Muslimah), nama unik per sayap
+  023_struktur_mwln.php             migrasi: tingkat MWLN (Muslimah Luar Negeri, padanan DPLN: setingkat MWW di bawah MWP); hanya definisi kolom, tanpa mengubah baris
   sinkron_ketua_dpw_dpd.php   memasukkan Ketua DPW/DPD dari tab DPW dan DPD di Google Sheet pengurus (CLI; dry-run bawaan, --commit untuk menyimpan)
   sinkron_sheet_dpp.php       menyamakan penempatan satu struktur dengan tab-nya di Google Sheet pengurus: --tab=DPP (bawaan) atau --tab=MWP;
                               pilihan --rinci, --mirip, --buat-unit, --buat-orang untuk sheet tanpa nomor HP (CLI; dry-run bawaan, --commit untuk menyimpan)
@@ -429,9 +430,9 @@ seluruh keturunannya (`AdminScope`, materialized path), dan tidak pernah menyebe
 | Tingkat | Contoh admin | Lingkup yang terlihat/dikelola |
 |---|---|---|
 | Pusat | DPP | seluruh sistem, termasuk sayap Muslimah (MWP menggantung di bawah DPP) |
-| Pusat Muslimah | MWP | MWP + MWW + MWD + MWC + MWRa |
+| Pusat Muslimah | MWP | MWP + MWW + MWLN + MWD + MWC + MWRa |
 | Wilayah | DPW Sulawesi Tenggara | DPW itu + semua DPD/DPC/DPRa di bawahnya, **bukan** MWW Sultra |
-| Luar Negeri | DPLN | hanya DPLN dan keturunan yang berada di bawahnya |
+| Luar Negeri | DPLN atau MWLN | hanya struktur itu dan keturunan yang berada di bawahnya (MWLN adalah padanan Muslimah DPLN, di bawah MWP) |
 | Daerah | DPD Kota Kendari | DPD itu + DPC + DPRa di bawahnya |
 | Cabang | DPC Mandonga | DPC itu + DPRa di bawahnya |
 | Ranting | DPRa Ranting Satu atau MWRa Ranting Satu | hanya ranting itu |
@@ -473,7 +474,7 @@ Lingkup admin (`AdminScope`) dihitung saat masuk; setelah admin menambah atau me
 (`AdminScope::refresh`), sehingga struktur barunya langsung terlihat dan langkah berikutnya (form periode) tidak ditolak.
 
 **Pilihan Tingkat di form struktur mengikuti lingkup admin** (`StructureModel::levelsInScope`): di tiap sayap, mulai dari struktur tertingginya dalam lingkup ke bawah.
-Admin DPW melihat DPW/DPD/DPC/DPRa, admin DPD melihat DPD/DPC/DPRa, dan seterusnya; admin DPP dapat membuat DPLN setingkat DPW dan admin MWC dapat membuat MWRa; sayap yang tak ada dalam lingkupnya (Muslimah bagi admin DPW) tidak muncul,
+Admin DPW melihat DPW/DPD/DPC/DPRa, admin DPD melihat DPD/DPC/DPRa, dan seterusnya; admin DPP dapat membuat DPLN setingkat DPW, admin MWP dapat membuat MWLN setingkat MWW, dan admin MWC dapat membuat MWRa; sayap yang tak ada dalam lingkupnya (Muslimah bagi admin DPW) tidak muncul,
 sedangkan admin DPP dan Super Admin melihat semuanya. Batas yang sama dipaksakan di server saat menyimpan, jadi mengirim level lain secara manual ditolak.
 
 **Susunan periode dikelompokkan per kategori.** Halaman detail periode menampilkan "Susunan Lengkap" sebagai daftar yang membuka isinya saat diketuk (pola `<details>`

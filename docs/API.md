@@ -465,7 +465,7 @@ Field bertanda *nullable* bisa bernilai `null`.
 |---|---|---|
 | `uuid` | string | Kunci utama di salinan lokal Anda |
 | `parent_uuid` | string \| null | `null` untuk akar (DPP, DSO, DSY, DPK) |
-| `level` | enum | `DPP` `DPW` `DPLN` `DPD` `DPC` `DPRa` `MWP` `MWW` `MWD` `MWC` `MWRa` `DSO` `DSY` `DPK` |
+| `level` | enum | `DPP` `DPW` `DPLN` `DPD` `DPC` `DPRa` `MWP` `MWW` `MWLN` `MWD` `MWC` `MWRa` `DSO` `DSY` `DPK` |
 | `wing` | enum | `umum` (DP*) atau `muslimah` (MW*) |
 | `tier` | int | `1` Pusat, `2` Wilayah, `3` Daerah, `4` Cabang, `5` Ranting |
 | `name` | string | Nama wilayah, mis. `"Sulawesi Tenggara"` |

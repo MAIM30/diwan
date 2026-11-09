@@ -8,11 +8,11 @@
 // WAJIB lewat model ini, karena di sinilah path ikut diperbarui.
 
 class StructureModel {
-    // Urutan tampilan tingkat pada masing-masing sayap. DPLN setingkat DPW dan MWRa tingkat Ranting.
+    // Urutan tampilan tingkat pada masing-masing sayap. DPLN setingkat DPW, MWLN (padanan Muslimahnya) setingkat MWW, dan MWRa tingkat Ranting.
     const BY_WING = [
-        // DPLN sementara ditempatkan setingkat DPW; MWRa adalah tingkat ranting di bawah MWC.
+        // DPLN sementara ditempatkan setingkat DPW di bawah DPP; MWLN setingkat MWW di bawah MWP; MWRa adalah tingkat ranting di bawah MWC.
         'umum'     => ['DPP', 'DPW', 'DPLN', 'DPD', 'DPC', 'DPRa'],
-        'muslimah' => ['MWP', 'MWW', 'MWD', 'MWC', 'MWRa'],
+        'muslimah' => ['MWP', 'MWW', 'MWLN', 'MWD', 'MWC', 'MWRa'],
     ];
     const LEVELS = [...self::BY_WING['umum'], ...self::BY_WING['muslimah']];
 
@@ -115,7 +115,7 @@ class StructureModel {
             WHERE s.deleted_at IS NULL AND " . AdminScope::sqlFilter('s.id'))->fetchAll(PDO::FETCH_COLUMN);
         $children = [
             'DPP' => ['DPW', 'DPLN', 'MWP'], 'DPW' => ['DPD'], 'DPD' => ['DPC'], 'DPC' => ['DPRa'],
-            'MWP' => ['MWW'], 'MWW' => ['MWD'], 'MWD' => ['MWC'], 'MWC' => ['MWRa'],
+            'MWP' => ['MWW', 'MWLN'], 'MWW' => ['MWD'], 'MWD' => ['MWC'], 'MWC' => ['MWRa'],
         ];
         $allowed = array_fill_keys($rows, true);
         foreach ($rows as $level) foreach ($children[$level] ?? [] as $child) $allowed[$child] = true;

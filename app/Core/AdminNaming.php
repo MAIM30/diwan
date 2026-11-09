@@ -32,7 +32,7 @@ class AdminNaming {
     }
 
     private static function tierName($level) {
-        return ['DPP' => 'Pusat', 'MWP' => 'Pusat', 'DPW' => 'Wilayah', 'DPLN' => 'Luar Negeri', 'MWW' => 'Wilayah', 'DPD' => 'Daerah', 'MWD' => 'Daerah',
+        return ['DPP' => 'Pusat', 'MWP' => 'Pusat', 'DPW' => 'Wilayah', 'DPLN' => 'Luar Negeri', 'MWW' => 'Wilayah', 'MWLN' => 'Luar Negeri', 'DPD' => 'Daerah', 'MWD' => 'Daerah',
                 'DPC' => 'Cabang', 'MWC' => 'Cabang', 'DPRa' => 'Ranting', 'MWRa' => 'Ranting'][$level] ?? $level;
     }
 

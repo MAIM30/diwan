@@ -67,7 +67,7 @@ class PeopleController extends Controller {
 
         $levels = $this->model('StructureModel')->levelsInScope();
         $umum = ['DPP', 'DPW', 'DPLN', 'DPD', 'DPC', 'DPRa'];
-        $musl = ['MWP', 'MWW', 'MWD', 'MWC', 'MWRa'];
+        $musl = ['MWP', 'MWW', 'MWLN', 'MWD', 'MWC', 'MWRa'];
 
         $data = [
             'title'    => 'Data Pengurus',

@@ -16,7 +16,7 @@ class UnitModel {
     // ke FIELD() di dalam SQL.
     const KIND_ORDER = ['departemen', 'lembaga', 'biro', 'badan', 'pusat', 'divisi', 'lainnya'];
 
-    // Sayap katalog (migrasi 022). Mengikuti structures.wing: struktur Muslimah (MWP, MWW, MWD, MWC, MWRa) memakai katalog
+    // Sayap katalog (migrasi 022). Mengikuti structures.wing: struktur Muslimah (MWP, MWW, MWLN, MWD, MWC, MWRa) memakai katalog
     // 'muslimah', yang lain 'umum'. Nama unit unik per sayap, bukan di seluruh katalog.
     const WINGS = ['umum' => 'Umum', 'muslimah' => 'Muslimah'];
 

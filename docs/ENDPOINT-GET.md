@@ -87,7 +87,7 @@ Urutan mengikuti pohon (induk selalu sebelum anak).
 Field: `uuid`, `parent_uuid`, `level`, `wing`, `tier`, `name`, `region_code`, `depth`, `is_active`,
 `updated_at`, `deleted`.
 
-- `level`: `DPP` `DPW` `DPLN` `DPD` `DPC` `DPRa` `MWP` `MWW` `MWD` `MWC` `MWRa` **`DSO` `DSY` `DPK`**
+- `level`: `DPP` `DPW` `DPLN` `DPD` `DPC` `DPRa` `MWP` `MWW` `MWLN` `MWD` `MWC` `MWRa` **`DSO` `DSY` `DPK`**
 - `wing`: `umum` | `muslimah` · `tier`: `1` Pusat … `5` Ranting
 - `DSO` (Dewan Syura), `DSY` (Dewan Syariah), `DPK` (Dewan Pengawas Keuangan) adalah **akar tersendiri**
   (`parent_uuid: null`, `depth: 0`, `tier: 1`, `wing: umum`), sejajar dengan DPP — bukan anak DPP.

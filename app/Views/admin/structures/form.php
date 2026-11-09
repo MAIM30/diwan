@@ -27,7 +27,7 @@ $this->view('layouts/header', ['title' => $title]);
             <option value="<?= e($lv) ?>" <?= ($row['level'] ?? '') === $lv ? 'selected' : '' ?>><?= e($lv) ?></option>
           <?php endforeach; ?>
         </select>
-        <div class="help">DPLN setingkat DPW di bawah DPP. MWP/MWW/MWD/MWC/MWRa = sayap Muslimah; MWRa berarti Ranting (Kelurahan) di bawah MWC.</div>
+        <div class="help">DPLN setingkat DPW di bawah DPP. MWP/MWW/MWLN/MWD/MWC/MWRa = sayap Muslimah; MWLN (Luar Negeri) setingkat MWW di bawah MWP; MWRa berarti Ranting (Kelurahan) di bawah MWC.</div>
       </div>
 
       <div class="field">
@@ -78,7 +78,7 @@ $this->view('layouts/header', ['title' => $title]);
   var parent = document.getElementById('parent_id');
   if (!level || !parent) return;
   function syncParent() {
-    var required = level.value === 'DPLN' ? 'DPP' : (level.value === 'MWRa' ? 'MWC' : '');
+    var required = {DPLN: 'DPP', MWLN: 'MWP', MWRa: 'MWC'}[level.value] || '';
     Array.prototype.forEach.call(parent.options, function (option) {
       if (!option.value) return;
       option.hidden = !!required && option.getAttribute('data-parent-level') !== required;

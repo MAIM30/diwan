@@ -12,12 +12,12 @@
 
 class PeopleOverview {
     // Urutan jenjang di halaman: sayap Umum, lalu Muslimah, lalu ketiga Dewan.
-    const LEVEL_ORDER = ['DPP', 'DPW', 'DPLN', 'DPD', 'DPC', 'DPRa', 'MWP', 'MWW', 'MWD', 'MWC', 'MWRa', 'DSO', 'DSY', 'DPK'];
+    const LEVEL_ORDER = ['DPP', 'DPW', 'DPLN', 'DPD', 'DPC', 'DPRa', 'MWP', 'MWW', 'MWLN', 'MWD', 'MWC', 'MWRa', 'DSO', 'DSY', 'DPK'];
 
     const LEVEL_NAMES = [
         'DPP' => 'Dewan Pimpinan Pusat', 'DPW' => 'Dewan Pimpinan Wilayah', 'DPLN' => 'Dewan Pimpinan Luar Negeri',
         'DPD' => 'Dewan Pimpinan Daerah', 'DPC' => 'Dewan Pimpinan Cabang', 'DPRa' => 'Dewan Pimpinan Ranting',
-        'MWP' => 'Muslimah Wahdah Islamiyah Pusat', 'MWW' => 'Muslimah Wilayah', 'MWD' => 'Muslimah Daerah',
+        'MWP' => 'Muslimah Wahdah Islamiyah Pusat', 'MWW' => 'Muslimah Wilayah', 'MWLN' => 'Muslimah Luar Negeri', 'MWD' => 'Muslimah Daerah',
         'MWC' => 'Muslimah Cabang', 'MWRa' => 'Muslimah Ranting',
         'DSO' => 'Dewan Syura', 'DSY' => 'Dewan Syariah', 'DPK' => 'Dewan Pengawas Keuangan',
     ];
