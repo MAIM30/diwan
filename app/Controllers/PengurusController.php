@@ -2,8 +2,9 @@
 // PATH LOKASI FILE: app/Controllers/PengurusController.php
 // Portal Pengurus: pengurus melihat data kepengurusannya sendiri.
 //
-// Alur masuk: nomor WA → OTP yang ditampilkan di halaman verifikasi (tidak dikirim lewat WhatsApp) → sesi.
-// Bila gateway WhatsApp tidak aktif (Whatsapp::isActive), langkah OTP dilewati: nomor WA yang lolos pemeriksaan langsung masuk.
+// Alur masuk: nomor WA → OTP → sesi. Gateway WhatsApp aktif (Whatsapp::isActive): kode dikirim ke WhatsApp pengurus.
+// Gateway TIDAK aktif: pengurus diarahkan mengirim chat ke admin (PORTAL_FALLBACK_WA), yang memberinya kode umum (PORTAL_FALLBACK_CODE);
+// kode umum hanya diterima selama gateway tidak aktif. Tak ada jalan masuk tanpa kode.
 
 class PengurusController extends Controller {
 
@@ -12,16 +13,22 @@ class PengurusController extends Controller {
         header('Pragma: no-cache');
     }
 
-    // Gateway WhatsApp aktif? Satu-satunya syarat adanya langkah OTP. Dipisah supaya uji bisa mengaturnya.
+    // Gateway WhatsApp aktif? Menentukan cara kode diterima (dikirim ke WhatsApp, atau minta ke admin) dan kapan kode umum berlaku.
+    // Dipisah supaya uji bisa mengaturnya.
     protected function gatewayActive() {
         return Whatsapp::isActive();
     }
 
-    // Membuka sesi portal bagi pengurus yang sudah lolos semua pemeriksaan masuk (setelah OTP, atau langsung bila gateway tak aktif).
-    private function enter($members, array $person) {
+    // Mengirim kode ke WhatsApp orang itu. Dipisah supaya uji bisa mengganti pengirimnya.
+    protected function sendOtp(array $person, $code) {
+        return Whatsapp::sendOtp($person['phone'] ?? '', $person['name'] ?? '', $person['gender'] ?? 'L', $code);
+    }
+
+    // Membuka sesi portal bagi pengurus yang sudah lolos semua pemeriksaan masuk, termasuk kode OTP. $via: lihat MemberModel::recordLogin.
+    private function enter($members, array $person, $via = null) {
         unset($_SESSION['otp_pending']);
         Member::login($person);
-        $members->recordLogin($person['id']);
+        $members->recordLogin($person['id'], $via);
         $this->redirect('pengurus');
     }
 
@@ -72,17 +79,36 @@ class PengurusController extends Controller {
             $this->redirect('daftar');
         }
 
-        // Tanpa gateway aktif kode itu hanya muncul di layar dan tidak membuktikan apa pun, jadi langkahnya ditiadakan. Semua pemeriksaan
-        // di atas (format, pembatas, kelayakan, nomor bersama) tetap berlaku; yang hilang hanya halaman kode.
+        $pending = ['person_id' => (int) $person['id'], 'phone' => (string) ($person['phone'] ?? '')];
+
+        // Tanpa gateway aktif kode tak bisa dikirim: halaman OTP mengarahkan pengurus mengirim chat ke admin, yang memberinya kode umum.
+        // Tak ada kode yang diterbitkan atau dikirim; yang berlaku hanya kode umum, dan hanya selama gateway tetap tidak aktif.
         if (!$this->gatewayActive()) {
-            $this->enter($members, $person);
+            $_SESSION['otp_pending'] = $pending + ['issued_at' => time(), 'via_admin' => true];
+            $this->redirect('pengurus/otp');
         }
 
-        $_SESSION['otp_pending'] = [
-            'person_id' => (int) $person['id'],
-            'code'      => Otp::issue($person['id'], $person['phone'] ?? ''),
-            'issued_at' => time(),
-        ];
+        // Kode yang baru saja dikirim ke orang ini masih berlaku: jangan kirim lagi (pembatas, lihat Otp), pakai yang itu.
+        $ago = Otp::lastIssuedAgo($person['id']);
+        if ($ago !== null && $ago < Otp::RESEND_AFTER) {
+            $_SESSION['otp_pending'] = $pending + ['issued_at' => time() - $ago];
+            Flash::set('info', 'Kode sudah dikirim ke WhatsApp Anda. Tunggu semenit sebelum meminta kode baru.');
+            $this->redirect('pengurus/otp');
+        }
+        if (Otp::ipLimited()) {
+            Flash::set('error', 'Terlalu banyak permintaan kode dari jaringan ini. Silakan coba lagi nanti.');
+            $this->redirect('pengurus/login');
+        }
+
+        $code = Otp::issue($person['id'], $person['phone'] ?? '');
+        $sent = $this->sendOtp($person, $code);
+        if (empty($sent['ok'])) {
+            Otp::revoke($person['id']);   // tak ada yang memegang kode ini; jangan biarkan ia menahan permintaan berikutnya
+            Flash::set('error', 'Kode OTP gagal dikirim ke WhatsApp. Silakan coba lagi sebentar lagi.');
+            $this->redirect('pengurus/login');
+        }
+
+        $_SESSION['otp_pending'] = $pending + ['issued_at' => time()];
         $this->redirect('pengurus/otp');
     }
 
@@ -92,8 +118,10 @@ class PengurusController extends Controller {
         if (empty($_SESSION['otp_pending'])) $this->redirect('pengurus/login');
 
         $this->view('pengurus/otp', [
-            'title' => 'Verifikasi OTP',
-            'code'  => $_SESSION['otp_pending']['code'],
+            'title'        => 'Verifikasi OTP',
+            'maskedPhone'  => Text::maskPhone($_SESSION['otp_pending']['phone'] ?? ''),
+            'viaAdmin'     => !empty($_SESSION['otp_pending']['via_admin']),
+            'adminChatUrl' => Otp::adminChatUrl(),
         ]);
     }
 
@@ -109,19 +137,33 @@ class PengurusController extends Controller {
             $this->redirect('pengurus/login');
         }
 
-        $pending = $_SESSION['otp_pending'];
-        $code    = trim((string) ($_POST['code'] ?? ''));
+        $pending  = $_SESSION['otp_pending'];
+        $code     = trim((string) ($_POST['code'] ?? ''));
+        $viaAdmin = !empty($pending['via_admin']);
 
-        if (time() - (int) $pending['issued_at'] > Otp::TTL) {
+        // Halaman "minta kode ke admin" hanya punya arti selama gateway mati. Begitu gateway aktif lagi tak ada kode yang dikirim ke
+        // orang ini, dan kode umum tak berlaku lagi: suruh masuk ulang supaya kode dikirim lewat WhatsApp.
+        if ($viaAdmin && $this->gatewayActive()) {
+            unset($_SESSION['otp_pending']);
+            Flash::set('info', 'WhatsApp otomatis sudah aktif kembali. Silakan masuk ulang untuk menerima kode OTP lewat WhatsApp.');
+            $this->redirect('pengurus/login');
+        }
+
+        if (time() - (int) $pending['issued_at'] > ($viaAdmin ? Otp::ADMIN_TTL : Otp::TTL)) {
             unset($_SESSION['otp_pending']);
             Flash::set('error', 'Kode OTP sudah kedaluwarsa. Silakan masuk ulang.');
             $this->redirect('pengurus/login');
         }
 
+        // Kode umum hanya berlaku selama gateway tidak aktif (diperiksa SAAT INI, bukan saat masuk dimulai). Pemeriksaan gateway hanya
+        // dijalankan bila kode yang diketik memang kode umum, supaya kode biasa tak menunggu gateway.
         $personId = (int) $pending['person_id'];
-        if (!Otp::verify($personId, $code)) {
+        $general  = Otp::isGeneralCode($code) && !$this->gatewayActive();
+        if (!$general && !Otp::verify($personId, $code)) {
             $throttle->recordFailure();
-            Flash::set('error', 'Kode OTP tidak valid. Periksa kembali kode yang tampil di halaman ini.');
+            Flash::set('error', $viaAdmin
+                ? 'Kode OTP tidak valid. Minta kode kepada admin lewat tombol WhatsApp di halaman ini.'
+                : 'Kode OTP tidak valid. Periksa kembali kode yang dikirim ke WhatsApp Anda.');
             $this->redirect('pengurus/otp');
         }
 
@@ -133,7 +175,7 @@ class PengurusController extends Controller {
             $this->redirect('pengurus/login');
         }
 
-        $this->enter($members, $person);
+        $this->enter($members, $person, $general ? 'kode_umum' : null);
     }
 
     // POST + CSRF (diverifikasi App): keluar lewat GET bisa dipicu orang lain lewat <img src>.

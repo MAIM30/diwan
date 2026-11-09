@@ -19,17 +19,23 @@
     <div class="auth-card">
       <span class="role-pill is-member"><?= Ui::icon('shield', 14) ?> Verifikasi</span>
       <h1>Masukkan Kode OTP</h1>
-      <p class="lead">Ketik kode 4 digit di bawah ini. Berlaku 5 menit.</p>
+<?php if ($viaAdmin): ?>
+      <p class="lead">Pengiriman kode lewat WhatsApp sedang tidak aktif. Minta kode OTP kepada admin, lalu ketik di bawah. Berlaku 15 menit.</p>
 
       <?php $this->view('layouts/flash'); ?>
 
+      <?php // Admin mengenali peminta dari nomor pengirim chat; isi pesan tak memuat nama atau nomor (lihat Otp::adminChatUrl). ?>
+      <a class="btn secondary block" href="<?= e($adminChatUrl) ?>" target="_blank" rel="noopener" style="margin-bottom:16px">
+        <?= Ui::icon('phone', 18) ?> Minta kode ke admin lewat WhatsApp
+      </a>
+<?php else: ?>
+      <p class="lead">Kode 4 digit telah dikirim ke WhatsApp <strong><?= e($maskedPhone) ?></strong>. Berlaku 5 menit.</p>
+
+      <?php $this->view('layouts/flash'); ?>
+<?php endif; ?>
+
       <form method="post" action="<?= BASEURL ?>/pengurus/otp_verify">
         <?= Csrf::field() ?>
-
-        <div class="alert info" style="text-align:center">
-          Kode OTP Anda
-          <strong style="display:block; margin-top:6px; font-size:1.8rem; letter-spacing:.3em"><?= e($code) ?></strong>
-        </div>
 
         <div class="field">
           <label for="code">Kode OTP</label>

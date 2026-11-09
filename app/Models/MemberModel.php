@@ -176,8 +176,9 @@ class MemberModel {
     // Dicatat di audit_log dengan penanda event=portal_login. Penanda itu juga yang membuatnya
     // tersaring dari umpan aktivitas admin (DashboardModel::NOISE): masuknya seorang pengurus
     // bukan "perubahan data".
-    public function recordLogin($personId) {
-        Audit::log('people', $personId, 'update', null, ['event' => 'portal_login']);
+    // $via: cara masuk yang tak lazim dan perlu bisa dilacak, mis. 'kode_umum' (OTP umum dari admin saat gateway tak aktif).
+    public function recordLogin($personId, $via = null) {
+        Audit::log('people', $personId, 'update', null, ['event' => 'portal_login'] + ($via !== null ? ['via' => $via] : []));
     }
 
     public function loginHistory($personId, $limit = 6) {

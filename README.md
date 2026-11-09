@@ -235,13 +235,26 @@ yang ada dipertahankan, ditambah dua yang khusus nomor:
 | Nomor bersama tak bisa dipakai masuk | `people.phone` sengaja tidak unik (mis. nomor suami pada data pengurus muslimah). Portal tak punya faktor kedua untuk memilih pemiliknya, jadi nomor yang dipakai **dua orang atau lebih** (yang belum dihapus) tidak bisa dipakai masuk oleh siapa pun, bukan "masuk sebagai yang pertama". Dihitung semua pemilik, bukan hanya yang layak, supaya hasilnya tak berubah mengikuti status orang lain. Pemilik ber-NIK tetap bisa masuk dengan NIK-nya. Admin melihat alasannya di profil ("Nomor WA dipakai orang lain juga") |
 | Pesan seragam | nomor tak terdaftar, dipakai bersama, akses dicabut, nonaktif, belum punya penempatan: satu pesan yang **identik** dengan NIK tak dikenal |
 
-Setelah nomor dikenali, **bila gateway WhatsApp aktif** portal meminta pengurus mengetik **kode OTP 4 digit** yang ditampilkan di atas kolom isian halaman
-verifikasi. Kode **tidak dikirim lewat WhatsApp** (pengiriman OTP membuat nomor gateway sering diblokir WhatsApp), jadi
-kode ini hanya langkah konfirmasi, **bukan bukti bahwa pengguna memegang nomor itu**. Kode berlaku 5 menit, sekali pakai,
-dan percobaan gagal dibatasi. **Bila gateway tidak aktif, langkah OTP ditiadakan** dan nomor yang lolos semua pemeriksaan langsung masuk.
+Setelah nomor dikenali, **bila gateway WhatsApp aktif** portal **mengirim kode OTP 4 digit ke WhatsApp pengurus** lewat WA Gateway, dan pengurus mengetiknya di
+halaman verifikasi (yang hanya menampilkan nomor yang disamarkan, bukan kodenya). Karena kode hanya sampai ke pemegang nomor, langkah ini **membuktikan
+nomor itu dipegang orangnya**. Kode berlaku 5 menit, sekali pakai, dan percobaan gagal dibatasi. Isi kode **tidak ditulis ke Log WhatsApp** (log itu bisa dibuka admin).
+**Bila gateway tidak aktif, pengurus tidak langsung masuk** (kode tak bisa dikirim): halaman OTP berubah menjadi *minta kode ke admin*, dengan tombol chat WhatsApp
+ke nomor admin (`PORTAL_FALLBACK_WA`, bawaan `6285242327296`, tautan `wa.me`; isi chatnya tak memuat nama atau nomor, karena admin mengenali pemintanya dari nomor pengirim chat).
+Admin membalas dengan **kode umum** (`PORTAL_FALLBACK_CODE`, bawaan `1111`), dan pengurus mengetiknya di halaman itu (berlaku 15 menit sejak minta, karena admin manusia).
+Kode umum **hanya diterima selama gateway tidak aktif**, dicek saat kode diketik, bukan saat masuk dimulai: gateway aktif kembali di tengah jalan -> pengurus disuruh masuk ulang
+supaya kode dikirim lewat WhatsApp, dan 1111 tidak berlaku. Masuk dengan kode umum ditandai `via: kode_umum` di jejak audit. Bila gateway tampak aktif tetapi pesan gagal
+terkirim, pengurus diminta mencoba lagi (kode tidak pernah ditampilkan sebagai pengganti).
 "Aktif" = `Whatsapp::isActive()`: URL dan kunci terisi, gateway menjawab `/status` (batas 3 detik), dan WhatsApp-nya tersambung (`status: open`);
-URL yang terisi saja tidak cukup (URL bawaan `localhost:3001` tetap terisi walau gateway mati). Gateway WhatsApp dipakai untuk notifikasi dan broadcast
-(dan sebagai penentu langkah OTP ini). `PORTAL_ENABLED = false` mematikan seluruh portal dan `people.portal_enabled` mencabut akses satu orang seketika.
+URL yang terisi saja tidak cukup (URL bawaan `localhost:3001` tetap terisi walau gateway mati). `PORTAL_ENABLED = false` mematikan seluruh portal dan
+`people.portal_enabled` mencabut akses satu orang seketika.
+
+Setiap kode = satu pesan WhatsApp, dan pengiriman OTP pernah membuat nomor gateway sering diblokir WhatsApp. Maka pengirimannya dibatasi (`Otp`):
+
+| Batas | Cara kerja |
+|---|---|
+| Jeda per orang | kode yang dikirim kurang dari 60 detik lalu dan masih berlaku **tidak dikirim ulang**: pengurus diarahkan ke halaman OTP dengan kode yang sama. Mencegah formulir masuk dipakai membanjiri nomor orang lain |
+| Batas per IP | paling banyak 10 kode per alamat IP dalam 15 menit; sesudahnya ditolak tanpa mengirim apa pun |
+| Kirim gagal | kode dibatalkan dan pengurus kembali ke halaman masuk, supaya kode yang tak dipegang siapa pun tidak menahan permintaan berikutnya |
 
 ### Soal risiko: NIK dan nomor WA bukan rahasia
 
@@ -265,9 +278,10 @@ pengamannya dipasang di sekelilingnya tanpa mengubah sifat "satu kredensial saja
 | Tanpa cache | `Cache-Control: no-store` di semua halaman portal |
 
 **Konsekuensi NIK utuh.** Masuk ke portal hanya bermodal nomor WA, dan nomor WA bukan rahasia; maka siapa pun yang tahu nomor WA seorang pengurus bisa melihat NIK
-lengkapnya di portal. Itu keputusan yang disengaja (NIK memang milik pemiliknya sendiri), tetapi ia menambah nilai nomor WA sebagai sasaran. OTP yang
-ditampilkan di layar (lihat atas) tidak menutupnya, karena kode itu terlihat oleh siapa pun yang memasukkan nomor tersebut; ketika gateway tidak aktif dan langkah itu hilang,
-perlindungannya memang sama. NIK di jejak audit tetap disamarkan.
+lengkapnya di portal. Itu keputusan yang disengaja (NIK memang milik pemiliknya sendiri), tetapi ia menambah nilai nomor WA sebagai sasaran. OTP lewat WhatsApp
+(lihat atas) menutupnya selama gateway aktif, karena kode hanya sampai ke pemegang nomor. Ketika gateway tidak aktif, perlindungannya hanya sekuat kerahasiaan kode umum:
+siapa pun yang tahu nomor WA seorang pengurus **dan** kode umum bisa masuk sebagai dia. Kode umum bawaan ada di `config/config.php` (ikut repositori); bila repositori dibagikan,
+ganti di `config.local.php`. NIK di jejak audit tetap disamarkan.
 
 Admin dapat mematikan seluruh portal melalui `PORTAL_ENABLED` atau mencabut akses satu orang lewat `people.portal_enabled`
 bila akses perlu dihentikan.
@@ -276,7 +290,7 @@ bila akses perlu dihentikan.
 `active`, `portal_enabled = 1`, dan punya setidaknya satu penempatan; masuk dengan nomor WA juga mensyaratkan nomor itu hanya dipakai satu orang.
 
 **Konfigurasi** (`config/config.php`): `PORTAL_ENABLED`, `PORTAL_IDLE_MINUTES`, `PORTAL_SESSION_HOURS`,
-`PORTAL_FAIL_MAX_SHORT`, `PORTAL_FAIL_MAX_DAY`. Catatan: batas menganggur efektif juga dibatasi
+`PORTAL_FAIL_MAX_SHORT`, `PORTAL_FAIL_MAX_DAY`, `PORTAL_FALLBACK_WA`, `PORTAL_FALLBACK_CODE`. Catatan: batas menganggur efektif juga dibatasi
 `session.gc_maxlifetime` PHP (bawaan 24 menit).
 
 > **Isi `TRUSTED_IP_HEADER` sebelum portal dibuka ke publik** bila server berada di belakang

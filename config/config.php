@@ -51,3 +51,8 @@ if (!defined('PORTAL_SESSION_HOURS')) define('PORTAL_SESSION_HOURS', 8);     // 
 // jadi menghitung per nomor tidak menghentikan penyapuan nomor).
 if (!defined('PORTAL_FAIL_MAX_SHORT')) define('PORTAL_FAIL_MAX_SHORT', 8);   // gagal per 15 menit
 if (!defined('PORTAL_FAIL_MAX_DAY')) define('PORTAL_FAIL_MAX_DAY', 30);      // gagal per 24 jam
+// Cadangan OTP saat WA Gateway TIDAK aktif (kode tak bisa dikirim): pengurus diarahkan mengirim chat ke nomor admin ini (format
+// internasional tanpa +, untuk wa.me), dan admin memberinya kode umum di bawah. Kode umum hanya berlaku selama gateway tidak aktif.
+// Ganti keduanya di config.local.php bila perlu; tanpa itu nilai di bawah yang dipakai.
+if (!defined('PORTAL_FALLBACK_WA')) define('PORTAL_FALLBACK_WA', '6285242327296');
+if (!defined('PORTAL_FALLBACK_CODE')) define('PORTAL_FALLBACK_CODE', '1111');

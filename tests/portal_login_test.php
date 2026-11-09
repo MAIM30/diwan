@@ -1,9 +1,11 @@
 <?php
 // PATH LOKASI FILE: tests/portal_login_test.php
-// Uji langkah OTP masuk Portal Pengurus: dilewati bila gateway WhatsApp tidak aktif, tetap ada bila aktif.
+// Uji langkah OTP masuk Portal Pengurus. Gateway WhatsApp aktif: kode DIKIRIM lewat WhatsApp (bukan ditampilkan), dengan jeda kirim ulang dan
+// batas per IP. Gateway TIDAK aktif: pengurus diarahkan meminta kode ke admin, dan hanya kode umum (PORTAL_FALLBACK_CODE) yang berlaku --
+// selama gateway memang tidak aktif. Tak ada jalan masuk tanpa kode.
 //   1. Whatsapp::isActive() terhadap gateway tiruan (php -S di 127.0.0.1): aktif hanya bila terisi, menjawab, kunci benar, dan status "open".
-//   2. PengurusController::login_process / otp_verify terhadap pengurus nyata di database lokal. Semua tulisan (audit, kode OTP,
-//      percobaan gagal) ada di SATU transaksi yang selalu di-rollback.
+//   2. PengurusController::login_process / otp_verify terhadap pengurus nyata di database lokal, dengan gateway tiruan yang menampung
+//      pesan yang dikirim. Semua tulisan (audit, kode OTP, log WA, percobaan gagal) ada di SATU transaksi yang selalu di-rollback.
 //
 //   php tests/portal_login_test.php
 
@@ -21,9 +23,15 @@ class Redirected extends RuntimeException {}
 class TL extends PengurusController {
     public static $active = false;
     protected function gatewayActive() { return self::$active; }
+    public $html = '';
     protected function redirect($path = '') { throw new Redirected($path); }
+    protected function view($v, $d = []) {
+        if (strpos($v, 'layouts/') === 0 || strpos($v, 'auth/') === 0) return;
+        extract($d); ob_start(); require ROOT_DIR . "/app/Views/$v.php"; $this->html .= ob_get_clean();
+    }
     public function masuk() { $this->login_process(); }
     public function verifikasi() { $this->otp_verify(); }
+    public function halamanOtp() { $this->otp(); }
 }
 
 $pass = 0; $fail = 0;
@@ -43,6 +51,11 @@ file_put_contents($router, <<<'PHP'
 $mode = trim((string) @file_get_contents(__DIR__ . '/mode.txt'));
 header('Content-Type: application/json');
 if (($_SERVER['HTTP_AUTHORIZATION'] ?? '') !== 'kunci-uji') { http_response_code(401); echo json_encode(['ok' => false, 'error' => 'kunci salah']); return; }
+if (parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) === '/send') {   // pengiriman pesan: catat, lalu balas sesuai send_mode.txt
+    file_put_contents(__DIR__ . '/sent.txt', json_encode($_POST, JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND);
+    echo trim((string) @file_get_contents(__DIR__ . '/send_mode.txt')) === 'fail' ? json_encode(['ok' => false, 'error' => 'gagal kirim']) : json_encode(['ok' => true, 'id' => 'uji']);
+    return;
+}
 if ($mode === 'garbage') { echo 'bukan json'; return; }
 if ($mode === 'slow') { sleep(6); }
 if ($mode === 'notok') { echo json_encode(['ok' => false, 'status' => 'open']); return; }
@@ -99,6 +112,7 @@ ok(active($dead) === false && microtime(true) - $t < 4.5, 'tidak aktif: tak terh
 if (!PORTAL_ENABLED) { echo "LEWAT: PORTAL_ENABLED = false\n"; goto selesai; }
 $pdo = Database::getInstance()->getConnection();
 $pdo->beginTransaction();
+Whatsapp::forget(); Whatsapp::$settings = $dead;   // tak ada pesan uji yang boleh sampai ke gateway sungguhan
 if (session_status() !== PHP_SESSION_ACTIVE) session_start();
 $_SERVER['REMOTE_ADDR'] = '10.255.255.7';   // IP uji: tak bersinggungan dengan pembatas milik peramban sungguhan
 
@@ -123,7 +137,21 @@ function attempt($wa, $active, $fresh = false) {
     try { (new TL)->masuk(); } catch (Redirected $r) { return $r->getMessage(); }
     return '(tanpa redirect)';
 }
-function count_($sql) { global $pdo; return (int) $pdo->query($sql)->fetchColumn(); }
+function verifikasi($code, $active) {
+    $_SERVER['REQUEST_METHOD'] = 'POST'; $_POST = ['code' => $code]; TL::$active = $active;
+    try { (new TL)->verifikasi(); return '(tanpa redirect)'; } catch (Redirected $r) { return $r->getMessage(); }
+}
+function halamanOtp() { $_SERVER['REQUEST_METHOD'] = 'GET'; $t = new TL; $t->halamanOtp(); return $t->html; }
+function lastAudit($pid) { return (string) count_("SELECT after_data FROM audit_log WHERE entity = 'people' AND entity_id = $pid AND event = 'portal_login' ORDER BY id DESC LIMIT 1", true); }
+function count_($sql, $raw = false) { global $pdo; $v = $pdo->query($sql)->fetchColumn(); return $raw ? $v : (int) $v; }
+function sentMessages() {
+    global $tmp;
+    $f = $tmp . DIRECTORY_SEPARATOR . 'sent.txt';
+    return is_file($f) ? array_values(array_filter(array_map('json_decode', file($f, FILE_IGNORE_NEW_LINES)))) : [];
+}
+function setSendMode($mode) { global $tmp; file_put_contents($tmp . DIRECTORY_SEPARATOR . 'send_mode.txt', $mode); }
+function latestCode($pid) { return (string) count_("SELECT code FROM otp_codes WHERE person_id = $pid ORDER BY id DESC LIMIT 1", true); }
+function lastFlash() { $f = $_SESSION['_flash'] ?? []; return $f ? end($f)['message'] : ''; }
 function loggedIn() { return Member::check() && !empty($_SESSION['member']['person_id']) ? (int) $_SESSION['member']['person_id'] : 0; }
 
 if ($pe) {
@@ -131,24 +159,94 @@ if ($pe) {
     $otpBefore = count_("SELECT COUNT(*) FROM otp_codes WHERE person_id = $pid");
     $audBefore = count_("SELECT COUNT(*) FROM audit_log WHERE entity = 'people' AND entity_id = $pid AND event = 'portal_login'");
 
-    // A. Gateway tidak aktif: langsung masuk, tanpa kode.
+    // A. Gateway tidak aktif: tak ada jalan masuk tanpa kode. Pengurus diarahkan meminta kode ke admin; tak ada kode yang dikirim atau diterbitkan.
     $to = login($pe['phone'], false);
-    ok($to === 'pengurus', 'A: gateway tak aktif -> langsung ke beranda', $to);
-    ok(loggedIn() === $pid, 'A: sesi portal terbuka atas nama orang itu');
-    ok(empty($_SESSION['otp_pending']), 'A: tidak ada OTP tertunda');
-    ok(count_("SELECT COUNT(*) FROM otp_codes WHERE person_id = $pid") === $otpBefore, 'A: tidak ada kode OTP yang diterbitkan');
-    ok(count_("SELECT COUNT(*) FROM audit_log WHERE entity = 'people' AND entity_id = $pid AND event = 'portal_login'") === $audBefore + 1, 'A: riwayat masuk tercatat');
+    ok($to === 'pengurus/otp' && loggedIn() === 0, 'A: gateway tak aktif -> halaman OTP, TIDAK langsung masuk', $to);
+    ok(!empty($_SESSION['otp_pending']['via_admin']) && (int) $_SESSION['otp_pending']['person_id'] === $pid, 'A: sesi menandai "minta kode ke admin" untuk orang itu');
+    ok(count_("SELECT COUNT(*) FROM otp_codes WHERE person_id = $pid") === $otpBefore, 'A: tak ada kode OTP yang diterbitkan');
+    ok(count(sentMessages()) === 0, 'A: tak ada pesan WhatsApp yang dikirim');
+    ok(count_("SELECT COUNT(*) FROM audit_log WHERE entity = 'people' AND entity_id = $pid AND event = 'portal_login'") === $audBefore, 'A: belum ada riwayat masuk');
+    $html = halamanOtp();
+    ok(strpos($html, 'https://wa.me/' . PORTAL_FALLBACK_WA . '?text=') !== false && strpos($html, 'Minta kode ke admin') !== false, 'A: halaman memuat tombol chat ke admin (wa.me ke nomor admin)');
+    ok(PORTAL_FALLBACK_WA === '6285242327296', 'A: nomor admin bawaan 6285242327296');
+    ok(strpos($html, 'name="code"') !== false && strpos($html, $pe['phone']) === false && strpos($html, PORTAL_FALLBACK_CODE) === false, 'A: ada kolom kode; halaman TIDAK memuat nomor orang itu maupun kode umumnya');
+    preg_match('/wa\.me\/\d+\?text=([^"]*)"/', $html, $m);
+    $isiChat = isset($m[1]) ? urldecode(html_entity_decode($m[1])) : '';
+    ok(stripos($isiChat, 'kode OTP') !== false && strpos($isiChat, $pe['phone']) === false, 'A: isi chat meminta kode OTP dan tak membawa nomor/nama (admin membaca nomor pengirim)', $isiChat);
 
-    // B. Gateway aktif: alur OTP seperti biasa.
+    // A2. Kode umum diterima SELAMA gateway tidak aktif; masuknya tercatat khusus.
+    ok(PORTAL_FALLBACK_CODE === '1111', 'A2: kode umum bawaan 1111');
+    $to = verifikasi('0000', false);
+    ok($to === 'pengurus/otp' && loggedIn() === 0, 'A2: kode lain ditolak', $to);
+    ok(stripos(lastFlash(), 'admin') !== false, 'A2: pesan salah mengarahkan ke admin', lastFlash());
+    $to = verifikasi('1111', false);
+    ok($to === 'pengurus' && loggedIn() === $pid && empty($_SESSION['otp_pending']), 'A2: kode umum 1111 + gateway tak aktif -> masuk', $to);
+    ok(count_("SELECT COUNT(*) FROM audit_log WHERE entity = 'people' AND entity_id = $pid AND event = 'portal_login'") === $audBefore + 1, 'A2: riwayat masuk tercatat');
+    ok(strpos(lastAudit($pid), 'kode_umum') !== false, 'A2: jejak audit menandai masuk lewat kode umum', lastAudit($pid));
+
+    // A3. Gateway aktif kembali di tengah proses: kode umum tak berlaku lagi, dan tak ada kode yang dikirim ke orang ini.
+    login($pe['phone'], false);
+    $to = verifikasi('1111', true);
+    ok($to === 'pengurus/login' && loggedIn() === 0 && empty($_SESSION['otp_pending']), 'A3: halaman minta-ke-admin + gateway kini aktif + 1111 -> ditolak, suruh masuk ulang', $to);
+    ok(stripos(lastFlash(), 'aktif kembali') !== false, 'A3: pesan menjelaskan WhatsApp sudah aktif kembali', lastFlash());
+
+    // A4. Masa halaman minta-ke-admin lebih panjang (admin manusia) daripada kode yang dikirim.
+    login($pe['phone'], false);
+    $_SESSION['otp_pending']['issued_at'] = time() - (Otp::TTL + 60);
+    $to = verifikasi('1111', false);
+    ok($to === 'pengurus' && loggedIn() === $pid, 'A4: minta-ke-admin masih berlaku lewat masa kode biasa (5 menit)', $to);
+    login($pe['phone'], false);
+    $_SESSION['otp_pending']['issued_at'] = time() - (Otp::ADMIN_TTL + 60);
+    $to = verifikasi('1111', false);
+    ok($to === 'pengurus/login' && loggedIn() === 0 && stripos(lastFlash(), 'kedaluwarsa') !== false, 'A4: lewat 15 menit -> kedaluwarsa', $to);
+    // B. Gateway aktif: kode DIKIRIM lewat WhatsApp ke nomor orang itu; halaman OTP tidak menampilkannya.
+    $audBefore = count_("SELECT COUNT(*) FROM audit_log WHERE entity = 'people' AND entity_id = $pid AND event = 'portal_login'");   // A2-A4 sudah menambah riwayat
+    Whatsapp::$settings = $good;
     $to = login($pe['phone'], true);
     ok($to === 'pengurus/otp', 'B: gateway aktif -> halaman OTP', $to);
     ok(loggedIn() === 0, 'B: belum masuk sebelum kode diverifikasi');
-    $code = $_SESSION['otp_pending']['code'] ?? '';
-    ok(preg_match('/^\d{4}$/', $code) === 1 && (int) $_SESSION['otp_pending']['person_id'] === $pid, 'B: kode 4 digit tertunda untuk orang itu');
-    ok(count_("SELECT COUNT(*) FROM otp_codes WHERE person_id = $pid") === $otpBefore + 1, 'B: satu kode OTP diterbitkan');
-    ok(count_("SELECT COUNT(*) FROM audit_log WHERE entity = 'people' AND entity_id = $pid AND event = 'portal_login'") === $audBefore + 1, 'B: belum ada riwayat masuk baru');
+    $code = latestCode($pid);
+    ok(preg_match('/^\d{4}$/', $code) === 1, 'B: satu kode 4 digit diterbitkan', $code);
+    ok(!isset($_SESSION['otp_pending']['code']) && (int) $_SESSION['otp_pending']['person_id'] === $pid, 'B: sesi menyimpan orangnya, BUKAN kodenya');
+    ok(count_("SELECT COUNT(*) FROM otp_codes WHERE person_id = $pid") === $otpBefore + 1, 'B: tepat satu kode di database');
+    $sent = sentMessages();
+    ok(count($sent) === 1 && Whatsapp::formatPhone($pe['phone']) === (string) ($sent[0]->target ?? ''), 'B: tepat satu pesan terkirim, ke nomor orang itu', json_encode($sent));
+    ok(strpos((string) ($sent[0]->message ?? ''), "*$code*") !== false, 'B: isi pesan memuat kode yang sama dengan di database');
+    $log = $pdo->query("SELECT type, status, payload FROM whatsapp_log WHERE phone = '" . Whatsapp::formatPhone($pe['phone']) . "' ORDER BY id DESC LIMIT 1")->fetch();
+    ok($log && $log['type'] === 'otp' && $log['status'] === 'sent', 'B: tercatat di log WhatsApp sebagai jenis otp');
+    ok($log && strpos($log['payload'], $code) === false, 'B: log WhatsApp TIDAK memuat kode');
+    ok(count_("SELECT COUNT(*) FROM audit_log WHERE entity = 'people' AND entity_id = $pid AND event = 'portal_login'") === $audBefore, 'B: belum ada riwayat masuk baru');
 
-    // C. Kode yang salah ditolak; yang benar masuk dan sekali pakai (alur OTP tidak berubah).
+    // B2. Meminta lagi dalam 60 detik tidak mengirim pesan kedua; kode yang sama tetap berlaku.
+    $to = login($pe['phone'], true);
+    ok($to === 'pengurus/otp' && loggedIn() === 0, 'B2: minta lagi -> kembali ke halaman OTP', $to);
+    ok(count(sentMessages()) === 1 && count_("SELECT COUNT(*) FROM otp_codes WHERE person_id = $pid") === $otpBefore + 1 && latestCode($pid) === $code,
+       'B2: tak ada pesan atau kode baru dalam masa jeda');
+    ok(stripos(lastFlash(), 'sudah dikirim') !== false, 'B2: pesan menjelaskan kode sudah dikirim', lastFlash());
+
+    // B3. Kode umum TIDAK berlaku selama gateway aktif: yang diterima hanya kode yang dikirim ke WhatsApp orang itu.
+    $pdo->exec("UPDATE otp_codes SET code = '4821' WHERE person_id = $pid AND verified = 0");   // pasti bukan 1111
+    $code = '4821';
+    $to = verifikasi(PORTAL_FALLBACK_CODE, true);
+    ok($to === 'pengurus/otp' && loggedIn() === 0, 'B3: gateway aktif -> kode umum 1111 ditolak', $to);
+    $to = verifikasi($code, true);
+    ok($to === 'pengurus' && loggedIn() === $pid && strpos(lastAudit($pid), 'kode_umum') === false, 'B3: kode yang dikirim tetap diterima, dan tidak ditandai kode umum', $to);
+
+    // B4. Gateway mati SESUDAH kode dikirim: kode yang sudah dikirim tetap berlaku, dan kode umum kini juga berlaku.
+    $pdo->exec("DELETE FROM otp_codes WHERE person_id = $pid");
+    login($pe['phone'], true);
+    $pdo->exec("UPDATE otp_codes SET code = '4821' WHERE person_id = $pid AND verified = 0");
+    $to = verifikasi('4821', false);
+    ok($to === 'pengurus' && loggedIn() === $pid, 'B4: kode yang sudah dikirim tetap berlaku walau gateway kemudian mati', $to);
+    $pdo->exec("DELETE FROM otp_codes WHERE person_id = $pid");
+    login($pe['phone'], true);
+    $to = verifikasi('1111', false);
+    ok($to === 'pengurus' && loggedIn() === $pid && strpos(lastAudit($pid), 'kode_umum') !== false, 'B4: gateway mati sesudah kode dikirim -> kode umum juga berlaku', $to);
+    $pdo->exec("DELETE FROM otp_codes WHERE person_id = $pid");
+    login($pe['phone'], true);
+    $code = latestCode($pid);
+    $audBefore = count_("SELECT COUNT(*) FROM audit_log WHERE entity = 'people' AND entity_id = $pid AND event = 'portal_login'");   // B3-B4 sudah menambah riwayat
+    // C. Kode yang salah ditolak; yang benar masuk dan sekali pakai.
     $_SERVER['REQUEST_METHOD'] = 'POST';
     $_POST = ['code' => $code === '0000' ? '0001' : '0000'];
     try { (new TL)->verifikasi(); $to = '(tanpa redirect)'; } catch (Redirected $r) { $to = $r->getMessage(); }
@@ -156,32 +254,65 @@ if ($pe) {
     $_POST = ['code' => $code];
     try { (new TL)->verifikasi(); $to = '(tanpa redirect)'; } catch (Redirected $r) { $to = $r->getMessage(); }
     ok($to === 'pengurus' && loggedIn() === $pid && empty($_SESSION['otp_pending']), 'C: kode benar masuk dan OTP tertunda dibersihkan', $to);
-    ok(count_("SELECT COUNT(*) FROM audit_log WHERE entity = 'people' AND entity_id = $pid AND event = 'portal_login'") === $audBefore + 2, 'C: riwayat masuk tercatat');
-
-    // D. OTP tertunda yang tertinggal tidak ikut terbawa saat masuk langsung.
-    $_SESSION = ['otp_pending' => ['person_id' => 999999, 'code' => '1234', 'issued_at' => time()]];
+    ok(count_("SELECT COUNT(*) FROM audit_log WHERE entity = 'people' AND entity_id = $pid AND event = 'portal_login'") === $audBefore + 1, 'C: riwayat masuk tercatat');
+    $_SESSION = ['otp_pending' => ['person_id' => $pid, 'phone' => $pe['phone'], 'issued_at' => time()]]; $_SERVER['REQUEST_METHOD'] = 'POST'; $_POST = ['code' => $code];
+    try { (new TL)->verifikasi(); $to = '(tanpa redirect)'; } catch (Redirected $r) { $to = $r->getMessage(); }
+    ok($to === 'pengurus/otp' && loggedIn() === 0, 'C: kode yang sudah dipakai tak bisa dipakai lagi', $to);
+    // D. OTP tertunda milik orang lain yang tertinggal di sesi tidak terbawa: digantikan oleh milik orang yang masuk sekarang.
+    $_SESSION = ['otp_pending' => ['person_id' => 999999, 'phone' => '0', 'issued_at' => time()]];
     $to = attempt($pe['phone'], false);
-    ok($to === 'pengurus' && empty($_SESSION['otp_pending']), 'D: OTP tertunda lama dihapus saat masuk langsung', $to);
+    ok($to === 'pengurus/otp' && (int) $_SESSION['otp_pending']['person_id'] === $pid && !empty($_SESSION['otp_pending']['via_admin']), 'D: OTP tertunda lama digantikan, bukan dipakai ulang', $to);
+    $to = verifikasi('1111', false);
+    ok($to === 'pengurus' && loggedIn() === $pid, 'D: kode umum masuk sebagai orang yang benar (bukan milik sesi lama)', $to);
 }
 
 // E. NIK 16 digit: perilaku sama.
 if ($pn) {
     $to = login($pn['nik'], false);
-    ok($to === 'pengurus' && loggedIn() === (int) $pn['id'], 'E: NIK 16 digit, gateway tak aktif -> langsung masuk', $to);
+    ok($to === 'pengurus/otp' && loggedIn() === 0 && !empty($_SESSION['otp_pending']['via_admin']), 'E: NIK 16 digit, gateway tak aktif -> minta kode ke admin', $to);
+    $html = halamanOtp();
+    ok(strpos($html, $pn['nik']) === false && (empty($pn['phone']) || strpos($html, (string) $pn['phone']) === false), 'E: halaman tak membocorkan NIK maupun nomor milik orang itu');
+    $to = verifikasi('1111', false);
+    ok($to === 'pengurus' && loggedIn() === (int) $pn['id'], 'E: kode umum masuk sebagai pemilik NIK', $to);
     $to = login($pn['nik'], true);
     ok($to === 'pengurus/otp' && loggedIn() === 0, 'E: NIK 16 digit, gateway aktif -> OTP', $to);
 }
 
-// F. Tanpa OTP bukan berarti tanpa pemeriksaan: yang tak berhak tetap ditolak.
+// H. Pesan gagal terkirim: tak ada jalan masuk lewat layar; kode dibatalkan supaya tidak menahan permintaan berikutnya.
+if ($pe) {
+    $pdo->exec("DELETE FROM otp_codes WHERE person_id = $pid");
+    $n0 = count(sentMessages());
+    setSendMode('fail');
+    $to = login($pe['phone'], true);
+    ok($to === 'pengurus/login' && loggedIn() === 0 && empty($_SESSION['otp_pending']), 'H: kirim gagal -> kembali ke login, tanpa halaman OTP', $to);
+    ok(stripos(lastFlash(), 'gagal dikirim') !== false, 'H: pesan menjelaskan kode gagal dikirim', lastFlash());
+    ok(count(sentMessages()) === $n0 + 1 && Otp::lastIssuedAgo($pid) === null, 'H: kode dibatalkan (tak ada kode berlaku yang menggantung)');
+    ok(count_("SELECT COUNT(*) FROM whatsapp_log WHERE phone = '" . Whatsapp::formatPhone($pe['phone']) . "' AND type = 'otp' AND status = 'failed'") >= 1, 'H: kegagalan tercatat di log WhatsApp');
+    setSendMode('ok');
+    $to = login($pe['phone'], true);
+    ok($to === 'pengurus/otp', 'H: percobaan berikutnya langsung berhasil (tidak tertahan jeda)', $to);
+
+    // J. Batas per IP: IP_MAX kode dalam jendela -> permintaan berikutnya ditolak tanpa mengirim apa pun.
+    $pdo->exec("DELETE FROM otp_codes WHERE person_id = $pid");
+    $ins = $pdo->prepare("INSERT INTO otp_codes (person_id, phone, code, expires_at, verified, ip) VALUES (?, '0', '0000', NOW(), 1, ?)");
+    for ($i = 0; $i < Otp::IP_MAX; $i++) $ins->execute([999000 + $i, Text::clientIp()]);
+    $n0 = count(sentMessages());
+    $to = login($pe['phone'], true);
+    ok($to === 'pengurus/login' && loggedIn() === 0 && count(sentMessages()) === $n0, 'J: IP kebanyakan meminta kode -> ditolak, tak ada pesan terkirim', $to);
+    ok(stripos(lastFlash(), 'terlalu banyak') !== false, 'J: pesan menjelaskan batasnya', lastFlash());
+    $pdo->exec("DELETE FROM otp_codes WHERE person_id >= 999000");
+}
+
+// F. Yang tak berhak tetap ditolak sebelum langkah kode, apa pun keadaan gateway.
 $to = login('08999999999', false);
 ok($to === 'daftar' && loggedIn() === 0 && !count_("SELECT COUNT(*) FROM people WHERE phone IN ('08999999999','628999999999')"), 'F: nomor tak terdaftar -> daftar, tidak masuk', $to);
 if ($pi) {
     $to = login($pi['phone'], false);
-    ok($to === 'daftar' && loggedIn() === 0, 'F: akses portal dicabut -> ditolak walau gateway tak aktif', $to);
+    ok($to === 'daftar' && loggedIn() === 0, 'F: akses portal dicabut -> ditolak (tak sampai ke halaman kode)', $to);
 }
 if ($ps) {
     $to = login($ps, false);
-    ok($to === 'daftar' && loggedIn() === 0, 'F: nomor dipakai dua orang -> tak bisa masuk walau gateway tak aktif', $to);
+    ok($to === 'daftar' && loggedIn() === 0, 'F: nomor dipakai dua orang -> tak bisa masuk (tak sampai ke halaman kode)', $to);
 }
 $to = login('abc', false);
 ok($to === 'pengurus/login' && loggedIn() === 0, 'F: format nomor salah -> kembali ke login', $to);
@@ -197,7 +328,7 @@ if ($pe) {
 }
 $pdo->rollBack();
 
-// G. Gateway yang terisi tetapi tak menjawab sama dengan tidak aktif: pengurus tidak terhalang OTP.
+// G. Gateway yang terisi tetapi tak menjawab sama dengan tidak aktif: pengurus diarahkan meminta kode ke admin.
 if ($pe) {
     Whatsapp::forget(); Whatsapp::$settings = $dead;
     ok(Whatsapp::isActive() === false, 'G: gateway terisi tapi mati -> tidak aktif');

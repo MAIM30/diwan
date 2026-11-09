@@ -112,6 +112,24 @@ class Whatsapp {
         return $result;
     }
 
+    // Kode OTP masuk Portal Pengurus, dikirim lewat gateway. Isi kodenya TIDAK ditulis ke whatsapp_log: log itu bisa dibuka admin,
+    // dan kode berlaku 5 menit serta cukup untuk masuk sebagai orang itu. Mengembalikan hasil request(): ['ok' => bool, ...].
+    public static function sendOtp($to, $name, $gender, $code) {
+        $phone = self::formatPhone($to);
+        $name = trim((string) $name) ?: 'Pengurus';
+        $honorific = $gender === 'P' ? 'Ustazah' : 'Ustaz';
+        $text = function ($shown) use ($honorific, $name) {
+            return "Assalamu 'alaykum {$honorific} {$name},\n\n"
+                 . "Kode OTP masuk Portal Pengurus antum adalah *{$shown}*.\n"
+                 . "Kode berlaku 5 menit. Jangan berikan kode ini kepada siapa pun.\n\n"
+                 . "Barokallohu Fikum.";
+        };
+
+        $result = self::request('POST', 'send', ['target' => $phone, 'message' => $text($code)]);
+        self::log($phone, 'otp', null, ['target' => $phone, 'message' => $text('****')], $result);
+        return $result;
+    }
+
     public static function sendBroadcast($to, $text) {
         $phone = self::formatPhone($to);
         $s = self::settings();
