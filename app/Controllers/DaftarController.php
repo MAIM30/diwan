@@ -96,8 +96,8 @@ class DaftarController extends Controller {
         $this->view('public/daftar_sukses', ['title' => 'Pendaftaran Terkirim', 'outcome' => $outcome]);
     }
 
-    // Saran nama publik hanya menampilkan orang yang memang belum memiliki nomor WA.
-    // Nilai yang dikirim ke form tetap diverifikasi ulang saat submit.
+    // Direktori nama publik membantu pendaftar memastikan data yang sudah ada.
+    // Nilai yang dipilih tetap diverifikasi ulang saat submit.
     public function cariNama() {
         header('Content-Type: application/json; charset=utf-8');
         $query = trim((string) ($_GET['q'] ?? ''));
@@ -106,6 +106,6 @@ class DaftarController extends Controller {
             return;
         }
         $offset = max(0, (int) ($_GET['offset'] ?? 0));
-        echo json_encode($this->model('RegistrationModel')->peopleWithoutPhoneByName($query, $offset), JSON_UNESCAPED_UNICODE);
+        echo json_encode($this->model('RegistrationModel')->peopleByName($query, $offset), JSON_UNESCAPED_UNICODE);
     }
 }

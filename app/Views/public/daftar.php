@@ -45,7 +45,7 @@ if (!empty($_SESSION['daftar_phone'])) {
         <input type="hidden" id="existing_person_id" name="existing_person_id" value="">
         <input type="search" id="person_search" autocomplete="off" placeholder="Ketik minimal 3 huruf nama pengurus...">
         <div id="person-results" class="autocomplete-list"></div>
-        <div class="help">Cari dengan sebagian nama; kata-katanya tidak harus berurutan. Daftar hanya menampilkan pengurus yang belum memiliki nomor WA dan dapat dimuat bertahap. Jika nama ditemukan, pilih agar pengajuan tertaut ke data yang sudah ada. Jika tidak ditemukan, isi nama seperti biasa di bawah.</div>
+        <div class="help">Cari dengan sebagian nama; kata-katanya tidak harus berurutan. Hasil menampilkan nama dan nomor WA jika sudah tercatat. Nama yang sudah memiliki nomor WA hanya sebagai informasi; pilih nama tanpa nomor WA untuk menautkan pengajuan ke data yang ada. Jika nama tidak ditemukan, isi nama seperti biasa di bawah.</div>
         <div id="person-selected" class="help" style="display:none;color:var(--success)"></div>
       </div>
 
@@ -125,17 +125,25 @@ if (!empty($_SESSION['daftar_phone'])) {
     var item = document.createElement('div');
     item.className = 'autocomplete-item';
     var strong = document.createElement('strong');
-    strong.textContent = person.full_name;
+    strong.textContent = person.full_name + (person.phone ? ' - ' + person.phone : '');
     var gender = document.createElement('span');
     gender.className = 'muted small';
     gender.textContent = person.gender === 'P' ? ' · Perempuan' : ' · Laki-laki';
     item.appendChild(strong);
     item.appendChild(gender);
+    if (person.phone) {
+      var phone = document.createElement('div');
+      phone.className = 'muted small';
+      phone.textContent = 'Sudah memiliki nomor WA; hanya sebagai informasi.';
+      item.appendChild(phone);
+      item.classList.add('muted');
+      item.setAttribute('aria-disabled', 'true');
+    }
     var origin = document.createElement('div');
     origin.className = 'muted small';
     origin.textContent = person.origin_name ? ((person.origin_level || '') + ' ' + person.origin_name).trim() : 'Struktur asal belum dicatat';
     item.appendChild(origin);
-    item.addEventListener('mousedown', function (e) {
+    if (!person.phone) item.addEventListener('mousedown', function (e) {
       e.preventDefault();
       choosingPerson = true;
       personId.value = person.id;
@@ -165,7 +173,7 @@ if (!empty($_SESSION['daftar_phone'])) {
         if (offset === 0 && !items.length) {
           var empty = document.createElement('div');
           empty.className = 'autocomplete-item muted';
-          empty.textContent = 'Tidak ada nama tanpa nomor WA yang cocok.';
+          empty.textContent = 'Tidak ada nama yang cocok.';
           personResults.appendChild(empty);
         } else {
           items.forEach(addPersonOption);

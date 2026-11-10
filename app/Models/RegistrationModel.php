@@ -74,8 +74,8 @@ class RegistrationModel {
         )->fetchColumn();
     }
 
-    // Untuk saran di formulir publik: hanya kembalikan identitas minimum dari orang tanpa nomor WA.
-    public function peopleWithoutPhoneByName($query, $offset = 0) {
+    // Direktori ringkas pada formulir publik: tampilkan nomor WA bila tersedia.
+    public function peopleByName($query, $offset = 0) {
         $needle = Text::normalizeBase($query);
         if (mb_strlen($needle) < 3) return ['items' => [], 'has_more' => false];
         $words = preg_split('/\s+/u', $needle, -1, PREG_SPLIT_NO_EMPTY);
@@ -88,11 +88,11 @@ class RegistrationModel {
             $params[$key] = '%' . addcslashes($word, '%_\\') . '%';
         }
         $stmt = $this->db->prepare("
-            SELECT p.id, p.title_prefix, p.name, p.title_suffix, p.full_name, p.gender,
+            SELECT p.id, p.title_prefix, p.name, p.title_suffix, p.full_name, p.gender, p.phone,
                    s.level AS origin_level, s.name AS origin_name
             FROM people p
             LEFT JOIN structures s ON s.id = p.home_structure_id
-            WHERE p.deleted_at IS NULL AND (p.phone IS NULL OR p.phone = '')
+            WHERE p.deleted_at IS NULL
               AND " . implode(' AND ', $conditions) . "
             ORDER BY (p.name_normalized = :exact) DESC,
                      (p.name_normalized LIKE :prefix) DESC, p.full_name
