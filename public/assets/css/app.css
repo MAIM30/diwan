@@ -736,6 +736,12 @@ a.hbar-row:hover, .hbar-row:hover, .hbar-row:focus { background: var(--primer-pu
 .auth-card input[type=text], .auth-card input[type=password], .auth-card input[type=tel], .auth-card input[type=email] {
   border: 1.5px solid var(--primer-gelap); border-radius: 12px; background: #fff;
 }
+.auth-card .phone-entry-input {
+  min-height: 68px; padding: 10px 14px; text-align: center;
+  font-size: clamp(24px, 7vw, 32px); font-weight: 700; letter-spacing: .08em;
+  font-variant-numeric: tabular-nums; color: var(--primer-gelap);
+}
+.auth-card .phone-entry-input::placeholder { color: #8a9ca2; font-size: 17px; font-weight: 500; letter-spacing: .04em; }
 
 .input-icon { position: relative; }
 .input-icon > .ic { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }

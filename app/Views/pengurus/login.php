@@ -28,13 +28,10 @@
 
         <div class="field">
           <label for="wa">Nomor WhatsApp</label>
-          <div class="input-icon">
-            <?= Ui::icon('phone', 18) ?>
-            <?php // type=tel: nomor WA bukan rahasia seperti kata sandi, dan papan angka ponsel muncul. ?>
-            <input type="tel" id="wa" name="wa" inputmode="tel" autocomplete="tel" required
-                   placeholder="08xxxxxxxxxx" autofocus>
-          </div>
-          <div class="help">Nomor yang tercatat di data pengurus.</div>
+          <?php // Angka dibuat besar agar mudah diperiksa; inputmode numeric tetap memakai papan angka bawaan HP. ?>
+          <input class="phone-entry-input" type="tel" id="wa" name="wa" inputmode="numeric" autocomplete="tel"
+                 maxlength="16" pattern="[0-9]*" required placeholder="08xxxxxxxxxx" autofocus>
+          <div class="help">Masukkan angka saja, tanpa spasi atau tanda baca. Gunakan nomor yang tercatat di data pengurus.</div>
         </div>
 
         <button type="submit" class="btn block">Lanjutkan</button>
@@ -49,5 +46,19 @@
 
 </div>
 <?php $this->view('layouts/scripts'); ?>
+<script>
+(function () {
+  var input = document.getElementById('wa');
+  if (!input) return;
+  input.addEventListener('input', function () {
+    var caret = input.selectionStart || 0;
+    var digitsBeforeCaret = input.value.slice(0, caret).replace(/\D/g, '').length;
+    var digits = input.value.replace(/\D/g, '');
+    if (input.value === digits) return;
+    input.value = digits;
+    input.setSelectionRange(digitsBeforeCaret, digitsBeforeCaret);
+  });
+})();
+</script>
 </body>
 </html>
