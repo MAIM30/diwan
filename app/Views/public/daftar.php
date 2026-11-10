@@ -27,8 +27,13 @@ if (!empty($_SESSION['daftar_phone'])) {
     <?php $this->view('layouts/flash'); ?>
 
     <div class="alert info">
-      Formulir ini hanya mengirim <strong>pengajuan</strong>. Data Anda akan diperiksa pengurus
-      struktur yang Anda pilih sebelum tercatat sebagai data resmi.
+      <?php if (!empty($vervalActive)): ?>
+        Formulir ini hanya mengirim <strong>pengajuan</strong>. Data Anda akan diperiksa pengurus
+        struktur yang Anda pilih sebelum tercatat sebagai data resmi.
+      <?php else: ?>
+        Data Anda <strong>langsung tercatat</strong> sebagai pengurus begitu dikirim, kecuali namanya mirip dengan data yang sudah ada:
+        yang itu diperiksa pengurus struktur lebih dulu. Jabatan dan periode Anda ditetapkan pengurus struktur kemudian.
+      <?php endif; ?>
       Data lain seperti tanggal lahir dan NIK bisa dilengkapi sendiri setelah berhasil masuk ke Portal Pengurus.
     </div>
 

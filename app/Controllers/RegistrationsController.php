@@ -12,7 +12,29 @@ class RegistrationsController extends Controller {
             'title'  => 'Pendaftaran Pengurus',
             'rows'   => $registrations->listInScope($status !== 'all' ? $status : null),
             'status' => $status,
+            'vervalActive'    => $registrations->vervalActive(),
+            'canManageVerval' => Auth::canManageVerval(),
         ]);
+    }
+
+    // Saklar verval pengajuan. Hanya Super Admin dan admin DPP/MWP (Auth::canManageVerval), diperiksa di server -- bukan sekadar tombolnya disembunyikan.
+    // Pengajuan yang SUDAH menunggu tidak diubah oleh saklar ini; yang berlaku hanya untuk pengajuan yang masuk sesudahnya.
+    public function verval() {
+        $this->requireLogin();
+        if (!Auth::canManageVerval()) $this->denied();
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') $this->redirect('registrations');
+
+        $registrations = $this->model('RegistrationModel');
+        $on = ($_POST['aktif'] ?? '') === '1';
+        $before = $registrations->setVerval($on, Auth::id());
+        if ($before !== $on) {
+            Audit::log('settings', 0, 'update', [RegistrationModel::SETTING_VERVAL => $before ? '1' : '0'], [RegistrationModel::SETTING_VERVAL => $on ? '1' : '0']);
+        }
+
+        Flash::set('success', $on
+            ? 'Verval pengajuan diaktifkan: pengajuan baru menunggu verifikasi seperti biasa.'
+            : 'Verval pengajuan dinonaktifkan: pengajuan baru yang jelas langsung diterima. Yang mirip data lama tetap menunggu di sini.');
+        $this->redirect('registrations');
     }
 
     public function review($id) {

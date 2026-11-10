@@ -3,8 +3,9 @@
 // Alur pendaftaran: Diajukan -> Diverifikasi -> Aktif (atau Ditolak).
 //
 // Dua hal yang dijaga di sini:
-//  1. Pengajuan TIDAK PERNAH langsung menulis ke tabel people. Data master tetap bersih, dan API
-//     tidak pernah menyajikan orang yang belum diverifikasi manusia.
+//  1. Selama verval AKTIF (bawaan), pengajuan TIDAK PERNAH langsung menulis ke tabel people. Data master tetap bersih, dan API
+//     tidak pernah menyajikan orang yang belum diverifikasi manusia. Satu-satunya pengecualian disengaja dan bisa dimatikan: saklar verval
+//     (vervalActive) yang dinonaktifkan admin DPP/MWP/Super Admin -- lalu pengajuan yang jelas diterima lewat acceptWithoutReview.
 //  2. Pencocokan duplikat otomatis hanya MENGUSULKAN. Verifikatorlah yang memutuskan apakah
 //     pendaftar ini orang yang sudah ada atau orang baru -- persis aturan impor SK di syuro.
 
@@ -270,65 +271,13 @@ class RegistrationModel {
             throw new RuntimeException('Pengajuan harus diverifikasi lebih dulu sebelum diaktifkan.');
         }
 
-        require_once ROOT_DIR . '/app/Models/PersonModel.php';
         require_once ROOT_DIR . '/app/Models/PlacementModel.php';
-        $people = new PersonModel();
         $placements = new PlacementModel();
         $extra = !empty($reg['extra_data']) ? (json_decode($reg['extra_data'], true) ?: []) : [];
 
-        $this->db->beginTransaction();
+        $own = $this->txBegin();
         try {
-            // Data bisa berubah setelah pengajuan dikirim. Kunci kecocokan nomor WA diperiksa
-            // kembali saat aktivasi agar jeda tinjauan tidak menghasilkan orang duplikat.
-            $phoneOwners = $this->db->prepare("SELECT id FROM people WHERE phone = :phone AND deleted_at IS NULL FOR UPDATE");
-            $phoneOwners->execute([':phone' => $reg['phone']]);
-            $phoneOwnerIds = array_map('intval', $phoneOwners->fetchAll(PDO::FETCH_COLUMN));
-            foreach ($phoneOwnerIds as $phoneOwnerId) {
-                if (!$personId || $phoneOwnerId !== (int) $personId) {
-                    throw new RuntimeException('Nomor WhatsApp ini sudah dipakai orang lain. Periksa kecocokan data sebelum mengaktifkan.');
-                }
-            }
-
-            if ($personId) {
-                // Dipakaikan ke orang yang sudah ada. Biodata yang sudah tercatat TIDAK ditimpa
-                // oleh isian formulir -- data master biasanya lebih lengkap dan sudah terverifikasi.
-                $finalPersonId = (int) $personId;
-                if ((int) ($extra['registrant_selected_person_id'] ?? 0) === $finalPersonId) {
-                    // Pada tautan yang dipilih pendaftar, nomor WA melengkapi kolom kosong saja.
-                    // Bila data berubah sejak pengajuan, jangan menimpa nomor yang sudah diperbarui.
-                    $fillPhone = $this->db->prepare("UPDATE people SET phone = :phone WHERE id = :id AND deleted_at IS NULL AND (phone IS NULL OR phone = '')");
-                    $fillPhone->execute([':phone' => $reg['phone'], ':id' => $finalPersonId]);
-                    if ($fillPhone->rowCount() === 0) {
-                        $checkPhone = $this->db->prepare("SELECT phone FROM people WHERE id = :id AND deleted_at IS NULL");
-                        $checkPhone->execute([':id' => $finalPersonId]);
-                        if ($checkPhone->fetchColumn() !== $reg['phone']) {
-                            throw new RuntimeException('Nomor WA orang yang dipilih sudah berubah sejak pengajuan. Periksa data orang sebelum mengaktifkan.');
-                        }
-                    }
-                }
-            } else {
-                // Biodata tambahan yang dibawa pengajuan (mis. dari impor formulir biodata) ikut menjadi
-                // data orang baru. Hanya kunci yang dikenal yang disalin; sisanya tetap di extra_data.
-                $profil = is_array($extra['profil'] ?? null) ? $extra['profil'] : [];
-                $carry = [];
-                foreach (['birth_place', 'city', 'address_text', 'occupation', 'family_phone'] as $k) {
-                    if (!empty($profil[$k])) $carry[$k] = $profil[$k];
-                }
-                $finalPersonId = $people->save(null, $carry + [
-                    'title_prefix' => $reg['title_prefix'],
-                    'name'         => $reg['name'],
-                    'title_suffix' => $reg['title_suffix'],
-                    // Struktur tujuan pendaftaran = struktur asal orang ini, supaya admin struktur
-                    // itu langsung melihatnya (orang baru belum punya penempatan).
-                    'home_structure_id' => $reg['target_structure_id'],
-                    'gender'     => in_array($gender, ['L', 'P'], true) ? $gender : $reg['gender'],
-                    'phone'      => $reg['phone'],
-                    'email'      => $reg['email'],
-                    'birth_date' => $reg['birth_date'],
-                    'nik'        => $reg['nik'],
-                    'status'     => 'active',
-                ]);
-            }
+            $finalPersonId = $this->resolvePerson($reg, $extra, $personId, $gender);
 
             $placementId = $placements->create([
                 'person_id'         => $finalPersonId,
@@ -347,13 +296,152 @@ class RegistrationModel {
                 WHERE id = :id
             ")->execute([':pid' => $finalPersonId, ':plid' => $placementId, ':id' => (int) $id]);
 
-            $this->db->commit();
+            if ($own) $this->db->commit();
             Audit::log('registration_requests', $id, 'update', $reg, $this->findById($id));
             return ['person_id' => $finalPersonId, 'placement_id' => $placementId];
         } catch (Exception $e) {
-            $this->db->rollBack();
+            if ($own && $this->db->inTransaction()) $this->db->rollBack();
             throw $e;
         }
+    }
+
+    // Memulai transaksi bila belum ada yang berjalan; true = transaksi ini milik pemanggil (dia yang commit/rollback). Bila pemanggilnya sendiri
+    // sudah berada di dalam transaksi (mis. uji yang di-rollback), ia ikut di dalamnya.
+    private function txBegin() {
+        if ($this->db->inTransaction()) return false;
+        $this->db->beginTransaction();
+        return true;
+    }
+
+    // Orang hasil sebuah pengajuan: orang yang SUDAH ada ($personId, tautannya) atau orang baru. Dipanggil DI DALAM transaksi pemanggil,
+    // oleh aktivasi manual (activate) maupun penerimaan otomatis (acceptWithoutReview), supaya keduanya memakai aturan yang sama.
+    private function resolvePerson(array $reg, array $extra, $personId, $gender) {
+        require_once ROOT_DIR . '/app/Models/PersonModel.php';
+        $people = new PersonModel();
+
+        // Data bisa berubah setelah pengajuan dikirim. Kunci kecocokan nomor WA diperiksa
+        // kembali saat aktivasi agar jeda tinjauan tidak menghasilkan orang duplikat.
+        $phoneOwners = $this->db->prepare("SELECT id FROM people WHERE phone = :phone AND deleted_at IS NULL FOR UPDATE");
+        $phoneOwners->execute([':phone' => $reg['phone']]);
+        $phoneOwnerIds = array_map('intval', $phoneOwners->fetchAll(PDO::FETCH_COLUMN));
+        foreach ($phoneOwnerIds as $phoneOwnerId) {
+            if (!$personId || $phoneOwnerId !== (int) $personId) {
+                throw new RuntimeException('Nomor WhatsApp ini sudah dipakai orang lain. Periksa kecocokan data sebelum mengaktifkan.');
+            }
+        }
+
+        if ($personId) {
+            // Dipakaikan ke orang yang sudah ada. Biodata yang sudah tercatat TIDAK ditimpa
+            // oleh isian formulir -- data master biasanya lebih lengkap dan sudah terverifikasi.
+            $finalPersonId = (int) $personId;
+            if ((int) ($extra['registrant_selected_person_id'] ?? 0) === $finalPersonId) {
+                // Pada tautan yang dipilih pendaftar, nomor WA melengkapi kolom kosong saja.
+                // Bila data berubah sejak pengajuan, jangan menimpa nomor yang sudah diperbarui.
+                $fillPhone = $this->db->prepare("UPDATE people SET phone = :phone WHERE id = :id AND deleted_at IS NULL AND (phone IS NULL OR phone = '')");
+                $fillPhone->execute([':phone' => $reg['phone'], ':id' => $finalPersonId]);
+                if ($fillPhone->rowCount() === 0) {
+                    $checkPhone = $this->db->prepare("SELECT phone FROM people WHERE id = :id AND deleted_at IS NULL");
+                    $checkPhone->execute([':id' => $finalPersonId]);
+                    if ($checkPhone->fetchColumn() !== $reg['phone']) {
+                        throw new RuntimeException('Nomor WA orang yang dipilih sudah berubah sejak pengajuan. Periksa data orang sebelum mengaktifkan.');
+                    }
+                }
+            }
+            return $finalPersonId;
+        }
+
+        // Biodata tambahan yang dibawa pengajuan (mis. dari impor formulir biodata) ikut menjadi
+        // data orang baru. Hanya kunci yang dikenal yang disalin; sisanya tetap di extra_data.
+        $profil = is_array($extra['profil'] ?? null) ? $extra['profil'] : [];
+        $carry = [];
+        foreach (['birth_place', 'city', 'address_text', 'occupation', 'family_phone'] as $k) {
+            if (!empty($profil[$k])) $carry[$k] = $profil[$k];
+        }
+        return $people->save(null, $carry + [
+            'title_prefix' => $reg['title_prefix'],
+            'name'         => $reg['name'],
+            'title_suffix' => $reg['title_suffix'],
+            // Struktur tujuan pendaftaran = struktur asal orang ini, supaya admin struktur
+            // itu langsung melihatnya (orang baru belum punya penempatan).
+            'home_structure_id' => $reg['target_structure_id'],
+            'gender'     => in_array($gender, ['L', 'P'], true) ? $gender : $reg['gender'],
+            'phone'      => $reg['phone'],
+            'email'      => $reg['email'],
+            'birth_date' => $reg['birth_date'],
+            'nik'        => $reg['nik'],
+            'status'     => 'active',
+        ]);
+    }
+
+    // ---------- Saklar verval (verifikasi dan validasi) pengajuan ----------
+    //
+    // Aktif (bawaan, juga bila pengaturannya belum pernah ditulis atau isinya tak dikenal): pengajuan menunggu verifikator, seperti di atas.
+    // Nonaktif: pengajuan BARU yang jelas langsung diterima (acceptWithoutReview); pengajuan yang sudah menunggu tidak disentuh.
+    const SETTING_VERVAL = 'verval_pengajuan';
+
+    public function vervalActive() {
+        require_once ROOT_DIR . '/app/Models/SettingModel.php';
+        return (new SettingModel())->get(self::SETTING_VERVAL, '1') !== '0';
+    }
+
+    // Menyimpan saklar; mengembalikan nilai SEBELUMNYA (true = aktif) untuk jejak audit.
+    public function setVerval($active, $accountId = null) {
+        require_once ROOT_DIR . '/app/Models/SettingModel.php';
+        $before = $this->vervalActive();
+        (new SettingModel())->set(self::SETTING_VERVAL, $active ? '1' : '0', $accountId);
+        return $before;
+    }
+
+    // Alasan sebuah pengajuan TIDAK boleh diterima otomatis (null = boleh). Menerima tanpa pemeriksaan hanya aman untuk kasus yang jelas;
+    // sisanya tetap menunggu verifikator, seperti saat verval aktif:
+    //  * nama mirip orang yang sudah ada, kecuali pendaftar sendiri menautkannya (itu pun sudah diperiksa saat dikirim: nama, jenis
+    //    kelamin, dan belum bernomor WA). Sistem tak pernah memutuskan sendiri "orang baru atau orang yang sudah ada" -- akibatnya data ganda;
+    //  * jenis kelamin tak sesuai sayap struktur tujuan (laki-laki di MWP, perempuan di DPP): form penempatan menolaknya juga.
+    private function autoAcceptBlock(array $reg, array $extra) {
+        $linked = (int) ($extra['registrant_selected_person_id'] ?? 0) > 0;
+        if (!$linked && ($reg['match_confidence'] ?? 'none') !== 'none') {
+            return 'Nama mirip dengan data pengurus yang sudah ada; verifikator yang memutuskan orang baru atau bukan.';
+        }
+        $wing = $this->db->prepare("SELECT wing FROM structures WHERE id = :id AND deleted_at IS NULL");
+        $wing->execute([':id' => (int) $reg['target_structure_id']]);
+        if ($wing->fetchColumn() !== ($reg['gender'] === 'P' ? 'muslimah' : 'umum')) {
+            return 'Jenis kelamin tidak sesuai dengan sayap struktur tujuan.';
+        }
+        return null;
+    }
+
+    // Menerima pengajuan tanpa tinjauan (hanya dipanggil bila verval nonaktif): orangnya dibuat atau ditautkan lewat aturan aktivasi yang sama,
+    // status langsung "Aktif", TANPA penempatan -- formulir pendaftaran tak memilih jabatan, jadi penempatannya diatur admin kemudian
+    // (Data Pengurus > "Belum punya penempatan"). Tak pernah melempar: yang tak memenuhi syarat atau gagal tetap berstatus Diajukan dan
+    // menunggu verifikator, jadi pengajuannya tak hilang. Mengembalikan ['accepted' => bool, 'reason' => alasan bila tidak, 'person_id'].
+    public function acceptWithoutReview($id) {
+        $reg = $this->findById($id);
+        if (!$reg || $reg['status'] !== 'submitted') return ['accepted' => false, 'reason' => 'Pengajuan tidak berstatus Diajukan.'];
+
+        $extra = !empty($reg['extra_data']) ? (json_decode($reg['extra_data'], true) ?: []) : [];
+        $reason = $this->autoAcceptBlock($reg, $extra);
+        if ($reason !== null) return ['accepted' => false, 'reason' => $reason];
+
+        $linked = (int) ($extra['registrant_selected_person_id'] ?? 0);
+        $own = $this->txBegin();
+        try {
+            $personId = $this->resolvePerson($reg, $extra, $linked > 0 ? $linked : null, null);
+            $done = $this->db->prepare("
+                UPDATE registration_requests
+                SET status = 'activated', resulting_person_id = :pid, reviewed_at = NOW(3),
+                    review_note = 'Diterima otomatis: verval pengajuan sedang dinonaktifkan.'
+                WHERE id = :id AND status = 'submitted'
+            ");
+            $done->execute([':pid' => $personId, ':id' => (int) $id]);
+            if ($done->rowCount() !== 1) throw new RuntimeException('Status pengajuan berubah saat diproses.');
+            if ($own) $this->db->commit();
+        } catch (Exception $e) {
+            if ($own && $this->db->inTransaction()) $this->db->rollBack();
+            error_log('Terima otomatis pengajuan #' . (int) $id . ' gagal: ' . $e->getMessage());
+            return ['accepted' => false, 'reason' => $e->getMessage()];
+        }
+        Audit::log('registration_requests', $id, 'update', $reg, $this->findById($id));
+        return ['accepted' => true, 'person_id' => $personId];
     }
 
     // Calon duplikat untuk ditampilkan di halaman verifikasi, dihitung ulang saat ditinjau (data

@@ -17,16 +17,33 @@
     <p class="sub"><?= e(APP_NAME) ?></p>
     </div>
 
-    <div class="alert success">
-      Alhamdulillah! Pengajuan Anda sudah masuk dan menunggu verifikasi pengurus struktur terkait.
-    </div>
+    <?php $outcome = $outcome ?? 'review'; ?>
+    <?php if ($outcome === 'accepted'): ?>
+      <div class="alert success">
+        Alhamdulillah! Data Anda sudah tercatat sebagai pengurus. Anda bisa langsung masuk ke Portal Pengurus dengan nomor WhatsApp Anda.
+      </div>
 
-    <p class="small">Yang terjadi selanjutnya:</p>
-    <ol class="small">
-      <li>Pengurus struktur yang Anda pilih memeriksa data Anda.</li>
-      <li>Bila sudah sesuai, data Anda dicatat beserta jabatan dan periodenya.</li>
-      <li>Bila ada yang perlu diperbaiki, Anda akan dihubungi lewat nomor WhatsApp yang Anda isi.</li>
-    </ol>
+      <p class="small">Yang terjadi selanjutnya:</p>
+      <ol class="small">
+        <li>Masuk ke Portal Pengurus dan lengkapi data diri Anda.</li>
+        <li>Pengurus struktur yang Anda pilih menetapkan jabatan dan periode Anda.</li>
+      </ol>
+    <?php else: ?>
+      <div class="alert success">
+        <?php if ($outcome === 'review_auto'): ?>
+          Alhamdulillah! Pengajuan Anda sudah masuk. Data Anda perlu diperiksa pengurus struktur terkait sebelum dicatat.
+        <?php else: ?>
+          Alhamdulillah! Pengajuan Anda sudah masuk dan menunggu verifikasi pengurus struktur terkait.
+        <?php endif; ?>
+      </div>
+
+      <p class="small">Yang terjadi selanjutnya:</p>
+      <ol class="small">
+        <li>Pengurus struktur yang Anda pilih memeriksa data Anda.</li>
+        <li>Bila sudah sesuai, data Anda dicatat beserta jabatan dan periodenya.</li>
+        <li>Bila ada yang perlu diperbaiki, Anda akan dihubungi lewat nomor WhatsApp yang Anda isi.</li>
+      </ol>
+    <?php endif; ?>
 
     <div class="note">
       Status aktif pada data pengurus <strong>bukan</strong> pemberian akun otomatis di aplikasi lain

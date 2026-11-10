@@ -740,7 +740,7 @@ Rate limit per klien, bawaan 60/menit. Response membawa `X-RateLimit-Limit` dan
 
 `Diajukan → Diverifikasi → Aktif`, atau `Ditolak`.
 
-Pengajuan disimpan di `registration_requests` dan **tidak pernah langsung menulis** ke `people`.
+Pengajuan disimpan di `registration_requests` dan, **selama verval aktif (bawaan), tidak pernah langsung menulis** ke `people`.
 Data master tetap bersih (API tidak pernah menyajikan orang yang belum diverifikasi), dan setiap
 pengajuan punya pemeriksa/waktu/alasannya sendiri. Nomor WA dinormalisasi dan menjadi kunci anti-duplikat:
 nomor yang sudah dimiliki orang di `people` atau pengajuan aktif lain ditolak saat dikirim, sehingga
@@ -751,6 +751,18 @@ Pencocokan calon di pengajuan lama yang masih ditinjau memakai nomor WA, NIK, da
 setelah gelar dibuang). Sistem hanya mengusulkan orang yang cocok; bila ada beberapa orang dengan
 nomor WA yang sama, verifikator tetap memilih secara manual. Saat aktivasi, nomor WA diperiksa lagi
 agar perubahan yang terjadi selama peninjauan tidak membuat orang duplikat.
+
+**Saklar verval.** Halaman Pendaftaran punya kartu *Verval pengajuan* (Aktif/Nonaktif) dengan tombol untuk mematikan atau menyalakannya. Tombolnya hanya untuk **Super Admin dan
+admin_struktur berlingkup DPP atau MWP** (`Auth::canManageVerval`, dibaca dari `account_roles` dan diperiksa lagi di server saat tombol ditekan); admin dan verifikator lain hanya melihat statusnya.
+Pengaturannya satu kunci di tabel `settings` (`verval_pengajuan`, `1`/`0`), berlaku untuk seluruh pendaftaran, dan **bila belum ada atau tak dikenal, verval tetap aktif**.
+Perubahannya masuk jejak audit dan `settings.updated_by`; tanpa migrasi.
+
+Saat verval **nonaktif**, pengajuan BARU yang jelas langsung `Aktif` (`RegistrationModel::acceptWithoutReview`): orangnya dibuat (atau ditautkan, bila pendaftar menautkan namanya
+yang lama) lewat logika yang sama dengan aktivasi manual, tercatat sebagai pengurus aktif dengan struktur asal = struktur tujuan, dan bisa masuk Portal Pengurus dengan nomor WA-nya.
+**Tanpa penempatan**, karena formulir tak memilih jabatan: admin mengaturnya kemudian (Data Pengurus > Belum punya penempatan). Dua keadaan tetap MENUNGGU verifikator seperti biasa, supaya
+saklar ini tak menggandakan data: (1) nama mirip orang yang sudah ada (sistem tak pernah memutuskan sendiri "orang baru atau bukan"), kecuali pendaftar sendiri menautkannya; (2) jenis kelamin
+tak sesuai sayap struktur tujuan. Pengajuan yang sudah menunggu saat saklar dimatikan **tidak ikut diterima**. Catatan peninjau berisi "Diterima otomatis", peninjaunya kosong.
+**Risiko yang disengaja:** tanpa verval, siapa pun yang mengisi formulir publik menjadi data induk dan ikut terbaca konsumen API; nomor WA yang sudah terdaftar tetap ditolak.
 
 **Unit Organisasi di Form Pengajuan.** Setelah memilih struktur, pendaftar boleh memilih Unit Organisasi tempatnya bertugas
 (opsional; kosong = pimpinan struktur atau tidak diisi). Daftarnya katalog `unit_catalog` yang aktif, **menurut sayap struktur

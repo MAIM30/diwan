@@ -54,7 +54,9 @@ class Audit {
         if (array_key_exists('nik', $row) && $row['nik'] !== null && $row['nik'] !== '') {
             $row['nik'] = Text::maskNik($row['nik']);
         }
-        unset($row['nik_guard'], $row['password_hash'], $row['token_hash']);
+        // submitted_ip (registration_requests) adalah IP BINER (inet_pton): bukan UTF-8 yang sah, sehingga json_encode gagal dan seluruh baris audit
+        // pengajuan -- verifikasi, penolakan, aktivasi -- diam-diam tak pernah tertulis (log() menelan galatnya). IP-nya tetap ada di barisnya sendiri.
+        unset($row['nik_guard'], $row['password_hash'], $row['token_hash'], $row['submitted_ip']);
         return $row;
     }
 }

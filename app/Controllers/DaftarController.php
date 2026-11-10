@@ -2,9 +2,9 @@
 // PATH LOKASI FILE: app/Controllers/DaftarController.php
 // Formulir pendaftaran publik (tanpa login).
 //
-// Formulir ini TIDAK terhubung ke akses aplikasi mana pun. Yang dihasilkannya hanya satu baris
-// pengajuan yang menunggu verifikasi manusia -- tidak ada akun yang dibuat, tidak ada data master
-// yang berubah, dan tidak ada apa pun yang dikirim ke syuro.
+// Formulir ini TIDAK terhubung ke akses aplikasi mana pun: tidak ada akun yang dibuat dan tidak ada apa pun yang dikirim ke syuro.
+// Bawaannya (verval aktif) ia hanya menghasilkan satu baris pengajuan yang menunggu verifikasi manusia, tanpa data master yang berubah.
+// Bila admin menonaktifkan verval (RegistrationModel::vervalActive), pengajuan yang jelas langsung diterima: orangnya tercatat, tanpa penempatan.
 
 class DaftarController extends Controller {
     public function index() {
@@ -14,6 +14,7 @@ class DaftarController extends Controller {
             'title'      => 'Pendaftaran Data Pengurus',
             'structures' => $structures->allOrdered(),
             'unitsByWing' => $this->unitsByWing(),
+            'vervalActive' => $this->model('RegistrationModel')->vervalActive(),
         ]);
     }
 
@@ -59,7 +60,7 @@ class DaftarController extends Controller {
         $registrations = $this->model('RegistrationModel');
 
         try {
-            $registrations->submit([
+            $requestId = $registrations->submit([
                 'title_prefix'        => $_POST['title_prefix'] ?? '',
                 'name'                => $_POST['name'] ?? '',
                 'title_suffix'        => $_POST['title_suffix'] ?? '',
@@ -85,7 +86,14 @@ class DaftarController extends Controller {
             $this->redirect('daftar');
         }
 
-        $this->view('public/daftar_sukses', ['title' => 'Pendaftaran Terkirim']);
+        // Verval nonaktif: pengajuan yang jelas langsung diterima. Yang tak memenuhi syarat (nama mirip data lama, jenis kelamin tak sesuai
+        // sayap) atau gagal diproses tetap menunggu verifikator, jadi pendaftar tak pernah kehilangan pengajuannya.
+        $outcome = 'review';
+        if (!$registrations->vervalActive()) {
+            $outcome = $registrations->acceptWithoutReview($requestId)['accepted'] ? 'accepted' : 'review_auto';
+        }
+
+        $this->view('public/daftar_sukses', ['title' => 'Pendaftaran Terkirim', 'outcome' => $outcome]);
     }
 
     // Saran nama publik hanya menampilkan orang yang memang belum memiliki nomor WA.

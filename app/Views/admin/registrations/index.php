@@ -21,6 +21,29 @@ $matchLabels = [
 </div>
 
 <div class="card">
+  <h2 style="margin-top:0">Verval pengajuan
+    <span class="badge <?= $vervalActive ? 'ok' : 'danger' ?>"><?= $vervalActive ? 'Aktif' : 'Nonaktif' ?></span>
+  </h2>
+  <?php if ($vervalActive): ?>
+    <p class="small muted" style="margin:0 0 12px">Pengajuan baru menunggu tinjauan verifikator (Diajukan &rarr; Diverifikasi &rarr; Aktif).</p>
+  <?php else: ?>
+    <p class="small muted" style="margin:0 0 12px">
+      Pengajuan baru yang jelas <strong>langsung diterima</strong>: orangnya tercatat dan bisa masuk Portal Pengurus, tanpa tinjauan.
+      Yang <strong>tidak langsung diterima</strong> dan tetap menunggu di sini: nama mirip orang yang sudah ada, atau jenis kelamin tak sesuai sayap struktur.
+      Orang yang diterima otomatis belum punya penempatan; aturlah lewat Data Pengurus &rsaquo; Belum punya penempatan.
+    </p>
+  <?php endif; ?>
+  <?php if ($canManageVerval): ?>
+    <form method="post" action="<?= BASEURL ?>/registrations/verval"
+          <?php if ($vervalActive): ?>data-confirm="Nonaktifkan verval? Pengajuan baru yang jelas langsung diterima dan tercatat sebagai pengurus tanpa diperiksa. Pengajuan yang sudah menunggu tidak berubah."<?php endif; ?>>
+      <?= Csrf::field() ?>
+      <input type="hidden" name="aktif" value="<?= $vervalActive ? '0' : '1' ?>">
+      <button type="submit" class="btn <?= $vervalActive ? 'danger' : '' ?>"><?= $vervalActive ? 'Nonaktifkan verval' : 'Aktifkan verval' ?></button>
+    </form>
+  <?php endif; ?>
+</div>
+
+<div class="card">
   <div class="btn-row" style="margin:0">
     <?php foreach ($tabs as $k => $v): ?>
       <a class="btn small <?= $status === $k ? '' : 'secondary' ?>"
