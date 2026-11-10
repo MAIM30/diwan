@@ -15,6 +15,7 @@ if ($current === 'units' && strpos($_GET['url'] ?? '', 'units/grouping') === 0) 
 if ($current === 'settings' && strpos($_GET['url'] ?? '', 'settings/gdrive') === 0) $navKey = 'settings-gdrive';
 
 $pendingCount = Auth::canVerify() ? $this->model('RegistrationModel')->countPending() : 0;
+$correctionCount = Auth::canVerify() ? $this->model('PositionCorrectionModel')->countPendingInScope() : 0;
 
 $dn = Text::splitName(Auth::name());
 $meAvatar = Ui::avatar(['name' => $dn['name'], 'uuid' => $_SESSION['auth']['uuid'] ?? ''], 'sm');
@@ -65,6 +66,7 @@ $nav = function ($key, $href, $icon, $label, $badge = 0) use ($navKey) {
 
       <div class="nav-label">Verifikasi</div>
       <?= $nav('registrations', 'registrations', 'inbox', 'Pendaftaran', $pendingCount) ?>
+      <?= $nav('positionCorrections', 'positionCorrections', 'message-circle', 'Laporan Koreksi', $correctionCount) ?>
       <?= $nav('biodata', 'biodata', 'file-text', 'Biodata Pengurus') ?>
       <?php if (Auth::isSuperAdmin()): ?>
         <?= $nav('imports', 'imports', 'clipboard-check', 'Tinjauan Impor') ?>

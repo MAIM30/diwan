@@ -90,11 +90,16 @@ if (!empty($_SESSION['daftar_phone'])) {
       </div>
 
       <div class="field">
-        <label for="unit_catalog_id">Unit Organisasi</label>
-        <select id="unit_catalog_id" name="unit_catalog_id" disabled>
-          <option value="">Pilih struktur terlebih dahulu</option>
-        </select>
-        <div class="help">Departemen, lembaga, atau biro tempat Anda bertugas. Kosongkan bila Anda di pimpinan struktur dan tidak di unit tertentu. Pilihan ini membantu admin memeriksa jabatan Anda.</div>
+        <label for="unit_search">Unit Organisasi</label>
+        <input type="hidden" id="unit_catalog_id" name="unit_catalog_id">
+        <input type="search" id="unit_search" autocomplete="off" role="combobox" aria-autocomplete="list"
+               aria-expanded="false" aria-controls="unit-results" aria-haspopup="listbox"
+               placeholder="Pilih struktur terlebih dahulu" disabled>
+        <div id="unit-results" class="autocomplete-list" role="listbox"></div>
+        <div class="unit-search-actions">
+          <div class="help">Cari unit berdasarkan nama; daftar menyesuaikan sayap struktur. Unit bersifat opsional.</div>
+          <button type="button" class="btn small secondary" id="unit-clear" disabled>Tanpa unit tertentu</button>
+        </div>
       </div>
 
       <div class="btn-row">
@@ -226,29 +231,129 @@ if (!empty($_SESSION['daftar_phone'])) {
 
   // Unit Organisasi menurut sayap struktur: [{label: 'Departemen', items: [{id, name}]}, ...]
   var unitsByWing = <?= json_encode($unitsByWing, JSON_UNESCAPED_UNICODE) ?>;
-  var unitSelect = document.getElementById('unit_catalog_id');
+  var unitId = document.getElementById('unit_catalog_id');
+  var unitSearch = document.getElementById('unit_search');
+  var unitResults = document.getElementById('unit-results');
+  var unitClear = document.getElementById('unit-clear');
+  var unitOptions = [];
+  var unitMatches = [];
+  var unitActive = -1;
 
-  // Struktur belum dipilih: kolom unit dikunci (dan tidak ikut terkirim). Sudah dipilih: isinya unit sayap struktur itu.
-  function fillUnits(wing) {
-    unitSelect.innerHTML = '';
-    var groups = wing ? (unitsByWing[wing] || []) : [];
-    var first = document.createElement('option');
-    first.value = '';
-    first.textContent = wing ? '— Tidak di unit tertentu —' : 'Pilih struktur terlebih dahulu';
-    unitSelect.appendChild(first);
-    groups.forEach(function (g) {
-      var og = document.createElement('optgroup');
-      og.label = g.label;
-      g.items.forEach(function (u) {
-        var o = document.createElement('option');
-        o.value = u.id;
-        o.textContent = u.name;
-        og.appendChild(o);
+  function renderUnitResults(items) {
+    unitMatches = items;
+    unitActive = -1;
+    unitResults.innerHTML = '';
+    if (!items.length) {
+      var empty = document.createElement('div');
+      empty.className = 'autocomplete-empty';
+      empty.textContent = 'Unit tidak ditemukan. Coba kata kunci lain.';
+      unitResults.appendChild(empty);
+    } else {
+      items.forEach(function (unit, index) {
+        var option = document.createElement('div');
+        option.className = 'autocomplete-item';
+        option.id = 'unit-option-' + unit.id;
+        option.setAttribute('role', 'option');
+        option.setAttribute('aria-selected', 'false');
+        option.setAttribute('data-idx', index);
+        var name = document.createElement('strong');
+        name.textContent = unit.name;
+        var kind = document.createElement('span');
+        kind.className = 'muted small';
+        kind.textContent = ' · ' + unit.kind;
+        option.appendChild(name);
+        option.appendChild(kind);
+        option.addEventListener('mousedown', function (event) {
+          event.preventDefault();
+          chooseUnit(unit);
+        });
+        unitResults.appendChild(option);
       });
-      unitSelect.appendChild(og);
-    });
-    unitSelect.disabled = !wing;
+    }
+    unitResults.style.display = 'block';
+    unitSearch.setAttribute('aria-expanded', 'true');
   }
+
+  function filterUnits(query) {
+    var words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    var found = unitOptions.filter(function (unit) {
+      var hay = (unit.name + ' ' + unit.kind).toLowerCase();
+      return words.every(function (word) { return hay.indexOf(word) !== -1; });
+    });
+    renderUnitResults(found.slice(0, 30));
+  }
+
+  function chooseUnit(unit) {
+    unitId.value = unit.id;
+    unitSearch.value = unit.name;
+    unitSearch.setCustomValidity('');
+    unitSearch.setAttribute('aria-activedescendant', 'unit-option-' + unit.id);
+    unitResults.style.display = 'none';
+    unitSearch.setAttribute('aria-expanded', 'false');
+  }
+
+  function clearUnit() {
+    unitId.value = '';
+    unitSearch.value = '';
+    unitSearch.setCustomValidity('');
+    unitSearch.removeAttribute('aria-activedescendant');
+    unitResults.style.display = 'none';
+    unitSearch.setAttribute('aria-expanded', 'false');
+  }
+
+  function fillUnitSearch(wing) {
+    var groups = wing ? (unitsByWing[wing] || []) : [];
+    unitOptions = [];
+    groups.forEach(function (group) {
+      group.items.forEach(function (unit) {
+        unitOptions.push({ id: unit.id, name: unit.name, kind: group.label });
+      });
+    });
+    clearUnit();
+    unitSearch.disabled = !wing || unitOptions.length === 0;
+    unitClear.disabled = !wing;
+    unitSearch.placeholder = !wing ? 'Pilih struktur terlebih dahulu'
+      : (unitOptions.length ? 'Ketik nama unit organisasi…' : 'Tidak ada unit untuk struktur ini');
+  }
+
+  unitSearch.addEventListener('input', function () {
+    unitId.value = '';
+    unitSearch.removeAttribute('aria-activedescendant');
+    unitSearch.setCustomValidity(unitSearch.value.trim() ? 'Pilih salah satu unit dari daftar, atau kosongkan kolom.' : '');
+    filterUnits(unitSearch.value);
+  });
+  unitSearch.addEventListener('focus', function () { filterUnits(unitSearch.value); });
+  unitSearch.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') {
+      unitResults.style.display = 'none';
+      unitSearch.setAttribute('aria-expanded', 'false');
+      return;
+    }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (unitResults.style.display !== 'block') filterUnits(unitSearch.value);
+      if (!unitMatches.length) return;
+      unitActive = (unitActive + (event.key === 'ArrowDown' ? 1 : -1) + unitMatches.length) % unitMatches.length;
+      var options = unitResults.querySelectorAll('[role="option"]');
+      options.forEach(function (option, index) {
+        var selected = index === unitActive;
+        option.classList.toggle('is-active', selected);
+        option.setAttribute('aria-selected', selected ? 'true' : 'false');
+      });
+      unitSearch.setAttribute('aria-activedescendant', options[unitActive].id);
+      options[unitActive].scrollIntoView({ block: 'nearest' });
+    } else if (event.key === 'Enter' && unitActive >= 0 && unitMatches[unitActive]) {
+      event.preventDefault();
+      chooseUnit(unitMatches[unitActive]);
+    }
+  });
+  unitSearch.addEventListener('blur', function () {
+    setTimeout(function () {
+      unitResults.style.display = 'none';
+      unitSearch.setAttribute('aria-expanded', 'false');
+    }, 150);
+  });
+  unitClear.addEventListener('click', clearUnit);
 
   var input = document.getElementById('structure_search');
   var hidden = document.getElementById('target_structure_id');
@@ -279,7 +384,7 @@ if (!empty($_SESSION['daftar_phone'])) {
     input.value = s.label;
     results.style.display = 'none';
     input.setCustomValidity('');
-    fillUnits(s.wing);
+    fillUnitSearch(s.wing);
   }
 
   function esc(t) {
@@ -300,7 +405,7 @@ if (!empty($_SESSION['daftar_phone'])) {
   }
 
   input.addEventListener('input', function () {
-    if (hidden.value) fillUnits('');   // struktur diganti/dihapus: pilihan unit lama tak berlaku lagi
+    if (hidden.value) fillUnitSearch('');   // struktur diganti/dihapus: pilihan unit lama tak berlaku lagi
     hidden.value = '';
     input.setCustomValidity('Pilih salah satu struktur dari daftar');
     var q = this.value.trim().toLowerCase();
@@ -345,6 +450,11 @@ if (!empty($_SESSION['daftar_phone'])) {
     if (!hidden.value) {
       input.setCustomValidity('Pilih salah satu struktur dari daftar');
       input.reportValidity();
+      e.preventDefault();
+    }
+    if (unitSearch.value.trim() && !unitId.value) {
+      unitSearch.setCustomValidity('Pilih salah satu unit dari daftar, atau kosongkan kolom.');
+      unitSearch.reportValidity();
       e.preventDefault();
     }
   });

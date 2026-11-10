@@ -1203,6 +1203,10 @@ a.hbar-row:hover, .hbar-row:hover, .hbar-row:focus { background: var(--primer-pu
 }
 .autocomplete-item:last-child { border-bottom: 0; }
 .autocomplete-item:hover, .autocomplete-item.is-active { background: var(--primer-pucat); }
+.autocomplete-empty { padding: 10px 12px; color: var(--muted); font-size: 13px; }
+.unit-search-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 6px; }
+.unit-search-actions .help { margin: 0; }
+.unit-search-actions .btn { flex: none; }
 .field:has(.autocomplete-list) { position: relative; }
 
 /* =========================================================================================

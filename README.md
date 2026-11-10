@@ -93,6 +93,7 @@ database/
   021_ketua_menurut_jenis_unit.php  migrasi: Ketua Departemen / Lembaga / Biro / Badan + positions.unit_kinds (batas jenis unit)
   022_katalog_unit_per_sayap.php    migrasi: katalog Unit Organisasi dipisah per sayap (unit_catalog.wing: Umum / Muslimah), nama unik per sayap
   023_struktur_mwln.php             migrasi: tingkat MWLN (Muslimah Luar Negeri, padanan DPLN: setingkat MWW di bawah MWP); hanya definisi kolom, tanpa mengubah baris
+  024_pengajuan_koreksi_penempatan.php migrasi: antrean laporan pengurus untuk kekeliruan jabatan/penempatan
   sinkron_ketua_dpw_dpd.php   memasukkan Ketua DPW/DPD dari tab DPW dan DPD di Google Sheet pengurus (CLI; dry-run bawaan, --commit untuk menyimpan)
   sinkron_sheet_dpp.php       menyamakan penempatan satu struktur dengan tab-nya di Google Sheet pengurus: --tab=DPP (bawaan) atau --tab=MWP;
                               pilihan --rinci, --mirip, --buat-unit, --buat-orang untuk sheet tanpa nomor HP (CLI; dry-run bawaan, --commit untuk menyimpan)
@@ -266,7 +267,7 @@ pengamannya dipasang di sekelilingnya tanpa mengubah sifat "satu kredensial saja
 
 | Pengaman | Cara kerja |
 |---|---|
-| Tulis terbatas | satu-satunya aksi tulis adalah *Ubah data saya*, dan hanya untuk kolom daftar putih (lihat bawah); nomor WA, NIK, nama, dan jabatan tak bisa diubah dari portal, jadi sesi yang disalahgunakan tak bisa merebut akun |
+| Tulis terbatas | pengurus hanya bisa mengubah kolom daftar putih di *Ubah data saya* atau mengirim laporan koreksi jabatan/penempatan; laporan masuk ke admin dan tidak mengubah data kepengurusan otomatis |
 | Data tersamar | **NIK dan nomor WA tampil utuh** (data milik sendiri; keputusan pemilik sistem 2026-10-21); HP keluarga `62812*****890` dan email `ad***@...` tersamar; tanggal/tempat lahir dan alamat jalan **tidak ditampilkan** |
 | Rekan se-unit | hanya nama + jabatan; tanpa foto, telepon, NIK, atau biodata lain |
 | Pembatas per IP | 8 gagal/15 menit **atau** 30 gagal/24 jam mengunci IP itu -- walau NIK yang dicoba benar. Per IP, bukan per NIK: NIK yang salah memang tak ada orangnya, jadi hitungan per NIK tak pernah menahan penyapuan |
@@ -320,6 +321,12 @@ maks 10 perubahan per jam; setiap perubahan tercatat (`event: portal_edit`, nila
 Kecamatan (`district`), Kota/Kabupaten (`city`), Provinsi (`province`); keempat yang terakhir dipilih bertingkat dari data wilayah resmi (bagian berikut).
 **Perubahan merambat ke konsumen API**: nama (gelar depan, nama asli, gelar belakang), email, tanggal lahir, kota, dan provinsi ada di kontrak API, jadi perubahan
 pengurus langsung terbaca syuro (kelurahan, kecamatan, jalan, HP keluarga, pekerjaan tidak).
+
+### Melaporkan kekeliruan jabatan atau penempatan
+
+Di **Data Saya > Laporkan kekeliruan jabatan**, pengurus dapat memilih penempatan yang sedang berjalan, menandai apakah kekeliruannya pada jabatan atau penempatan, lalu menjelaskan koreksinya. Laporan hanya membuat antrean untuk admin di lingkup struktur terkait; admin memperbaiki data melalui menu Periode/Penempatan, memberi catatan, lalu menandai laporan ditangani atau tidak ditindaklanjuti. Pengurus dapat melihat status dan catatan admin dari portal.
+
+Formulir pendaftaran juga menyediakan pencarian Unit Organisasi yang mengikuti sayap struktur tujuan. Unit dapat dicari berdasarkan nama atau jenis, dan pilihan tanpa unit tetap tersedia.
 
 ### Data wilayah (domisili bertingkat)
 

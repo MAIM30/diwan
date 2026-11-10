@@ -15,7 +15,10 @@ $dash = '<span class="muted">—</span>';
 
 <div class="page-head">
   <h1>Data Saya</h1>
-  <div class="actions"><a class="btn" href="<?= BASEURL ?>/pengurus/ubah"><?= Ui::icon('edit', 17) ?> Ubah data saya</a></div>
+  <div class="actions">
+    <a class="btn secondary" href="<?= BASEURL ?>/pengurus/koreksi"><?= Ui::icon('message-circle', 17) ?> Laporkan kekeliruan jabatan</a>
+    <a class="btn" href="<?= BASEURL ?>/pengurus/ubah"><?= Ui::icon('edit', 17) ?> Ubah data saya</a>
+  </div>
 </div>
 
 <div class="m-grid">

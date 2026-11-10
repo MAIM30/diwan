@@ -337,6 +337,47 @@ class PengurusController extends Controller {
         ]);
     }
 
+    // Pengurus hanya dapat melaporkan penempatan yang tampil sebagai jabatan saat ini miliknya.
+    public function koreksi() {
+        [$members, $person] = $this->guard();
+        $current = $members->currentOf($members->history($person['id']));
+        $this->view('pengurus/koreksi', [
+            'title' => 'Pengajuan Koreksi',
+            'person' => $person,
+            'current' => $current,
+            'requests' => $this->model('PositionCorrectionModel')->listForPerson($person['id']),
+        ]);
+    }
+
+    public function koreksi_submit() {
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') $this->redirect('pengurus/koreksi');
+        [, $person] = $this->guard();
+
+        try {
+            $id = $this->model('PositionCorrectionModel')->submitForPerson(
+                $person['id'],
+                $_POST['placement_id'] ?? 0,
+                $_POST['category'] ?? '',
+                $_POST['details'] ?? ''
+            );
+        } catch (RuntimeException $e) {
+            Flash::set('error', $e->getMessage());
+            $this->redirect('pengurus/koreksi');
+        } catch (PDOException $e) {
+            error_log('Pengajuan koreksi penempatan gagal: ' . $e->getMessage());
+            Flash::set('error', 'Pengajuan belum dapat dikirim. Silakan coba lagi.');
+            $this->redirect('pengurus/koreksi');
+        }
+
+        Audit::log('position_correction_requests', $id, 'create', null, [
+            'person_id' => (int) $person['id'],
+            'placement_id' => (int) ($_POST['placement_id'] ?? 0),
+            'category' => in_array($_POST['category'] ?? '', ['placement', 'position'], true) ? $_POST['category'] : null,
+        ]);
+        Flash::set('success', 'Pengajuan terkirim. Admin struktur terkait akan memeriksanya.');
+        $this->redirect('pengurus/koreksi');
+    }
+
     // ---------- Biodata / Profil Singkat Pengurus ----------
 
     // Penempatan aktif pertama orang ini (untuk prefill Jabatan/Bidang) -- orang yang rangkap jabatan
