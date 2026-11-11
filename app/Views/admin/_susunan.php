@@ -7,9 +7,9 @@
 // Buka semua / Tutup semua), $flat (true = tanpa simpul untuk dibuka: daftar nama dan jabatan langsung, Pengurus Inti dulu lalu Pimpinan
 // Lainnya; untuk struktur yang tak punya Bidang dan unit, mis. MWW dan MWD).
 // Tautan Ubah memakai term_id milik barisnya sendiri, jadi satu daftar boleh memuat penempatan dari beberapa periode.
-// Lencana "rangkap" (penempatan tak bertanda "utama") tidak ditampilkan saat $metrics: bendera itu kosong di hampir semua penempatan
-// (seluruh DPD, MWD, DSO, DSY, DPK), jadi hampir setiap baris akan salah disebut rangkap; rangkap yang sebenarnya (lebih dari satu
-// penempatan berjalan) dihitung kartu "Rangkap" di halaman Data Pengurus.
+// Lencana "rangkap" muncul di SETIAP baris orang yang memegang lebih dari satu jabatan berjalan (PlacementModel::byTerm: is_rangkap), apa pun
+// jabatan barisnya, juga Ketua; bukan dari bendera "utama", yang kosong di hampir semua penempatan. Dasarnya sama dengan kartu "Rangkap"
+// di Data Pengurus. Berlaku di semua mode ($metrics maupun $flat); tooltipnya menyebut jumlah jabatan orang itu.
 $canEdit = Auth::canEdit();
 $metrics = !empty($metrics);
 $flat = !empty($flat);
@@ -18,7 +18,7 @@ $intiFlags = $intiFlags ?? null;
 
 // $compact (daftar rata): kolom Kontak selalu ada, kolom Masa hanya bila ada penempatan yang bertanggal (selebihnya "penuh periode"
 // berulang di setiap baris).
-$roster = function (array $n, $compact = false) use ($canEdit, $metrics) {
+$roster = function (array $n, $compact = false) use ($canEdit) {
     $showPhone = $compact || $n['phone'];
     $showMasa = true;
     if ($compact) {
@@ -43,7 +43,7 @@ $roster = function (array $n, $compact = false) use ($canEdit, $metrics) {
             <td class="nowrap"><?= e($r['position_name']) ?></td>
             <td>
               <?= Ui::personCell($r, BASEURL . '/people/detail/' . (int) $r['person_id'], null, 'sm') ?>
-              <?php if (!$metrics && !$r['is_primary']): ?><span class="badge" style="margin-left:46px">rangkap</span><?php endif; ?>
+              <?php if (!empty($r['is_rangkap'])): ?><span class="badge" style="margin-left:46px" title="Memegang <?= (int) $r['jabatan_berjalan'] ?> jabatan berjalan">rangkap</span><?php endif; ?>
               <?php if (!empty($r['memimpin'])): ?>
                 <div class="small muted" style="margin-left:46px">Memimpin <?= e(implode(', ', $r['memimpin'])) ?></div>
               <?php endif; ?>

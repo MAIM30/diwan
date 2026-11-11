@@ -5,7 +5,8 @@
 //     perantara "MWP" atau "MWW Aceh"); induk hanya keterangan di bawah nama
 //   - induk di luar lingkup admin tak pernah bocor (admin DPD tidak melihat nama DPW di atasnya)
 //   - menekan struktur tanpa Bidang dan unit menampilkan nama dan jabatan pengurus langsung; yang punya Bidang atau unit tetap pohon
-//   - halaman Susunan Periode (admin/_susunan tanpa $metrics) tidak berubah
+//   - rangkap = ORANG yang memegang lebih dari satu jabatan berjalan (struktur sama pun rangkap); kartu, penyaring, dan lencana "rangkap"
+//     di setiap baris orang itu (Susunan Periode dan Per Struktur) memakai dasar yang sama; kerangka Susunan Periode tidak berubah
 //   - Daftar: arti "Lengkap" dijelaskan (tooltip dan satu baris keterangan), dan padanan PHP-nya (PersonModel::missingFields) sepakat
 //     dengan predikat SQL-nya (COMPLETE_SQL) untuk seluruh orang
 // Syarat: database lokal berisi data pengurus biasa proyek ini (MWW/MWD/DPD, DPP, MWP).
@@ -131,7 +132,14 @@ ok(strpos($f, '<details') === false && strpos($f, 'mon-flat"') !== false, 'MWW '
 ok(strpos($f, 'Pengurus Inti') !== false && strpos($f, '<th>Jabatan</th>') !== false && strpos($f, '<th>Nama</th>') !== false && strpos($f, '<th>Kontak</th>') !== false, 'daftar rata: judul Pengurus Inti dan kolom Jabatan, Nama, Kontak');
 $allShown = true; foreach ($people as $nm) if (strpos($f, e($nm)) === false) $allShown = false;
 ok($people && $allShown, 'daftar rata: seluruh pengurus (' . count($people) . ') tampil dengan namanya');
-ok(strpos($f, '>rangkap<') === false, 'daftar pengurus: tanpa lencana "rangkap" yang menyesatkan');
+// Lencana "rangkap" menurut SQL mandiri: orang yang punya >1 penempatan berjalan (seluruh struktur), pada baris yang sendirinya berjalan.
+$curN = "(SELECT COUNT(*) FROM placements x JOIN terms tx ON tx.id = x.term_id AND tx.is_current = 1 AND tx.deleted_at IS NULL
+          WHERE x.person_id = pl.person_id AND x.deleted_at IS NULL AND (x.end_date IS NULL OR x.end_date >= CURDATE()))";
+$expectBadge = function ($termId) use ($pdo, $curN) {
+    return (int) $pdo->query("SELECT COUNT(*) FROM placements pl JOIN terms t ON t.id = pl.term_id AND t.is_current = 1
+        WHERE pl.term_id = " . (int) $termId . " AND pl.deleted_at IS NULL AND (pl.end_date IS NULL OR pl.end_date >= CURDATE()) AND $curN > 1")->fetchColumn();
+};
+ok(substr_count($f, '>rangkap<') === $expectBadge($tid), 'daftar pengurus: lencana "rangkap" tepat pada baris orang yang memegang >1 jabatan (' . $expectBadge($tid) . ')', (string) substr_count($f, '>rangkap<'));
 ok(strpos($f, '>penuh periode<') === false || strpos($f, '<th>Masa</th>') !== false, 'kolom Masa tak ada bila tak satu pun penempatan bertanggal (tak ada "penuh periode" berulang)');
 
 // Penyaring: tetap rata, hanya yang cocok; tanpa hasil -> pesan.
@@ -149,14 +157,55 @@ foreach (['MWP', 'DPP'] as $level) {
     ok(substr_count($f2, '<details') > 10 && strpos($f2, 'mon-flat"') === false, "$level (punya Bidang dan unit): tetap pohon yang bisa dibuka");
 }
 
-// ---------- Susunan Periode tidak berubah ----------
+// ---------- Rangkap: orangnya, bukan bendera "utama" ----------
 $pm = new PlacementModel(); $um = new UnitModel();
-$rowsT = $pm->byTerm($tid);
-$nonPrimary = count(array_filter($rowsT, function ($r) { return empty($r['is_primary']); }));
-if ($nonPrimary > 0) {
-    $tree = Susunan::arrange($rowsT, $um->groupsByTerm($tid), $um->unitsByTerm($tid));
+
+// Kartu dan penyaring: orang dengan >1 penempatan berjalan, walau semuanya di satu struktur.
+$sqlRangkap = (int) $pdo->query("SELECT COUNT(*) FROM people p WHERE p.deleted_at IS NULL AND (SELECT COUNT(*) FROM placements x
+    JOIN terms tx ON tx.id = x.term_id AND tx.is_current = 1 AND tx.deleted_at IS NULL
+    WHERE x.person_id = p.id AND x.deleted_at IS NULL AND (x.end_date IS NULL OR x.end_date >= CURDATE())) > 1")->fetchColumn();
+$recapR = (new PersonModel())->recapCounts();
+ok($recapR['rangkap'] === $sqlRangkap && $sqlRangkap > 100, 'kartu Rangkap = orang dengan >1 jabatan berjalan (' . $sqlRangkap . ')', (string) $recapR['rangkap']);
+ok($recapR['rangkap'] + $recapR['tunggal'] === $recapR['menjabat'], 'Rangkap + tunggal = Menjabat');
+ok((new PersonModel())->countInScope('', ['filter' => 'rangkap']) === $sqlRangkap, 'penyaring ?filter=rangkap: jumlahnya sama dengan kartu');
+ok((new PersonModel())->countInScope('', ['filter' => 'tidak_rangkap']) === $recapR['total'] - $sqlRangkap, 'penyaring tidak_rangkap: sisanya (tunggal + tidak menjabat)');
+$sameStruct = $pdo->query("SELECT pl.person_id FROM placements pl JOIN terms t ON t.id = pl.term_id AND t.is_current = 1 AND t.deleted_at IS NULL
+    JOIN people p ON p.id = pl.person_id AND p.deleted_at IS NULL
+    WHERE pl.deleted_at IS NULL AND (pl.end_date IS NULL OR pl.end_date >= CURDATE())
+    GROUP BY pl.person_id HAVING COUNT(*) > 1 AND COUNT(DISTINCT pl.structure_id) = 1 LIMIT 1")->fetchColumn();
+if ($sameStruct) {
+    $in = (new PersonModel())->idsInScope('', ['gender' => '', 'filter' => 'rangkap', 'serving' => false]);
+    ok(in_array((int) $sameStruct, $in, true), 'dua jabatan di SATU struktur tetap dihitung rangkap (orang #' . $sameStruct . ')');
+}
+
+// Lencana di tiap baris (Susunan Periode, tanpa $metrics): tiap baris cocok dengan hitungan mandiri; baris orang rangkap SEMUA berlencana.
+$byCount = $pdo->query("SELECT t.id FROM terms t JOIN placements pl ON pl.term_id = t.id AND pl.deleted_at IS NULL
+    WHERE t.is_current = 1 AND t.deleted_at IS NULL AND (pl.end_date IS NULL OR pl.end_date >= CURDATE()) AND $curN > 1
+    GROUP BY t.id ORDER BY COUNT(*) DESC LIMIT 1")->fetchColumn();
+if ($byCount) {
+    $byCount = (int) $byCount;
+    $rowsT = $pm->byTerm($byCount);
+    $want = $pdo->query("SELECT pl.id, ($curN > 1) AS r FROM placements pl WHERE pl.term_id = $byCount AND pl.deleted_at IS NULL
+                         AND (pl.end_date IS NULL OR pl.end_date >= CURDATE())")->fetchAll(PDO::FETCH_KEY_PAIR);
+    $mismatch = 0;
+    foreach ($rowsT as $r) {
+        $active = empty($r['end_date']) || $r['end_date'] >= date('Y-m-d');
+        if (!empty($r['is_rangkap']) !== ($active && !empty($want[$r['id']]))) $mismatch++;
+    }
+    ok($rowsT && $mismatch === 0, 'byTerm: is_rangkap tiap baris sesuai hitungan mandiri (' . count($rowsT) . ' baris)', "tak sesuai: $mismatch");
+    $tree = Susunan::arrange($rowsT, $um->groupsByTerm($byCount), $um->unitsByTerm($byCount));
     $html = (new TPS)->render('admin/_susunan', ['tree' => $tree, 'treeId' => 'uji']);
-    ok(strpos($html, '>rangkap<') !== false && strpos($html, '<details') !== false && strpos($html, 'mon-flat') === false, 'Susunan Periode: lencana "rangkap" dan simpul tetap seperti semula');
+    $shown = substr_count($html, '>rangkap<');
+    ok($shown === count(array_filter($rowsT, function ($r) { return !empty($r['is_rangkap']); })) && $shown > 0, 'Susunan Periode: satu lencana "rangkap" per baris orang rangkap (' . $shown . ')');
+    ok(strpos($html, '<details') !== false && strpos($html, 'mon-flat') === false, 'Susunan Periode: kerangka simpul tidak berubah');
+    ok(preg_match('/title="Memegang \d+ jabatan berjalan">rangkap</', $html) === 1, 'lencana "rangkap" menyebut jumlah jabatan di tooltipnya');
+}
+
+// Periode lampau (bukan berjalan): tak ada lencana, karena rangkap diukur dari jabatan berjalan.
+$pastTerm = (int) $pdo->query("SELECT t.id FROM terms t WHERE t.is_current = 0 AND t.deleted_at IS NULL AND EXISTS
+    (SELECT 1 FROM placements pl WHERE pl.term_id = t.id AND pl.deleted_at IS NULL) LIMIT 1")->fetchColumn();
+if ($pastTerm) {
+    ok(count(array_filter($pm->byTerm($pastTerm), function ($r) { return !empty($r['is_rangkap']); })) === 0, 'periode yang tidak berjalan: tanpa lencana "rangkap"');
 }
 
 // ---------- Daftar: arti "Lengkap" ----------

@@ -525,8 +525,11 @@ tiga kelompok kartu rekap, lalu satu dari dua tampilan (`?susun=struktur|daftar`
   (`GET /people/struktur/{term_id}`, potongan HTML): struktur **tanpa Bidang dan unit** (kebanyakan DPW, DPD, MWW, MWD) menampilkan **nama dan jabatan pengurusnya langsung**
   (judul kecil Pengurus Inti, lalu Pimpinan Lainnya; kolom Jabatan, Nama, Kontak, dan Masa hanya bila ada penempatan bertanggal), tanpa simpul untuk dibuka; struktur yang punya
   Bidang atau unit (DPP, MWP, dan yang berunit seperti MWW Sulawesi Tenggara) tetap berupa pohon Susunan (Pengurus Inti, Bidang, unit; kerangka dan penyajiannya dipakai bersama
-  halaman detail periode: `Susunan::arrange` dan `views/admin/_susunan.php`). Di halaman ini lencana "rangkap" per baris tidak ditampilkan: bendera "utama" yang menjadi dasarnya
-  kosong di hampir semua penempatan (100% DPD, MWD, DSO, DSY, DPK), jadi hampir setiap baris akan salah disebut rangkap; rangkap yang sebenarnya dihitung kartu "Rangkap".
+  halaman detail periode: `Susunan::arrange` dan `views/admin/_susunan.php`). **Rangkap = orang yang memegang lebih dari satu jabatan berjalan** (periode berjalan, belum berakhir,
+  dalam lingkup admin), di struktur atau unit mana pun: dua jabatan di satu struktur pun rangkap. Dasar yang sama dipakai kartu Rangkap, penyaring `?filter=rangkap`, "+N lainnya" di Daftar,
+  dan lencana "rangkap" yang muncul di **setiap baris** orang itu (Per Struktur maupun Susunan Periode, termasuk baris Ketua-nya; tooltipnya menyebut jumlah jabatan). Lencana dihitung
+  `PlacementModel::byTerm` (`is_rangkap`, `jabatan_berjalan`), bukan dari bendera "utama": bendera itu kosong di hampir semua penempatan (100% DPD, MWD, DSO, DSY, DPK) sehingga dulu
+  hampir setiap baris salah disebut rangkap. Baris yang sudah berakhir dan periode yang tidak berjalan tidak berlencana.
   Jenjang satu-struktur (DPP, MWP, DSO, DSY, DPK) tidak terbuka otomatis karena isinya berat, begitu juga jenjang dengan lebih dari 60 struktur (DPD dan MWD; ringkasannya sudah ada
   di baris jenjangnya): daftar itu terbuka bila jenjangnya dipilih atau diketuk. Tombol "Buka semua jenjang" hanya membuka jenjang, bukan ratusan baris struktur.
   Per Struktur memuat SEMUA struktur dalam lingkup, termasuk yang belum punya pengurus atau periode (angka nol, K·S·B kosong; yang belum punya periode berjalan barisnya statis dengan

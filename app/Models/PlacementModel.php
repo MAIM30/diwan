@@ -77,16 +77,30 @@ class PlacementModel {
     // per Bidang, lalu per unit, lalu per urutan jabatan di dalam unit. Pengelompokan per kategori ada di Susunan::arrange.
     // "Pengurus Inti" = jabatan tingkat struktur (structure_unit_id IS NULL) yang di katalog jabatan bertanda inti:
     // is_core = 1 (PositionModel::CORE_SQL); tak ada daftar nama jabatan yang dipatri di kode.
+    // jabatan_berjalan = berapa jabatan berjalan yang dipegang orang ini di seluruh struktur dalam lingkup admin (periode berjalan, belum
+    // berakhir; dasar yang sama dengan kartu Rangkap). is_rangkap = penempatan ini sendiri berjalan DAN orangnya memegang lebih dari satu,
+    // jadi lencana "rangkap" muncul di setiap baris orang itu, termasuk Ketua-nya, dan tidak di baris yang sudah berakhir atau periode lampau.
     public function byTerm($termId, $unitId = null) {
         $sql = "
             SELECT pl.*, p.full_name, p.title_prefix, p.name, p.title_suffix, p.photo_path, p.uuid AS person_uuid, p.gender, p.phone,
                    po.name AS position_name, " . PositionModel::CORE_SQL . " AS is_core, po.sort_order AS position_sort,
                    c.name AS unit_name, c.abbreviation AS unit_abbr,
-                   g.name AS group_name, g.sort_order AS group_sort
+                   g.name AS group_name, g.sort_order AS group_sort,
+                   COALESCE(cur.n, 0) AS jabatan_berjalan,
+                   (COALESCE(cur.n, 0) > 1 AND tt.is_current = 1 AND (pl.end_date IS NULL OR pl.end_date >= CURDATE())) AS is_rangkap
             FROM placements pl
             JOIN people p ON p.id = pl.person_id
             JOIN positions po ON po.id = pl.position_id
             JOIN structures s ON s.id = pl.structure_id
+            JOIN terms tt ON tt.id = pl.term_id
+            LEFT JOIN (
+                SELECT x.person_id, COUNT(*) AS n
+                FROM placements x
+                JOIN terms tx ON tx.id = x.term_id AND tx.is_current = 1 AND tx.deleted_at IS NULL
+                WHERE x.deleted_at IS NULL AND (x.end_date IS NULL OR x.end_date >= CURDATE())
+                  AND " . AdminScope::sqlFilter('x.structure_id') . "
+                GROUP BY x.person_id
+            ) cur ON cur.person_id = pl.person_id
             LEFT JOIN structure_units su ON su.id = pl.structure_unit_id
             LEFT JOIN unit_catalog c ON c.id = su.unit_catalog_id
             LEFT JOIN unit_groups g ON g.id = su.unit_group_id

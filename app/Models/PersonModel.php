@@ -131,6 +131,8 @@ class PersonModel {
     // kartu itu sendiri (jenis kelamin, kelengkapan, rangkap, ...) sengaja TIDAK ikut: kartu-kartu itu memecah himpunan ini, jadi kalau
     // ikut menyaring, memilih "Perempuan" akan menolkan kartu "Laki-laki". Tanpa pencarian dan jenjang, angkanya seluruh lingkup admin.
     // Selalu saling cocok: menjabat + tidak_menjabat = total, rangkap + tunggal = menjabat, lengkap + belum_lengkap = total.
+    // Rangkap = ORANG yang memegang lebih dari satu jabatan berjalan, di struktur atau unit mana pun (dua jabatan di satu struktur pun
+    // rangkap). Dasarnya sama dengan "+N lainnya" di Daftar dan lencana "rangkap" di Susunan: jumlah penempatan berjalan.
     public function recapCounts($keyword = '', $level = '') {
         $params = [];
         $where = $this->listWhere($keyword, ['level' => $level], $params);
@@ -143,7 +145,7 @@ class PersonModel {
                    COALESCE(SUM(sc.n >= 1), 0) AS menjabat, COALESCE(SUM(sc.n > 1), 0) AS rangkap
             FROM people p
             LEFT JOIN (
-                SELECT plr.person_id, COUNT(DISTINCT plr.structure_id) AS n
+                SELECT plr.person_id, COUNT(*) AS n
                 FROM placements plr
                 JOIN terms tr ON tr.id = plr.term_id AND tr.is_current = 1 AND tr.deleted_at IS NULL
                 WHERE plr.deleted_at IS NULL AND (plr.end_date IS NULL OR plr.end_date >= CURDATE()) AND $inScope
@@ -393,13 +395,13 @@ class PersonModel {
                 $where[] = "NOT " . self::COMPLETE_SQL;
                 break;
             case 'rangkap':
-                $where[] = "(SELECT COUNT(DISTINCT plf.structure_id) FROM placements plf
+                $where[] = "(SELECT COUNT(*) FROM placements plf
                               JOIN terms tf ON tf.id = plf.term_id AND tf.is_current = 1 AND tf.deleted_at IS NULL
                               WHERE plf.person_id = p.id AND plf.deleted_at IS NULL
                                 AND (plf.end_date IS NULL OR plf.end_date >= CURDATE()) AND $inScope) > 1";
                 break;
             case 'tidak_rangkap':
-                $where[] = "(SELECT COUNT(DISTINCT plf.structure_id) FROM placements plf
+                $where[] = "(SELECT COUNT(*) FROM placements plf
                               JOIN terms tf ON tf.id = plf.term_id AND tf.is_current = 1 AND tf.deleted_at IS NULL
                               WHERE plf.person_id = p.id AND plf.deleted_at IS NULL
                                 AND (plf.end_date IS NULL OR plf.end_date >= CURDATE()) AND $inScope) <= 1";
