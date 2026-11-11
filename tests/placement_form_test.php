@@ -76,7 +76,8 @@ ok(strpos($h, '<select id="person_id"') === false, 'form ubah: tak ada lagi daft
 $mainEnd = strpos($h, '</form>'); $side = strpos($h, 'class="pf-side"');
 ok($mainEnd !== false && $side !== false && $mainEnd < $side && substr_count(substr($h, 0, $mainEnd), '<form') === 1, 'penempatan lain ada DI LUAR form simpan (form tak bersarang)');
 ok(strpos($h, 'Sekarang tampil di: <b>Pimpinan Lainnya</b>') !== false, 'form ubah: menyebut tempat tampil sekarang');
-ok(strpos($h, 'Tanpa unit (langsung di tingkat struktur)') !== false && strpos($h, 'PENGURUS INTI (tingkat struktur') === false, 'pilihan tanpa unit tak lagi bernama "PENGURUS INTI"');
+ok(strpos($h, '<option value="">Pengurus Inti</option>') !== false && strpos($h, 'Tanpa unit (langsung di tingkat struktur)') === false && strpos($h, 'PENGURUS INTI (tingkat struktur') === false, 'pilihan tingkat struktur (tanpa unit) bernama "Pengurus Inti"');
+ok(substr_count(file_get_contents(ROOT_DIR . '/app/Views/admin/placements/form.php'), '<option value="">Pengurus Inti</option>') === 2, 'nama pilihan sama di tampilan awal dan di JS yang memuat ulang pilihan struktur');
 ok(strpos($h, 'name="gender"') !== false && strpos($h, 'id="structure_level"') === false, 'isian Jenis Kelamin / Tingkat Struktur dari pengguna dihapus (jenis kelamin ikut orangnya)');
 ok(preg_match('/data-core="1"/', $h) === 1 && preg_match('/data-core="0"/', $h) === 1, 'jabatan membawa penanda inti (untuk pratinjau)');
 

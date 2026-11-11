@@ -131,7 +131,7 @@ $akhiriPanel = function ($h, $prefix) use ($endReasons) {
       <div class="field">
         <label for="placement-modal-unit">Unit Organisasi (SKUO)</label>
         <select id="placement-modal-unit" name="structure_unit_id" disabled>
-          <option value="">PENGURUS INTI (tingkat struktur, tanpa unit)</option>
+          <option value="">Pengurus Inti</option>
         </select>
       </div>
       <div class="field">
@@ -193,7 +193,7 @@ $akhiriPanel = function ($h, $prefix) use ($endReasons) {
     unit.disabled = position.disabled = true;
     submit.disabled = true;
     if (!termId) {   // struktur dibatalkan (Ganti): pilihan unit dan jabatan dikosongkan lagi
-      unit.innerHTML = '<option value="">PENGURUS INTI (tingkat struktur, tanpa unit)</option>';
+      unit.innerHTML = '<option value="">Pengurus Inti</option>';
       position.innerHTML = '<option value="">— pilih jabatan —</option>';
       return;
     }
@@ -205,7 +205,7 @@ $akhiriPanel = function ($h, $prefix) use ($endReasons) {
       if (!response.ok) throw new Error('Pilihan struktur gagal dimuat.');
       return response.json();
     }).then(function (data) {
-      unit.innerHTML = '<option value="">PENGURUS INTI (tingkat struktur, tanpa unit)</option>';
+      unit.innerHTML = '<option value="">Pengurus Inti</option>';
       data.units.forEach(function (item) {
         var option = document.createElement('option');
         option.value = item.id;

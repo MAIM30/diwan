@@ -87,7 +87,7 @@ $cancelUrl = $person && !$isEdit ? BASEURL . '/people/detail/' . (int) $person['
       <div class="field">
         <label for="structure_unit_id">Unit Organisasi (SKUO)</label>
         <select id="structure_unit_id" name="structure_unit_id">
-          <option value="">Tanpa unit (langsung di tingkat struktur)</option>
+          <option value="">Pengurus Inti</option>
           <optgroup label="SKUO periode <?= e($termLabel) ?>">
           <?php foreach ($units as $u): ?>
             <option value="<?= (int) $u['id'] ?>" data-kind="<?= e($u['kind']) ?>"<?= (int) ($row['structure_unit_id'] ?? 0) === (int) $u['id'] ? ' selected' : '' ?>>
@@ -298,7 +298,7 @@ $cancelUrl = $person && !$isEdit ? BASEURL . '/people/detail/' . (int) $person['
       if (!response.ok) throw new Error('Pilihan struktur tidak dapat dimuat.');
       return response.json();
     }).then(function (data) {
-      var unitHtml = '<option value="">Tanpa unit (langsung di tingkat struktur)</option>';
+      var unitHtml = '<option value="">Pengurus Inti</option>';
       if (data.units.length) {
         unitHtml += '<optgroup label="SKUO periode ' + escapeHtml(data.term.level) + ' · ' + escapeHtml(data.term.structure_name) + '">';
         data.units.forEach(function (item) {

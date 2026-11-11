@@ -200,7 +200,7 @@ $this->view('layouts/header', ['title' => $title]);
           <div class="field">
             <label for="structure_unit_id">Unit</label>
             <select id="structure_unit_id" name="structure_unit_id">
-              <option value="">— pucuk pimpinan struktur (tanpa unit) —</option>
+              <option value="">Pengurus Inti</option>
               <?php foreach ($units as $u): ?>
                 <option value="<?= (int) $u['id'] ?>" <?= (int) ($reg['target_unit_id'] ?: $suggestedUnitId) === (int) $u['id'] ? 'selected' : '' ?>>
                   <?= e(($u['group_name'] ? $u['group_name'] . ' — ' : '') . ($u['display_name'] ?: $u['catalog_name'])) ?>

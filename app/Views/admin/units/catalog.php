@@ -101,7 +101,7 @@ $intiNames = array_column($inti['positions'], 'name');
   </p>
   <p class="small muted" style="margin:0">
     Dipakai <?= (int) $inti['placements'] ?> penempatan di <?= (int) $inti['structures'] ?> struktur pada periode berjalan.
-    Dipilih sebagai &ldquo;PENGURUS INTI&rdquo; (tanpa unit) di formulir penempatan; daftar jabatan inti diatur di
+    Dipilih sebagai &ldquo;Pengurus Inti&rdquo; (tanpa unit) di formulir penempatan; daftar jabatan inti diatur di
     <a href="<?= BASEURL ?>/positions">Jabatan</a>, jadi tidak bisa diubah atau dihapus dari sini.
   </p>
 </div>
