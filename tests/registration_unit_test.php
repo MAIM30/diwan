@@ -1,7 +1,7 @@
 <?php
 // PATH LOKASI FILE: tests/registration_unit_test.php
 // Uji pilihan "Unit Organisasi" di Form Pengajuan (pendaftaran publik) dan tampilannya bagi admin:
-//   1. Formulir: daftar unit per sayap (hanya yang aktif, sayapnya benar) dan kolom pilihannya.
+//   1. Formulir: daftar unit per sayap (hanya yang aktif, sayapnya benar) dan kolom pencariannya.
 //   2. Kirim pengajuan: unit tersimpan; tanpa unit tetap sah; unit tak dikenal / nonaktif / beda sayap ditolak dan tidak menyimpan apa pun.
 //   3. Admin: daftar dan halaman tinjau menampilkan unitnya; unit yang sudah terpasang di struktur itu langsung terpilih saat aktivasi,
 //      yang belum terpasang diberi catatan.
@@ -86,7 +86,8 @@ $labels = array_map(function ($g) { return $g['label']; }, $byWing['umum']);
 ok(in_array('Departemen', $labels, true) && array_search('Departemen', $labels) < array_search('Lembaga', $labels), '1: dikelompokkan per jenis (Departemen sebelum Lembaga)', implode(',', $labels));
 ok(strpos($c->html, 'name="unit_catalog_id"') !== false && strpos($c->html, 'Unit Organisasi') !== false, '1: formulir memuat kolom Unit Organisasi');
 ok(preg_match('/"wing":"(umum|muslimah)"/', $c->html) === 1, '1: tiap struktur membawa sayapnya ke formulir (untuk memilih daftar unit)');
-ok(preg_match('/<select id="unit_catalog_id" name="unit_catalog_id" disabled>/', $c->html) === 1, '1: kolom terkunci sampai struktur dipilih');
+ok(preg_match('/<input type="hidden" id="unit_catalog_id" name="unit_catalog_id">/', $c->html) === 1
+   && preg_match('/<input type="search" id="unit_search"[^>]*\sdisabled>/', $c->html) === 1, '1: kolom pencarian unit terkunci sampai struktur dipilih; id unit terpilih dibawa kolom tersembunyi');
 
 // ---------- 2. Kirim pengajuan ----------
 function kirim($structureId, $phone, $unit, $name = 'Uji Unit Organisasi') {
