@@ -100,7 +100,9 @@ database/
   023_struktur_mwln.php             migrasi: tingkat MWLN (Muslimah Luar Negeri, padanan DPLN: setingkat MWW di bawah MWP); hanya definisi kolom, tanpa mengubah baris
   024_pengajuan_koreksi_penempatan.php migrasi: antrean laporan pengurus untuk kekeliruan jabatan/penempatan
   025_jenis_unit.php          migrasi: jenis unit menjadi daftar yang dikelola (tabel unit_kinds); unit_catalog.kind ENUM -> VARCHAR; "Lainnya" -> "Belum ditentukan" (kode 'belum')
-  sinkron_ketua_dpw_dpd.php   memasukkan Ketua DPW/DPD dari tab DPW dan DPD di Google Sheet pengurus (CLI; dry-run bawaan, --commit untuk menyimpan)
+  sinkron_ketua_dpw_dpd.php   memasukkan Ketua DPW/DPD dari tab DPW dan DPD (Google Sheet, atau berkas CSV lewat --dpw/--dpd, mis. sheet Data Peserta Mukernas); opsi
+                              --ketua-lain-jadi-anggota ("Ketua" polos lain di struktur yang Ketuanya terpasang menjadi Anggota; yang sudah Anggota dianulir) dan
+                              --buat-orang='Nama|HP|L' (CLI; dry-run bawaan, --commit untuk menyimpan; wajib mysqldump dulu)
   sinkron_sheet_dpp.php       menyamakan penempatan satu struktur dengan tab-nya di Google Sheet pengurus: --tab=DPP (bawaan) atau --tab=MWP;
                               pilihan --rinci, --mirip, --buat-unit, --buat-orang untuk sheet tanpa nomor HP (CLI; dry-run bawaan, --commit untuk menyimpan)
   migrate.php                 menerapkan migrasi bernomor pada basis data yang SUDAH terpasang (idempoten; jalankan setiap kali kode diperbarui)

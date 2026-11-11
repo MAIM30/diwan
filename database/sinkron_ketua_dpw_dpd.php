@@ -4,7 +4,18 @@
 // "Ketua DPW" / "Ketua DPD" (dibuat migrasi 018). CLI:
 //
 //   php database/sinkron_ketua_dpw_dpd.php --user=diwan --pass=... --db=db_pengurus [--dpw=<berkas|URL>] [--dpd=<berkas|URL>]
+//                                          [--ketua-lain-jadi-anggota] [--buat-orang='Nama Lengkap|HP|L;Nama Lain|HP|P']
 //                                          [--commit]
+//
+// Opsi tambahan (tanpa keduanya, perilaku sama seperti semula):
+//   --ketua-lain-jadi-anggota   di struktur yang Ketua DPW/DPD-nya BERHASIL dipasang, penempatan "Ketua" polos lain di tingkat struktur
+//                               (Pengurus Inti, tanpa unit) yang dipegang orang yang bukan Ketua menurut sheet diubah menjadi "Anggota".
+//                               Struktur yang Ketuanya tak dapat dipasang (ragu / tak ditemukan) TIDAK disentuh. Orang yang sudah Anggota
+//                               di struktur itu tak bisa dijadikan Anggota lagi (satu orang tak boleh dua kali Anggota di tempat yang sama),
+//                               jadi baris "Ketua" polosnya yang berlebih dianulir (hapus lunak, tercatat di audit_log).
+//   --buat-orang='Nama|HP|L'   orang yang tak ditemukan di database tetapi diketahui benar (nama lengkap, nomor WA, L/P) dibuat di tabel
+//                               people, lalu dipasang sebagai Ketua. Hanya dibuat bila HP-nya sama dengan baris sheet yang tak ditemukan.
+//                               Beberapa orang dipisah titik koma. Tanpa akses portal (portal_enabled = 0) sampai admin menyalakannya.
 //
 // Tanpa --commit semuanya dicoba lalu di-rollback dan hanya laporan yang dicetak. Aman dijalankan ulang: hasil yang
 // sama tidak mengubah apa pun lagi. WAJIB mysqldump dulu sebelum --commit.
@@ -54,8 +65,19 @@ const DAERAH_ALIAS = [
     'kabpahuwato'            => 'kabpohuwato',
 ];
 
-$opts   = getopt('', ['db::', 'host::', 'user::', 'pass::', 'dpw::', 'dpd::', 'commit']);
+$opts   = getopt('', ['db::', 'host::', 'user::', 'pass::', 'dpw::', 'dpd::', 'commit', 'ketua-lain-jadi-anggota', 'buat-orang::']);
 $commit = isset($opts['commit']);
+$jadiAnggota = isset($opts['ketua-lain-jadi-anggota']);
+// --buat-orang='Nama Lengkap|HP|L;...' -> [HP ternormalisasi => ['nama' => ..., 'gender' => 'L'|'P']]
+$buatOrang = [];
+foreach (array_filter(array_map('trim', explode(';', (string) ($opts['buat-orang'] ?? '')))) as $spec) {
+    $p = array_map('trim', explode('|', $spec));
+    $hp = count($p) === 3 ? Text::normalizePhone($p[1]) : null;
+    if ($hp === null || $p[0] === '' || !in_array($p[2], ['L', 'P'], true)) {
+        fwrite(STDERR, "BATAL: --buat-orang harus berbentuk 'Nama Lengkap|HP|L' atau 'Nama Lengkap|HP|P' (diterima: \"$spec\").\n"); exit(1);
+    }
+    $buatOrang[$hp] = ['nama' => $p[0], 'gender' => $p[2]];
+}
 $srcs   = [
     'DPW' => $opts['dpw'] ?? 'https://docs.google.com/spreadsheets/d/' . SHEET_ID . '/gviz/tq?tqx=out:csv&sheet=DPW',
     'DPD' => $opts['dpd'] ?? 'https://docs.google.com/spreadsheets/d/' . SHEET_ID . '/gviz/tq?tqx=out:csv&sheet=DPD',
@@ -107,8 +129,8 @@ say($commit ? 'MODE: COMMIT (perubahan DISIMPAN)' : 'MODE: DRY-RUN (tidak ada ya
 
 // ---------- Jabatan ----------
 $posId = [];
-foreach ($pdo->query("SELECT id, code FROM positions WHERE code IN ('ketua', 'ketua_dpw', 'ketua_dpd')") as $p) $posId[$p['code']] = (int) $p['id'];
-foreach (['ketua', 'ketua_dpw', 'ketua_dpd'] as $c) {
+foreach ($pdo->query("SELECT id, code FROM positions WHERE code IN ('ketua', 'ketua_dpw', 'ketua_dpd', 'anggota')") as $p) $posId[$p['code']] = (int) $p['id'];
+foreach (['ketua', 'ketua_dpw', 'ketua_dpd', 'anggota'] as $c) {
     if (!isset($posId[$c])) { fwrite(STDERR, "BATAL: jabatan '$c' belum ada. Jalankan database/migrate.php dulu (migrasi 018).\n"); exit(1); }
 }
 $target = ['DPW' => $posId['ketua_dpw'], 'DPD' => $posId['ketua_dpd']];
@@ -233,15 +255,17 @@ function matchPerson(array $r, array $people, array $byKey, array $byPhone, arra
 // ---------- Terapkan ----------
 $audit = $pdo->prepare("INSERT INTO audit_log (entity, entity_id, action, event, before_data, after_data, account_id, structure_id, ip)
                         VALUES (:e, :id, :a, :ev, :b, :af, NULL, :s, NULL)");
-function audit($audit, $id, $action, $before, $after, $structureId) {
-    $audit->execute([':e' => 'placements', ':id' => $id, ':a' => $action, ':ev' => EVENT,
+function audit($audit, $id, $action, $before, $after, $structureId, $entity = 'placements') {
+    $audit->execute([':e' => $entity, ':id' => $id, ':a' => $action, ':ev' => EVENT,
         ':b' => $before === null ? null : json_encode($before, JSON_UNESCAPED_UNICODE),
         ':af' => json_encode($after + ['event' => EVENT], JSON_UNESCAPED_UNICODE), ':s' => $structureId]);
 }
 
-$stat = ['sama' => 0, 'diganti' => 0, 'ditambah' => 0];
-$report += ['mirip' => [], 'kembar' => [], 'ditambah' => [], 'ragu' => [], 'tak_ditemukan' => [], 'bentrok' => [], 'rangkap' => [], 'sisa_polos' => []];
+$stat = ['sama' => 0, 'diganti' => 0, 'ditambah' => 0, 'anggota' => 0, 'anulir' => 0, 'dibuat' => 0];
+$report += ['mirip' => [], 'kembar' => [], 'ditambah' => [], 'ragu' => [], 'tak_ditemukan' => [], 'bentrok' => [], 'rangkap' => [], 'sisa_polos' => [],
+            'dibuat' => [], 'jadi_anggota' => [], 'sudah_anggota' => []];
 $sheetPerson = [];                   // "term|person" => true : orang yang dimaksud sheet sebagai Ketua struktur itu
+$applied = [];                       // id struktur => true : struktur yang Ketua DPW/DPD-nya BERHASIL dipasang (dasar --ketua-lain-jadi-anggota)
 
 $pdo->beginTransaction();
 $upd = $pdo->prepare("UPDATE placements SET position_id = :p WHERE id = :id");
@@ -250,6 +274,22 @@ $ins = $pdo->prepare("INSERT INTO placements (uuid, person_id, term_id, structur
 
 foreach ($rows as $r) {
     $m = matchPerson($r, $people, $byKey, $byPhone, $inTerm);
+    // Orang yang tak ditemukan tetapi diizinkan dibuat (--buat-orang): HP-nya harus sama dengan baris sheet ini.
+    if (isset($m['none']) && $r['hp'] !== null && isset($buatOrang[$r['hp']])) {
+        $spec = $buatOrang[$r['hp']];
+        [$pre, $nm, $suf] = Text::normalizeNameParts('', $spec['nama'], '');
+        $full = Text::joinName($pre, $nm, $suf);
+        $pdo->prepare("INSERT INTO people (uuid, title_prefix, name, title_suffix, name_normalized, gender, phone, status, portal_enabled, home_structure_id)
+                       VALUES (:u, :pre, :nm, :suf, :norm, :g, :hp, 'active', 0, :h)")
+            ->execute([':u' => Uuid::v4(), ':pre' => $pre, ':nm' => $nm, ':suf' => $suf, ':norm' => Text::normalizeBase($nm), ':g' => $spec['gender'], ':hp' => $r['hp'], ':h' => $r['structure']]);
+        $newPid = (int) $pdo->lastInsertId();
+        audit($audit, $newPid, 'create', null, ['full_name' => $full, 'gender' => $spec['gender'], 'phone' => $r['hp'], 'sumber' => 'sheet ' . $r['tab'] . ' (--buat-orang)'], $r['structure'], 'people');
+        $people[$newPid] = ['id' => $newPid, 'full_name' => $full, 'phone' => $r['hp']];
+        $byKey[pkey($full)][] = $newPid; $byPhone[$r['hp']][] = $newPid;
+        $stat['dibuat']++;
+        $report['dibuat'][] = "{$r['label']} -- $full ({$spec['gender']}, HP {$r['hp']}) -> id $newPid";
+        $m = ['person' => $newPid, 'how' => 'orang baru (--buat-orang)'];
+    }
     if (isset($m['none'])) { $report['tak_ditemukan'][] = "{$r['label']} -- {$r['nama']} (HP " . ($r['hp'] ?: '-') . ')'; continue; }
     if (isset($m['ragu'])) {
         $cd = array_map(fn($id) => '      - ' . describePerson($people[$id], $r['term'], $inTerm), $m['ragu']);
@@ -263,7 +303,7 @@ foreach ($rows as $r) {
     $mine = array_filter($live[$term][$pid] ?? [], fn($pl) => (int) $pl['structure_id'] === $sid && $pl['structure_unit_id'] === null);
 
     $has = array_filter($mine, fn($pl) => (int) $pl['position_id'] === $want);
-    if ($has) { $stat['sama']++; continue; }
+    if ($has) { $stat['sama']++; $applied[$sid] = true; continue; }
 
     $plain = array_filter($mine, fn($pl) => (int) $pl['position_id'] === $posId['ketua']);
     if ($plain) {
@@ -271,7 +311,7 @@ foreach ($rows as $r) {
         $upd->execute([':p' => $want, ':id' => $id]);
         audit($audit, $id, 'update', ['position_id' => $posId['ketua']], ['position_id' => $want, 'person_id' => $pid], $sid);
         $live[$term][$pid][$id]['position_id'] = $want;
-        $stat['diganti']++;
+        $stat['diganti']++; $applied[$sid] = true;
         continue;
     }
 
@@ -290,7 +330,7 @@ foreach ($rows as $r) {
     }
     if ($twinDone !== null) {                                 // kembarannya sudah Ketua DPW/DPD (hasil jalan sebelumnya)
         $sheetPerson[$term . '|' . $twinDone] = true;
-        $stat['sama']++;
+        $stat['sama']++; $applied[$sid] = true;
         continue;
     }
     if (count($twin) === 1) {
@@ -300,7 +340,7 @@ foreach ($rows as $r) {
         $live[$term][$tid][$id]['position_id'] = $want;
         $sheetPerson[$term . '|' . $tid] = true;
         $report['kembar'][] = "{$r['label']} -- {$r['nama']}: jabatan diberikan ke id $tid ({$people[$tid]['full_name']}), baris orang ganda dari id $pid ({$people[$pid]['full_name']}, HP " . ($people[$pid]['phone'] ?: '-') . ')';
-        $stat['diganti']++;
+        $stat['diganti']++; $applied[$sid] = true;
         continue;
     }
 
@@ -315,8 +355,39 @@ foreach ($rows as $r) {
     audit($audit, $newId, 'create', null, ['person_id' => $pid, 'term_id' => $term, 'position_id' => $want], $sid);
     $live[$term][$pid][$newId] = ['id' => $newId, 'person_id' => $pid, 'term_id' => $term, 'structure_id' => $sid, 'structure_unit_id' => null, 'position_id' => $want, 'source' => 'manual'];
     $inTerm[$term][$pid] = true;
-    $stat['ditambah']++;
+    $stat['ditambah']++; $applied[$sid] = true;
     $report['ditambah'][] = "{$r['label']} -- {$people[$pid]['full_name']} (id $pid, cocok lewat {$m['how']})";
+}
+
+// --ketua-lain-jadi-anggota: pada struktur yang Ketua DPW/DPD-nya berhasil dipasang, "Ketua" polos lain di tingkat struktur (Pengurus Inti)
+// yang dipegang orang yang bukan Ketua menurut sheet menjadi "Anggota". Struktur yang Ketuanya tak terpasang tidak disentuh. Orang yang
+// SUDAH Anggota di struktur itu tidak bisa diubah (kunci unik: satu orang, satu jabatan, satu tempat); baris "Ketua" polosnya yang berlebih
+// dianulir (hapus lunak, tercatat di audit_log), sehingga ia tinggal Anggota -- sama dengan hasil akhir yang dimaksud.
+if ($jadiAnggota && $applied) {
+    $hasAnggota = $pdo->prepare("SELECT COUNT(*) FROM placements WHERE person_id = :p AND term_id = :t AND structure_unit_id IS NULL
+                                 AND position_id = :a AND deleted_at IS NULL");
+    $toAnggota = $pdo->prepare("UPDATE placements SET position_id = :a WHERE id = :id AND position_id = :k");
+    $anulir = $pdo->prepare("UPDATE placements SET deleted_at = NOW(3) WHERE id = :id AND position_id = :k AND deleted_at IS NULL");
+    $q = $pdo->query("SELECT id, term_id, structure_id, person_id FROM placements
+                      WHERE deleted_at IS NULL AND structure_unit_id IS NULL AND position_id = " . (int) $posId['ketua'] . "
+                        AND structure_id IN (" . implode(',', array_keys($applied)) . ") ORDER BY structure_id, id")->fetchAll();
+    foreach ($q as $pl) {
+        $term = (int) $pl['term_id']; $pid = (int) $pl['person_id']; $sid = (int) $pl['structure_id'];
+        if (isset($sheetPerson[$term . '|' . $pid])) continue;                  // dialah Ketua menurut sheet
+        $who = ($people[$pid]['full_name'] ?? "id $pid") . " (id $pid)";
+        $hasAnggota->execute([':p' => $pid, ':t' => $term, ':a' => $posId['anggota']]);
+        if ((int) $hasAnggota->fetchColumn() > 0) {
+            $anulir->execute([':id' => (int) $pl['id'], ':k' => $posId['ketua']]);
+            audit($audit, (int) $pl['id'], 'delete', ['position_id' => $posId['ketua'], 'person_id' => $pid], ['alasan' => 'sudah Anggota di struktur ini; baris Ketua polos berlebih dianulir'], $sid);
+            $stat['anulir']++;
+            $report['sudah_anggota'][] = $sname[$sid] . ' -- ' . $who;
+            continue;
+        }
+        $toAnggota->execute([':a' => $posId['anggota'], ':id' => (int) $pl['id'], ':k' => $posId['ketua']]);
+        audit($audit, (int) $pl['id'], 'update', ['position_id' => $posId['ketua']], ['position_id' => $posId['anggota'], 'person_id' => $pid, 'alasan' => 'bukan Ketua menurut sheet'], $sid);
+        $stat['anggota']++;
+        $report['jadi_anggota'][] = $sname[$sid] . ' -- ' . $who;
+    }
 }
 
 // Bentrok: Ketua DPW/DPD yang sudah ada di struktur itu, dipegang orang yang bukan Ketua menurut sheet.
@@ -337,7 +408,9 @@ foreach ($q as $pl) {
 
 // ---------- Laporan ----------
 say();
-say("HASIL: sudah sesuai {$stat['sama']} | jabatan diganti {$stat['diganti']} | penempatan ditambah {$stat['ditambah']}");
+say("HASIL: sudah sesuai {$stat['sama']} | jabatan diganti {$stat['diganti']} | penempatan ditambah {$stat['ditambah']}"
+   . ($jadiAnggota ? " | Ketua lain menjadi Anggota {$stat['anggota']} | Ketua polos dianulir (sudah Anggota) {$stat['anulir']}" : '') . ($buatOrang ? " | orang baru dibuat {$stat['dibuat']}" : ''));
+say('Struktur yang Ketua DPW/DPD-nya terpasang: ' . count($applied));
 say("Baris tanpa nama Ketua (dilewati): {$report['tanpa_nama']}");
 foreach ($plainStruct as $sid => $names) {
     $sheetNames = array_map(fn($x) => $x['nama'], array_filter($rows, fn($x) => $x['structure'] === $sid));
@@ -345,12 +418,15 @@ foreach ($plainStruct as $sid => $names) {
 }
 $sections = ['struktur_tak_dikenali' => 'STRUKTUR TAK DIKENALI (cek penulisan nama di sheet)',
              'tanpa_periode'         => 'STRUKTUR TANPA PERIODE BERJALAN (tidak diproses)',
+             'dibuat'                => 'ORANG BARU DIBUAT (--buat-orang)',
              'tak_ditemukan'         => 'ORANG TAK DITEMUKAN DI DATABASE (tidak dibuat otomatis)',
              'ragu'                  => 'RAGU-RAGU (kandidat ada tetapi tidak pasti; tidak diubah)',
              'mirip'                 => 'DICOCOKKAN MESKI TULISAN NAMA BERBEDA (HP sama, orangnya tercatat di periode itu) -- mohon dicek',
              'kembar'                => 'DATA ORANG GANDA (nama sama dua baris; jabatan diganti pada penempatan yang sudah ada, tidak menambah baris)',
              'ditambah'              => 'PENEMPATAN KETUA YANG DITAMBAH (orang itu belum berjabatan "Ketua" polos di struktur tsb)',
              'rangkap'               => 'RANGKAP JABATAN DI STRUKTUR YANG SAMA (Ketua ditambahkan)',
+             'jadi_anggota'          => '"KETUA" POLOS LAIN DIUBAH MENJADI ANGGOTA (--ketua-lain-jadi-anggota)',
+             'sudah_anggota'         => '"KETUA" POLOS LAIN YANG SUDAH ANGGOTA DI STRUKTUR ITU (baris Ketua polos berlebih DIANULIR; ia tinggal Anggota)',
              'bentrok'               => 'BENTROK (pemegang Ketua DPW/DPD yang tak ada di sheet; tidak diubah)',
              'sisa_polos'            => 'MASIH ADA "KETUA" POLOS LAIN DI STRUKTUR INI (tidak diubah; bisa Ketua lama atau data migrasi salah petak)'];
 foreach ($sections as $k => $title) {
