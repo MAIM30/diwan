@@ -5,6 +5,7 @@
 // dan menjadi data yang bisa diubah tanpa deploy.
 
 require_once ROOT_DIR . '/app/Models/StructureModel.php'; // StructureModel::LEVELS: urutan jenjang untuk tombol penyaring struktur
+require_once ROOT_DIR . '/app/Core/UnitKinds.php';        // daftar jenis unit (dikelola, bukan konstanta)
 
 class PositionModel {
     // Pengurus Inti, sebagai ekspresi SQL untuk query yang menggabungkan positions (alias po): jabatan bertanda is_core.
@@ -23,7 +24,7 @@ class PositionModel {
     const WAKIL_KETUA_UNIT  = 'wakil_ketua_departemen_lembaga';
 
     // Kode "Ketua" kepala unit menurut jenis unitnya (migrasi 021). "Ketua" polos tinggal untuk jenis unit yang belum punya
-    // jabatan sendiri (Pusat, Divisi, Komisi, Lainnya) dan untuk tingkat struktur.
+    // jabatan sendiri (Pusat, Divisi, Komisi, Belum ditentukan) dan untuk tingkat struktur.
     const KETUA_UNIT_CODES = ['ketua_departemen', 'ketua_lembaga', 'ketua_biro', 'ketua_badan'];
 
     // "Inti lengkap" di halaman Data Pengurus: struktur dianggap punya inti yang lengkap bila Ketua, Sekretaris, dan Bendahara-nya
@@ -32,9 +33,8 @@ class PositionModel {
     const INTI_SEKRETARIS = ['sekretaris_jenderal', 'sekretaris'];
     const INTI_BENDAHARA  = ['bendahara_umum', 'bendahara'];
 
-    // Jenis unit (unit_catalog.kind) beserta labelnya. Satu-satunya daftar untuk batas jabatan per jenis unit (positions.unit_kinds).
-    const UNIT_KINDS = ['departemen' => 'Departemen', 'lembaga' => 'Lembaga', 'biro' => 'Biro', 'badan' => 'Badan',
-                        'pusat' => 'Pusat', 'divisi' => 'Divisi', 'komisi' => 'Komisi', 'lainnya' => 'Lainnya'];
+    // Jenis unit (unit_catalog.kind) beserta labelnya ada di UnitKinds (tabel unit_kinds, dikelola di halaman Unit Organisasi); batas jabatan
+    // per jenis unit (positions.unit_kinds) menyimpan kodenya.
 
     private $db;
 
@@ -70,14 +70,14 @@ class PositionModel {
         $out = [];
         foreach (explode(',', (string) $unitKinds) as $k) {
             $k = trim($k);
-            if ($k !== '' && isset(self::UNIT_KINDS[$k])) $out[$k] = true;
+            if ($k !== '' && UnitKinds::exists($k)) $out[$k] = true;
         }
         return array_keys($out);
     }
 
     // "Departemen, Lembaga" untuk tampilan; kosong bila jabatan tak dibatasi jenis unit.
     public static function kindsLabel($unitKinds) {
-        return implode(', ', array_map(function ($k) { return self::UNIT_KINDS[$k]; }, self::kindList($unitKinds)));
+        return implode(', ', array_map(function ($k) { return UnitKinds::label($k); }, self::kindList($unitKinds)));
     }
 
     // Apakah jabatan ini boleh dipegang di tempat itu? $unitKind = jenis unit tempat penempatan (null = tingkat struktur, tanpa unit).
@@ -92,8 +92,8 @@ class PositionModel {
         if ($at === 'structure') return "Jabatan \"$name\" hanya berlaku di tingkat struktur, bukan di dalam unit (SKUO).";
         $allowed = self::kindList($position['unit_kinds'] ?? '');
         if ($allowed && !in_array($unitKind, $allowed, true)) {
-            $has = self::UNIT_KINDS[$unitKind] ?? $unitKind;
-            return "Jabatan \"$name\" hanya berlaku di unit berjenis " . implode('/', array_map(function ($k) { return self::UNIT_KINDS[$k]; }, $allowed))
+            $has = UnitKinds::label($unitKind);
+            return "Jabatan \"$name\" hanya berlaku di unit berjenis " . implode('/', array_map(function ($k) { return UnitKinds::label($k); }, $allowed))
                  . ", sedangkan unit ini berjenis $has.";
         }
         return null;
@@ -283,11 +283,11 @@ class PositionModel {
         return (int) $stmt->fetchColumn();
     }
 
-    // Batas jenis unit yang tersimpan: hanya bermakna bila jabatan berlaku di unit, urut menurut UNIT_KINDS, NULL bila tak dibatasi.
+    // Batas jenis unit yang tersimpan: hanya bermakna bila jabatan berlaku di unit, urut menurut daftar jenis unit, NULL bila tak dibatasi.
     private function normalizedKinds(array $data) {
         if (($data['applies_to'] ?? '') === 'structure') return null;
         $given = (array) ($data['unit_kinds'] ?? []);
-        $keep = array_values(array_filter(array_keys(self::UNIT_KINDS), function ($k) use ($given) { return in_array($k, $given, true); }));
+        $keep = array_values(array_filter(UnitKinds::codes(), function ($k) use ($given) { return in_array($k, $given, true); }));
         return $keep ? implode(',', $keep) : null;
     }
 
@@ -325,6 +325,8 @@ class PositionModel {
         }
     }
 
+    // $data['is_core'] hanya ditulis bila kuncinya ada: tanpa kunci itu, jabatan yang sudah ada tetap seperti semula (UPDATE) dan jabatan baru
+    // tidak inti (INSERT). Formulir Jabatan tak lagi memuat tanda inti, jadi menyimpan nama atau urutan tak boleh mematikan status inti.
     public function save($id, array $data) {
         $kinds = $this->normalizedKinds($data);
 
@@ -332,7 +334,7 @@ class PositionModel {
             $this->assertScopeKeepsPlacements($id, $data['applies_to'], $kinds);
             $stmt = $this->db->prepare("
                 UPDATE positions SET name = :name, code = :code, applies_to = :at, unit_kinds = :kinds,
-                       is_core = :core, sort_order = :sort, is_active = :active
+                       is_core = COALESCE(:core, is_core), sort_order = :sort, is_active = :active
                 WHERE id = :id
             ");
             $stmt->execute([
@@ -340,7 +342,7 @@ class PositionModel {
                 ':code'   => trim($data['code']),
                 ':at'     => $data['applies_to'],
                 ':kinds'  => $kinds,
-                ':core'   => !empty($data['is_core']) ? 1 : 0,
+                ':core'   => array_key_exists('is_core', $data) ? (!empty($data['is_core']) ? 1 : 0) : null,
                 ':sort'   => (int) $data['sort_order'],
                 ':active' => !empty($data['is_active']) ? 1 : 0,
                 ':id'     => (int) $id,

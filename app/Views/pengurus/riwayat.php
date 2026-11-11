@@ -45,7 +45,7 @@ $pill = function ($key, $label) use ($filter, $counts) {
           </div>
           <div class="l-sub">
             <?= e($h['level'] . ' ' . $h['structure_name']) ?>
-            <?= $h['unit_name'] ? ' · ' . e($h['unit_name']) : ' · <span class="muted">pucuk pimpinan</span>' ?>
+            <?= $h['unit_name'] ? ' · ' . e($h['unit_name']) : ' · <span class="muted">' . e(Ui::slotLabel(null, $h['is_core'])) . '</span>' ?>
           </div>
           <div class="l-meta">
             Periode <?= e($h['term_name']) ?> ·

@@ -46,7 +46,8 @@ foreach ([['003_pisah_nama.php', 'migrate_003_pisah_nama'], ['004_portal_penguru
           ['021_ketua_menurut_jenis_unit.php', 'migrate_021_ketua_menurut_jenis_unit'],
           ['022_katalog_unit_per_sayap.php', 'migrate_022_katalog_unit_per_sayap'],
           ['023_struktur_mwln.php', 'migrate_023_struktur_mwln'],
-          ['024_pengajuan_koreksi_penempatan.php', 'migrate_024_pengajuan_koreksi_penempatan']] as [$file, $fn]) {
+          ['024_pengajuan_koreksi_penempatan.php', 'migrate_024_pengajuan_koreksi_penempatan'],
+          ['025_jenis_unit.php', 'migrate_025_jenis_unit']] as [$file, $fn]) {
     require_once __DIR__ . '/' . $file;
     $fn($pdo, $say);
 }

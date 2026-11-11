@@ -245,6 +245,11 @@ Respons berupa daftar kelompok (`PI`, `BIDANG I`â€“`BIDANG IX`, `PUSAT-PUSA
 `uuid` (kunci stabil), `name`, `abbreviation`, `kind`, `wing`, dan `order`. `PI` adalah kategori
 Pengurus Inti dan tidak berisi unit katalog.
 
+`kind` adalah **kode jenis unit**, bukan daftar tetap: admin dapat menambah, mengganti nama, menonaktifkan,
+atau menghapus jenis (halaman Unit Organisasi). Nilai bawaan: `departemen`, `lembaga`, `biro`, `badan`, `pusat`,
+`divisi`, `komisi`, dan `belum` (jenis belum ditentukan; dulu `lainnya`, diganti sejak migrasi 025). Kode sebuah jenis
+tidak berubah selama jenis itu ada, tetapi konsumen sebaiknya tidak menganggap daftarnya tertutup.
+
 Endpoint ini menyajikan daftar induk katalog SKUO sayap umum, bukan susunan aktual suatu periode.
 Untuk melihat unit yang terpasang pada struktur/periode dan Bidang aktualnya, gunakan `/placements`
 (`unit_uuid` dan `unit_group`).

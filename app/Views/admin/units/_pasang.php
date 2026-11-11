@@ -9,7 +9,7 @@ $mine = array_values(array_filter($targets, function ($t) use ($u) { return $t['
 // Struktur sesayap sedikit (admin satu wilayah): tampilkan semuanya. Banyak (admin nasional): hanya yang sudah disusun, supaya pilihannya
 // tidak ratusan; sisanya lewat Pengelompokan Unit.
 $choices = count($mine) <= 15 ? $mine : array_values(array_filter($mine, function ($t) { return $t['disusun']; }));
-$autoGroup = UnitModel::KIND_GROUP[$u['kind']][0] ?? null;
+$autoGroup = UnitKinds::group($u['kind'])[0] ?? null;   // kelompok bawaan jenis unit ini (Biro-Biro, ...), bila ada
 ?>
 <?php if ($choices): ?>
   <form method="post" action="<?= BASEURL ?>/units/unit_save" class="pasang-form">

@@ -269,7 +269,7 @@ $akhiriPanel = function ($h, $prefix) use ($endReasons) {
                 <div class="t-pos"><?= e($h['position_name']) ?>
                   <?php if ($h['is_core'] && !$h['unit_name']): ?><span class="badge core">inti</span><?php endif; ?></div>
                 <div class="t-struct"><?= e($h['level'] . ' ' . $h['structure_name']) ?></div>
-                <div class="t-meta"><?= $h['unit_name'] ? e($h['unit_name']) . ' · ' : 'Pucuk pimpinan · ' ?>Periode <?= e($h['term_name']) ?></div>
+                <div class="t-meta"><?= e(Ui::slotLabel($h['unit_name'], $h['is_core'])) ?> · Periode <?= e($h['term_name']) ?></div>
                 <?php if (Auth::canEdit()): ?>
                   <div class="t-actions" style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
                     <a class="btn small secondary" href="<?= BASEURL ?>/placements/form/<?= (int) $h['term_id'] ?>/<?= (int) $h['id'] ?>" title="Ubah penempatan atau pindahkan ke struktur yang tepat">
@@ -387,7 +387,7 @@ $akhiriPanel = function ($h, $prefix) use ($endReasons) {
               </div>
               <div class="l-sub">
                 <a href="<?= BASEURL ?>/terms/detail/<?= (int) $h['term_id'] ?>"><?= e($h['level'] . ' ' . $h['structure_name']) ?></a>
-                <?= $h['unit_name'] ? ' · ' . e($h['unit_name']) : ' · <span class="muted">pucuk pimpinan</span>' ?>
+                <?= $h['unit_name'] ? ' · ' . e($h['unit_name']) : ' · <span class="muted">' . e(Ui::slotLabel(null, $h['is_core'])) . '</span>' ?>
               </div>
               <div class="l-meta">
                 Periode <?= e($h['term_name']) ?> ·

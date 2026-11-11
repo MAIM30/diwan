@@ -28,7 +28,7 @@ class DaftarController extends Controller {
         $groups = [];
         foreach ($out as $wing => $byKind) {
             $groups[$wing] = [];
-            foreach (PositionModel::UNIT_KINDS as $kind => $label) {
+            foreach (UnitKinds::labels() as $kind => $label) {
                 if (!empty($byKind[$kind])) $groups[$wing][] = ['label' => $label, 'items' => $byKind[$kind]];
             }
         }

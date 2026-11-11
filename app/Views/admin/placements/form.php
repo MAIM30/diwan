@@ -106,7 +106,7 @@ $cancelUrl = $person && !$isEdit ? BASEURL . '/people/detail/' . (int) $person['
           <?php foreach ($positions as $p): ?>
             <option value="<?= (int) $p['id'] ?>" data-name="<?= e($p['name']) ?>" data-core="<?= !empty($p['is_core']) ? 1 : 0 ?>"
                     data-applies-to="<?= e($p['applies_to']) ?>" data-unit-kinds="<?= e($p['unit_kinds'] ?? '') ?>"<?= (int) ($row['position_id'] ?? 0) === (int) $p['id'] ? ' selected' : '' ?>>
-              <?= e($p['name']) ?><?= !empty($p['is_core']) ? ' (inti)' : '' ?>
+              <?= e($p['name']) ?>
             </option>
           <?php endforeach; ?>
         </select>
@@ -315,7 +315,7 @@ $cancelUrl = $person && !$isEdit ? BASEURL . '/people/detail/' . (int) $person['
       data.positions.forEach(function (item) {
         var core = item.is_core == 1;
         positionHtml += '<option value="' + item.id + '" data-name="' + escapeHtml(item.name) + '" data-core="' + (core ? 1 : 0) + '" data-applies-to="' + escapeHtml(item.applies_to)
-          + '" data-unit-kinds="' + escapeHtml(item.unit_kinds || '') + '">' + escapeHtml(item.name) + (core ? ' (inti)' : '') + '</option>';
+          + '" data-unit-kinds="' + escapeHtml(item.unit_kinds || '') + '">' + escapeHtml(item.name) + '</option>';
       });
       position.innerHTML = positionHtml;
       if (stillSame) position.value = previousPosition;

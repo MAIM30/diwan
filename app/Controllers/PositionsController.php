@@ -89,8 +89,9 @@ class PositionsController extends Controller {
             // Jenis unit tempat jabatan ini berlaku (kosong = semua); PositionModel membuang yang tak sah dan mengosongkannya
             // untuk jabatan yang hanya berlaku di tingkat struktur.
             'unit_kinds'     => array_values(array_filter((array) ($_POST['unit_kinds'] ?? []), 'is_string')),
-            'is_core'        => !empty($_POST['is_core']),
-            'sort_order'     => max(0, min(65535, (int) ($_POST['sort_order'] ?? 500))),
+            // Tanda inti (is_core) sengaja TIDAK dibaca dari formulir: ia tak lagi diatur dari halaman ini. Jabatan baru tidak inti, dan
+            // yang sudah ada tetap seperti semula (PositionModel::save hanya mengubahnya bila kuncinya ada).
+            'sort_order'    => max(0, min(65535, (int) ($_POST['sort_order'] ?? 500))),
             'is_active'      => !empty($_POST['is_active']),
         ];
 

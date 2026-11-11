@@ -107,7 +107,7 @@ $today  = date('Y-m-d');
             <td class="num small muted"><?= $offset + $i + 1 ?></td>
             <td><?= Ui::personCell($r, BASEURL . '/people/detail/' . (int) $r['id']) ?></td>
             <td><?= e($r['level'] . ' ' . $r['structure_name']) ?></td>
-            <td><?= $r['unit_name'] !== null && $r['unit_name'] !== '' ? e($r['unit_name']) : '<span class="muted">Pengurus Inti</span>' ?></td>
+            <td><?= $r['unit_name'] !== null && $r['unit_name'] !== '' ? e($r['unit_name']) : '<span class="muted">' . e(Ui::slotLabel(null, $position['is_core'])) . '</span>' ?></td>
             <td>
               <?= e($r['term_name']) ?>
               <?php if (!empty($r['end_date']) && $r['end_date'] < $today): ?>

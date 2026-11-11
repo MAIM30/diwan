@@ -28,6 +28,11 @@ dirawat bersama. Target MySQL 8.0+ (memakai generated column dan composite forei
    jenis unit tempat sebuah jabatan boleh dipegang, dan `PositionModel::mismatch()` menolak penempatan yang tak cocok di setiap
    jalur penulisan (formulir, persetujuan pendaftaran, pemindahan struktur). Dulu ada kekecualian per tingkat (`positions.core_from_tier`,
    "Inti mulai jenjang"); migrasi 019 menghapusnya karena sudah setara "selalu inti".
+   **Tanda inti tidak lagi diatur dari halaman Jabatan** (2026-11-11): kotak centang "Termasuk Pengurus Inti" dihapus dari formulir tambah dan ubah,
+   dan dropdown Jabatan di form penempatan tak lagi memberi akhiran "(inti)" (tempat tampilnya sudah dijelaskan kotak "Akan tampil di"). Jabatan baru
+   dari formulir selalu tidak inti, dan menyimpan jabatan yang sudah ada TIDAK mengubah tanda intinya: `PositionModel::save` hanya menulis `is_core`
+   bila kuncinya diberikan (`is_core = COALESCE(:core, is_core)`), seperti skrip dan migrasi. Jabatan inti baru (mis. Ketua DPC) karenanya
+   dibuat lewat migrasi atau skrip, bukan formulir. Dijaga `tests/skuo_pengurus_inti_test.php`.
 4. **Bidang adalah tabel, dan terikat periode.** `organization_units.bidang` di syuro adalah VARCHAR
    bebas (21 nilai berbeda sudah beredar tanpa penjaga typo). Di sini `unit_groups` terikat ke
    (struktur + periode), karena susunan Bidang berubah antar SK.
@@ -94,6 +99,7 @@ database/
   022_katalog_unit_per_sayap.php    migrasi: katalog Unit Organisasi dipisah per sayap (unit_catalog.wing: Umum / Muslimah), nama unik per sayap
   023_struktur_mwln.php             migrasi: tingkat MWLN (Muslimah Luar Negeri, padanan DPLN: setingkat MWW di bawah MWP); hanya definisi kolom, tanpa mengubah baris
   024_pengajuan_koreksi_penempatan.php migrasi: antrean laporan pengurus untuk kekeliruan jabatan/penempatan
+  025_jenis_unit.php          migrasi: jenis unit menjadi daftar yang dikelola (tabel unit_kinds); unit_catalog.kind ENUM -> VARCHAR; "Lainnya" -> "Belum ditentukan" (kode 'belum')
   sinkron_ketua_dpw_dpd.php   memasukkan Ketua DPW/DPD dari tab DPW dan DPD di Google Sheet pengurus (CLI; dry-run bawaan, --commit untuk menyimpan)
   sinkron_sheet_dpp.php       menyamakan penempatan satu struktur dengan tab-nya di Google Sheet pengurus: --tab=DPP (bawaan) atau --tab=MWP;
                               pilihan --rinci, --mirip, --buat-unit, --buat-orang untuk sheet tanpa nomor HP (CLI; dry-run bawaan, --commit untuk menyimpan)
@@ -583,10 +589,28 @@ periode yang sedang dibuka dan sayap berubah mengikuti orang yang dipilih (pilih
 untuk menyusun DAN mengubah pengelompokan unit langsung di tempat, menurut STRUKTUR: tiap struktur dalam lingkup yang punya periode berjalan menjadi satu simpul (sayap umum dulu lalu
 Muslimah, dari Pusat ke Ranting), berisi Bidang/kelompok-nya (Bidang, Subbidang, lalu kelompok lain seperti Pengurus Harian, Biro-Biro, Pusat-Pusat) dan di tiap Bidang unit-unitnya
 (Departemen dulu, lalu Lembaga, lalu jenis lain), serta "Unit tanpa Bidang". Ringkasan di baris struktur mis. "9 Bidang · 52 unit" atau "29 unit · belum ada Bidang".
+Di tiap struktur, entri pertamanya adalah baris hanya-baca **Pengurus Inti** (jumlah orang inti yang masih berlaku, `UnitModel::intiCountsByTerm`, dan tautan ke susunan): hanya TAMPILAN,
+karena Pengurus Inti tetap penempatan tingkat struktur tanpa unit (tidak ada baris unit, tidak ada migrasi). Pola yang sama dipakai di tempat lain yang menyebut "unit" sebuah penempatan:
+pilihan pertama dropdown Unit Organisasi di form penempatan, modal tambah jabatan, dan tinjau pengajuan; kolom unit pada daftar anggota satu jabatan dan keterangan tempat di profil dan
+riwayat; serta awalan "Pengurus Inti ·" pada Daftar Data Pengurus. Pengurus Inti juga **dihitung sebagai SKUO** pada filter **Tanpa Unit Organisasi (SKUO)** di Data Pengurus
+(`filter=tanpa_unit`, `PersonModel::listWhere`): orang yang menjabat di sebuah unit ATAU di Pengurus Inti tidak masuk daftar itu; yang masuk adalah orang yang hanya menjabat sebagai
+Pimpinan Lainnya (mis. Pengarah atau Anggota tingkat struktur) dan yang belum punya penempatan berjalan (3.850 menjadi 1.982 orang pada data 2026-11-11). Sebagian besar sisanya
+menjabat di struktur yang memang belum punya unit sama sekali (hanya DPP, MWP, DSO, DSY, satu DPW, dan satu MWW yang punya); itu urusan status "Belum disusun" di Pengelompokan Unit.
+Penempatan tanpa unit diberi nama lewat `Ui::slotLabel`: nama unitnya, atau "Pengurus Inti" (jabatan inti) / "Pimpinan
+Lainnya" (bukan inti). Kartu "Pucuk Pimpinan" di portal pengurus tetap bernama itu karena isinya seluruh pimpinan tingkat struktur (inti dan bukan inti). Diuji `tests/skuo_pengurus_inti_test.php`.
 Daftarnya DISARING karena ada 500+ struktur dan hampir semuanya masih kosong: chip **Jenjang** (DPP, DPW, MWP, ...), chip status **Sudah disusun** (bawaan; punya Bidang atau unit di periode
 berjalan) / **Belum disusun** / **Semua**, dan kolom cari nama (`?lv=`, `?st=`, `?q=`; `UnitsController::grouping`). Paling banyak 60 baris tampil (baris `?open=` selalu ikut), dan isi rincinya
 (Bidang, unit, calon Ketua Bidang) hanya dimuat untuk baris yang tampil. Tanpa `?st=`, yang dipakai "Sudah disusun", kecuali belum ada yang disusun (mis. admin satu DPD baru): saat itu "Semua".
 Saringan ikut terbawa lewat `f_lv`/`f_st`/`f_q` di tiap formulir, jadi sesudah menyimpan pengguna kembali ke daftar yang sama.
+**Jenis unit** (Departemen, Lembaga, Biro, Badan, Pusat, Divisi, Komisi, dan **Belum ditentukan**) adalah daftar yang DIKELOLA, bukan ENUM di kolom (migrasi 025; tabel `unit_kinds`, dibaca lewat `UnitKinds`). Kartu **Jenis unit**
+di bawah halaman Unit Organisasi (`/units/catalog#jenis-unit`) memperlihatkan tiap jenis beserta jumlah unit dan jabatan yang memakainya, dan super admin dapat **menambah**, **mengubah** (nama, urutan,
+kelompok bawaan, aktif), dan **menghapus** jenis (`UnitsController::kind_save` / `kind_delete`, `UnitModel::kindSave` / `kindDelete`). **Kode tetap** (dibuat dari nama saat jenis dibuat; dipakai
+`unit_catalog.kind`, `positions.unit_kinds`, dan API); yang berubah-ubah hanya label. Jenis yang masih dipakai unit atau jabatan **tidak bisa dihapus** (ubah dulu jenis unitnya), tetapi bisa **dinonaktifkan**:
+tak ditawarkan lagi untuk unit dan jabatan baru, unit lama tetap utuh. **Kelompok bawaan** (bawaannya Biro-Biro, Badan-Badan, Pusat-Pusat) menentukan ke kelompok mana unit baru masuk pada pilihan
+"Otomatis menurut jenis unit" (`UnitModel::groupForKind`); jenis tanpa kelompok bawaan hidup di Bidang. "Belum ditentukan" (kode `belum`) menggantikan "Lainnya": penampung bawaan sistem untuk unit yang
+jenisnya belum ditetapkan; ia tak bisa dihapus atau dinonaktifkan, dan kode yang tak dikenal jatuh ke sana (`UnitKinds::normalize`). Sebelum migrasi dijalankan, `UnitKinds` memakai daftar bawaan di kode supaya
+halaman tak galat. Diuji `tests/jenis_unit_test.php`.
+
 Alurnya: (1) di sebuah struktur, **Tambah unit** (tingkat struktur): satu isian nama dengan saran dari katalog SAYAP struktur itu, lalu **Masuk ke**: *Otomatis menurut jenis unit* (Biro, Badan,
 Pusat masuk ke kelompok "Biro-Biro" / "Badan-Badan" / "Pusat-Pusat", dibuat bila belum ada: `UnitModel::groupForKind`; jenis lain masuk tanpa Bidang), *Tanpa Bidang*, atau salah satu kelompok.
 Nama yang sudah ada di katalog dipakai ulang (jenisnya tidak berubah); yang belum ada dibuat di katalog sayap itu dan dicatat di jejak audit (`UnitModel::catalogEnsure`), dan baru untuk nama

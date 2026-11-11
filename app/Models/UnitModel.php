@@ -9,21 +9,16 @@
 // itu Bidang tidak pernah jadi atribut katalog unit; ia hidup di relasi struktur+periode+unit.
 
 require_once ROOT_DIR . '/app/Models/PositionModel.php'; // PositionModel::CORE_SQL: batas Pengurus Inti
+require_once ROOT_DIR . '/app/Core/UnitKinds.php';        // daftar jenis unit (urutan, label, kelompok bawaan) -- dikelola, bukan konstanta
 
 class UnitModel {
-    // Urutan tampil jenis unit, dipakai kartu rekap maupun pengurutan tabel supaya keduanya
-    // tidak pernah berselisih. Nilainya literal (bukan masukan pengguna), jadi aman disisipkan
-    // ke FIELD() di dalam SQL.
-    const KIND_ORDER = ['departemen', 'lembaga', 'biro', 'badan', 'pusat', 'divisi', 'lainnya'];
-
     // Sayap katalog (migrasi 022). Mengikuti structures.wing: struktur Muslimah (MWP, MWW, MWLN, MWD, MWC, MWRa) memakai katalog
     // 'muslimah', yang lain 'umum'. Nama unit unik per sayap, bukan di seluruh katalog.
     const WINGS = ['umum' => 'Umum', 'muslimah' => 'Muslimah'];
 
-    // Kelompok bawaan menurut jenis unit: Biro, Badan, dan Pusat tidak hidup di dalam Bidang, melainkan di kelompok sendiri
-    // ("Biro-Biro", ...). Urutannya mengikuti yang sudah dipakai DPP (Pusat 890, Badan 900, Biro 910). Jenis lain (Departemen,
-    // Lembaga, Divisi, ...) hidup di Bidang yang harus dipilih orang, jadi tidak punya kelompok bawaan.
-    const KIND_GROUP = ['pusat' => ['Pusat-Pusat', 890], 'badan' => ['Badan-Badan', 900], 'biro' => ['Biro-Biro', 910]];
+    // Kelompok bawaan menurut jenis unit ada di unit_kinds.group_name / group_sort (UnitKinds::group): bawaannya Biro, Badan, dan Pusat tidak
+    // hidup di dalam Bidang, melainkan di kelompok sendiri ("Biro-Biro", ...; urutan mengikuti DPP: Pusat 890, Badan 900, Biro 910). Jenis
+    // tanpa kelompok bawaan (Departemen, Lembaga, Divisi, ...) hidup di Bidang yang harus dipilih orang.
 
     private $db;
 
@@ -54,6 +49,92 @@ class UnitModel {
         return $this->db->query("SELECT wing, COUNT(*) FROM unit_catalog GROUP BY wing")->fetchAll(PDO::FETCH_KEY_PAIR);
     }
 
+    // ---------- Jenis unit (tabel unit_kinds; dibaca lewat UnitKinds) ----------
+
+    // Tiap jenis beserta pemakaiannya: units = entri katalog berjenis itu, positions = jabatan yang batas jenis unitnya memuat jenis itu.
+    // Dasar tombol Hapus di halaman Unit Organisasi: jenis yang masih dipakai tak bisa dihapus.
+    public function kindList() {
+        $units = $this->db->query("SELECT kind, COUNT(*) FROM unit_catalog GROUP BY kind")->fetchAll(PDO::FETCH_KEY_PAIR);
+        $positions = [];
+        foreach ($this->db->query("SELECT unit_kinds FROM positions WHERE unit_kinds IS NOT NULL AND unit_kinds <> ''")->fetchAll(PDO::FETCH_COLUMN) as $csv) {
+            foreach (explode(',', $csv) as $k) {
+                $k = trim($k);
+                if ($k !== '') $positions[$k] = ($positions[$k] ?? 0) + 1;
+            }
+        }
+        $out = [];
+        foreach (UnitKinds::all() as $code => $r) $out[] = $r + ['units' => (int) ($units[$code] ?? 0), 'positions' => $positions[$code] ?? 0];
+        return $out;
+    }
+
+    // Kode dari nama: huruf kecil, angka, dan garis bawah (cocok dengan unit_catalog.kind dan positions.unit_kinds). Kosong bila nama tak memuat
+    // huruf atau angka biasa.
+    public static function kindSlug($label) {
+        return substr(trim(strtolower(preg_replace('/[^a-z0-9]+/i', '_', (string) $label)), '_'), 0, 30);
+    }
+
+    // $code null = jenis baru (kodenya dibuat dari nama dan TIDAK berubah lagi); selain itu mengubah nama, urutan, kelompok bawaan, dan status aktif.
+    // Jenis nonaktif tak ditawarkan untuk unit baru, tetapi unit yang sudah berjenis itu tetap utuh. Jenis bawaan sistem ("belum ditentukan")
+    // selalu aktif. $data: label, sort_order ('' = urutan berikutnya), group_name (kosong = tanpa kelompok bawaan), group_sort, is_active.
+    public function kindSave($code, array $data) {
+        $label = trim((string) ($data['label'] ?? ''));
+        if ($label === '') throw new RuntimeException('Nama jenis unit wajib diisi.');
+        if (mb_strlen($label) > 60) throw new RuntimeException('Nama jenis unit terlalu panjang (paling banyak 60 huruf).');
+        $group = trim((string) ($data['group_name'] ?? ''));
+        if (mb_strlen($group) > 100) throw new RuntimeException('Nama kelompok bawaan terlalu panjang (paling banyak 100 huruf).');
+        $groupSort = $group === '' ? null : max(0, min(65535, (int) (($data['group_sort'] ?? '') === '' ? 500 : $data['group_sort'])));
+
+        foreach (UnitKinds::all() as $c => $r) {   // nama harus unik (tanpa membedakan huruf besar-kecil), selain pada jenis ini sendiri
+            if ($c !== $code && mb_strtolower($r['label']) === mb_strtolower($label)) {
+                throw new RuntimeException('Jenis unit "' . $r['label'] . '" sudah ada.');
+            }
+        }
+
+        if ($code === null || $code === '') {
+            $new = self::kindSlug($label);
+            if ($new === '') throw new RuntimeException('Nama jenis unit harus memuat huruf atau angka biasa.');
+            if (UnitKinds::exists($new)) throw new RuntimeException('Sudah ada jenis unit berkode "' . $new . '" (' . UnitKinds::label($new) . '). Pakai nama yang berbeda.');
+            $order = (($data['sort_order'] ?? '') !== '') ? max(0, min(65535, (int) $data['sort_order']))
+                   : (int) min(890, (floor((int) $this->db->query("SELECT COALESCE(MAX(sort_order), 0) FROM unit_kinds WHERE is_system = 0")->fetchColumn() / 10) * 10) + 10);
+            $this->db->prepare("INSERT INTO unit_kinds (code, label, sort_order, group_name, group_sort, is_active) VALUES (?, ?, ?, ?, ?, 1)")
+                     ->execute([$new, $label, $order, $group !== '' ? $group : null, $groupSort]);
+            Audit::log('unit_kinds', 0, 'create', null, ['code' => $new, 'label' => $label, 'sort_order' => $order, 'group_name' => $group]);
+            UnitKinds::reset();
+            return $new;
+        }
+
+        $cur = UnitKinds::find($code);
+        if (!$cur) throw new RuntimeException('Jenis unit tidak ditemukan.');
+        $active = !empty($cur['is_system']) ? 1 : (!empty($data['is_active']) ? 1 : 0);
+        $order = (($data['sort_order'] ?? '') !== '') ? max(0, min(65535, (int) $data['sort_order'])) : (int) $cur['sort_order'];
+        $this->db->prepare("UPDATE unit_kinds SET label = ?, sort_order = ?, group_name = ?, group_sort = ?, is_active = ? WHERE code = ?")
+                 ->execute([$label, $order, $group !== '' ? $group : null, $groupSort, $active, $code]);
+        Audit::log('unit_kinds', 0, 'update', ['code' => $code, 'label' => $cur['label'], 'sort_order' => $cur['sort_order'], 'group_name' => $cur['group_name'], 'is_active' => $cur['is_active']],
+                   ['code' => $code, 'label' => $label, 'sort_order' => $order, 'group_name' => $group, 'is_active' => $active]);
+        UnitKinds::reset();
+        return $code;
+    }
+
+    // Menghapus jenis yang tak terpakai. Yang masih dipakai ditolak dengan alasan yang bisa dikerjakan; yang hanya tak diperlukan lagi bisa
+    // dinonaktifkan lewat kindSave (tak lagi ditawarkan, unit lama tetap utuh). Jenis bawaan sistem tak bisa dihapus.
+    public function kindDelete($code) {
+        $cur = UnitKinds::find($code);
+        if (!$cur) throw new RuntimeException('Jenis unit tidak ditemukan.');
+        if (!empty($cur['is_system'])) throw new RuntimeException('"' . $cur['label'] . '" adalah jenis bawaan sistem (penampung unit yang jenisnya belum ditetapkan), jadi tidak bisa dihapus.');
+        $used = null;
+        foreach ($this->kindList() as $r) if ($r['code'] === $code) $used = $r;
+        if ($used && $used['units'] > 0) {
+            throw new RuntimeException('"' . $cur['label'] . '" masih dipakai ' . $used['units'] . ' unit. Ubah jenis unit-unit itu lebih dulu (Ubah pada baris unitnya), atau nonaktifkan jenis ini bila hanya tak ingin ditawarkan lagi.');
+        }
+        if ($used && $used['positions'] > 0) {
+            throw new RuntimeException('"' . $cur['label'] . '" masih tercantum pada batas jenis unit ' . $used['positions'] . ' jabatan. Lepas dulu di halaman Jabatan, atau nonaktifkan jenis ini.');
+        }
+        $this->db->prepare("DELETE FROM unit_kinds WHERE code = ? AND is_system = 0")->execute([$code]);
+        Audit::log('unit_kinds', 0, 'delete', ['code' => $code, 'label' => $cur['label']], null);
+        UnitKinds::reset();
+        return true;
+    }
+
     // Sayap katalog yang boleh dipakai sebuah struktur: mengikuti structures.wing.
     public function wingOfStructure($structureId) {
         $stmt = $this->db->prepare("SELECT wing FROM structures WHERE id = :id");
@@ -72,7 +153,7 @@ class UnitModel {
         $where = [];
         $params = [];
 
-        if ($kind !== '' && in_array($kind, self::KIND_ORDER, true)) {
+        if ($kind !== '' && UnitKinds::exists($kind)) {
             $where[] = 'c.kind = :kind';
             $params[':kind'] = $kind;
         }
@@ -91,7 +172,9 @@ class UnitModel {
             $params[':kw_abbr'] = $like;
         }
 
-        $order = $flat ? "c.sort_order" : "FIELD(c.kind, '" . implode("','", self::KIND_ORDER) . "'), c.sort_order";
+        // Urutan jenis mengikuti daftar jenis unit (urutan di unit_kinds); kodenya dibatasi huruf kecil, angka, dan garis bawah.
+        $kindList = implode(',', array_map(function ($c) { return $this->db->quote($c); }, UnitKinds::codes()));
+        $order = $flat || $kindList === '' ? "c.sort_order" : "FIELD(c.kind, $kindList), c.sort_order";
         $stmt = $this->db->prepare("
             SELECT c.*, p.name AS head_name,
                    (SELECT COUNT(*) FROM structure_units su
@@ -114,8 +197,9 @@ class UnitModel {
     }
 
     // Nama yang sudah ada DI SAYAP ITU dipakai ulang, tidak diduplikasi. (Nama yang sama di sayap lain adalah entri lain.)
-    public function catalogFindOrCreate($name, $kind = 'lainnya', $abbreviation = null, $wing = 'umum') {
+    public function catalogFindOrCreate($name, $kind = UnitKinds::FALLBACK, $abbreviation = null, $wing = 'umum') {
         $name = trim($name);
+        $kind = UnitKinds::normalize($kind);
         $wing = isset(self::WINGS[$wing]) ? $wing : 'umum';
         $stmt = $this->db->prepare("SELECT * FROM unit_catalog WHERE name = :n AND wing = :w LIMIT 1");
         $stmt->execute([':n' => $name, ':w' => $wing]);
@@ -179,7 +263,7 @@ class UnitModel {
             if (!in_array($newKind, PositionModel::kindList($r['unit_kinds']), true)) $bad[] = $r['name'] . ' (' . $r['n'] . ')';
         }
         if ($bad) {
-            throw new RuntimeException('Jenis unit tidak bisa diubah ke ' . (PositionModel::UNIT_KINDS[$newKind] ?? $newKind)
+            throw new RuntimeException('Jenis unit tidak bisa diubah ke ' . UnitKinds::label($newKind)
                 . ': masih ada penempatan berjabatan ' . implode(', ', $bad) . ' di unit ini. Pindahkan penempatan itu ke jabatan yang sesuai lebih dulu.');
         }
     }
@@ -218,6 +302,7 @@ class UnitModel {
     // $data['sort_order'] kosong/tak ada: entri baru memakai nomor urut berikutnya, entri lama tidak berubah urutannya.
     // $data['wing']: sayap katalog (bawaan 'umum' untuk entri baru; pada entri lama hanya berubah bila dikirim).
     public function catalogSave($id, array $data) {
+        $data['kind'] = UnitKinds::normalize($data['kind'] ?? '');   // kode yang tak dikenal tak pernah tersimpan: jatuh ke "belum ditentukan"
         $hasOrder = isset($data['sort_order']) && $data['sort_order'] !== '';
         $order = $hasOrder ? max(0, min(65535, (int) $data['sort_order'])) : null;
         $wing = isset($data['wing']) && isset(self::WINGS[$data['wing']]) ? $data['wing'] : null;
@@ -362,6 +447,21 @@ class UnitModel {
         return ['positions' => $positions, 'structures' => (int) $use['structures'], 'placements' => (int) $use['placements']];
     }
 
+    // Jumlah ORANG Pengurus Inti yang masih berlaku per periode: [term_id => orang]. Untuk baris "Pengurus Inti" di Pengelompokan Unit
+    // (entri pertama SKUO tiap struktur; hanya tampilan, penempatannya tetap tanpa unit). Periode tanpa penempatan inti tak muncul di hasil.
+    public function intiCountsByTerm(array $termIds) {
+        $ids = array_values(array_unique(array_map('intval', $termIds)));
+        if (!$ids) return [];
+        return array_map('intval', $this->db->query("
+            SELECT pl.term_id, COUNT(DISTINCT pl.person_id)
+            FROM placements pl
+            JOIN positions po ON po.id = pl.position_id
+            WHERE pl.deleted_at IS NULL AND pl.structure_unit_id IS NULL AND " . PositionModel::CORE_SQL . "
+              AND (pl.end_date IS NULL OR pl.end_date >= CURDATE()) AND pl.term_id IN (" . implode(',', $ids) . ")
+            GROUP BY pl.term_id
+        ")->fetchAll(PDO::FETCH_KEY_PAIR));
+    }
+
     public function groupFindById($id) {
         $stmt = $this->db->prepare("SELECT * FROM unit_groups WHERE id = :id AND deleted_at IS NULL");
         $stmt->execute([':id' => (int) $id]);
@@ -454,12 +554,13 @@ class UnitModel {
         return true;
     }
 
-    // Kelompok untuk unit baru yang tujuannya "otomatis menurut jenis". Jenis Biro / Badan / Pusat: kelompok biasa (bukan Bidang) yang
-    // namanya memuat jenis itu dipakai bila periode ini sudah punya, kalau belum dibuat ("Badan-Badan", dst.). Jenis lain: tanpa
-    // kelompok. Mengembalikan [id kelompok atau null, keterangan untuk pesan, mis. "kelompok Badan-Badan (baru dibuat)"].
+    // Kelompok untuk unit baru yang tujuannya "otomatis menurut jenis". Jenis yang punya kelompok bawaan (bawaannya Biro / Badan / Pusat; diatur
+    // di unit_kinds): kelompok biasa (bukan Bidang) yang namanya memuat jenis itu dipakai bila periode ini sudah punya, kalau belum dibuat
+    // ("Badan-Badan", dst.). Jenis lain: tanpa kelompok. Mengembalikan [id kelompok atau null, keterangan untuk pesan, mis. "kelompok Badan-Badan (baru dibuat)"].
     public function groupForKind($structureId, $termId, $kind) {
-        if (!isset(self::KIND_GROUP[$kind])) return [null, ''];
-        [$name, $sort] = self::KIND_GROUP[$kind];
+        $def = UnitKinds::group($kind);
+        if ($def === null) return [null, ''];
+        [$name, $sort] = $def;
 
         $groups = $this->groupsByTerm($termId);
         foreach ($groups as $g) {
@@ -537,7 +638,12 @@ class UnitModel {
             ORDER BY COALESCE(g.sort_order, 9999), g.name, su.sort_order, c.name
         ");
         $stmt->execute([':t' => (int) $termId]);
-        return $stmt->fetchAll();
+        // kind_label = nama jenisnya; kind_badge = yang dipasang sebagai lencana di susunan (kosong untuk "belum ditentukan": tak ada yang perlu diberi tahu).
+        return array_map(function ($r) {
+            $r['kind_label'] = UnitKinds::label($r['kind']);
+            $r['kind_badge'] = in_array($r['kind'], [UnitKinds::FALLBACK, 'lainnya'], true) ? null : $r['kind_label'];   // 'lainnya' = sebutan lama, sebelum migrasi 025
+            return $r;
+        }, $stmt->fetchAll());
     }
 
     public function unitFindById($id) {

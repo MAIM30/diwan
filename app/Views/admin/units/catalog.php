@@ -22,14 +22,15 @@
 
 $this->view('layouts/header', ['title' => $title]);
 
-$kinds = ['departemen' => 'Departemen', 'lembaga' => 'Lembaga', 'biro' => 'Biro',
-          'badan' => 'Badan', 'pusat' => 'Pusat', 'divisi' => 'Divisi', 'lainnya' => 'Lainnya'];
+// Jenis unit adalah daftar yang dikelola (UnitKinds; kartu "Jenis unit" di bawah halaman ini), bukan deretan tetap di tampilan.
+$kinds = UnitKinds::labels();
+$kindsActive = UnitKinds::labels(true);
 // Ikon + warna per jenis, tetap sama di kartu dan di lencana tabel supaya mata bisa
 // menghubungkan keduanya tanpa membaca labelnya.
 $kindIcon = ['departemen' => 'grid', 'lembaga' => 'briefcase', 'biro' => 'layers',
-             'badan' => 'shield', 'pusat' => 'network', 'divisi' => 'activity', 'lainnya' => 'circle'];
+             'badan' => 'shield', 'pusat' => 'network', 'divisi' => 'activity', 'komisi' => 'users', 'belum' => 'circle'];   // jenis baru: 'circle'
 $kindTone = ['departemen' => 't-teal', 'lembaga' => 't-green', 'biro' => 't-violet',
-             'badan' => 't-amber', 'pusat' => 't-rose', 'divisi' => 't-teal', 'lainnya' => ''];
+             'badan' => 't-amber', 'pusat' => 't-rose', 'divisi' => 't-teal', 'komisi' => 't-green', 'belum' => ''];
 
 $total = array_sum($counts);
 $canEdit = Auth::canEdit();
@@ -116,8 +117,8 @@ $intiNames = array_column($inti['positions'], 'name');
 
 <div class="stats recap">
   <?php foreach ($kinds as $k => $label): ?>
-    <?= $rc($label, (int) ($counts[$k] ?? 0), $kindIcon[$k], $kind === $k,
-            $qs(['kind' => $kind === $k ? '' : $k]), $kindTone[$k]) ?>
+    <?= $rc($label, (int) ($counts[$k] ?? 0), $kindIcon[$k] ?? 'circle', $kind === $k,
+            $qs(['kind' => $kind === $k ? '' : $k]), $kindTone[$k] ?? '') ?>
   <?php endforeach; ?>
 </div>
 
@@ -167,7 +168,7 @@ $intiNames = array_column($inti['positions'], 'name');
       <div class="field">
         <label for="new_kind">Jenis</label>
         <select id="new_kind" name="kind">
-          <?php foreach ($kinds as $k => $label): ?>
+          <?php foreach ($kindsActive as $k => $label): ?>
             <option value="<?= $k ?>" <?= $kind === $k ? 'selected' : '' ?>><?= e($label) ?></option>
           <?php endforeach; ?>
         </select>
@@ -211,7 +212,7 @@ $intiNames = array_column($inti['positions'], 'name');
   <div class="card">
     <h2>
       <?php if ($sk !== ''): ?>
-        <?= Ui::icon($kindIcon[$sk], 19) ?> <?= e($kinds[$sk]) ?>
+        <?= Ui::icon($kindIcon[$sk] ?? 'circle', 19) ?> <?= e($kinds[$sk] ?? $sk) ?>
         <span class="hint">&mdash; <?= count($list) ?> unit</span>
       <?php else: ?>
         <?= count($list) ?> unit
@@ -306,7 +307,7 @@ $intiNames = array_column($inti['positions'], 'name');
                     <div class="field">
                       <label for="k<?= $id ?>">Jenis</label>
                       <select id="k<?= $id ?>" name="kind">
-                        <?php foreach ($kinds as $k => $label): ?>
+                        <?php foreach ($kinds as $k => $label): if (!isset($kindsActive[$k]) && $r['kind'] !== $k) continue; ?>
                           <option value="<?= $k ?>" <?= $r['kind'] === $k ? 'selected' : '' ?>><?= e($label) ?></option>
                         <?php endforeach; ?>
                       </select>
@@ -350,4 +351,99 @@ $intiNames = array_column($inti['positions'], 'name');
   </div>
 <?php endforeach; ?>
 
+<?php
+// ---------- Jenis unit: daftar yang dikelola (UnitKinds) ----------
+$kindAdmin = Auth::isSuperAdmin();
+?>
+<div class="card" id="jenis-unit">
+  <h2><?= Ui::icon('layers', 19) ?> Jenis unit <span class="hint">&mdash; Departemen, Lembaga, Biro, dan seterusnya</span></h2>
+  <p class="small muted" style="margin:0 0 12px">
+    Daftar ini dipakai pada pilihan <strong>Jenis</strong> di atas, pada batas jenis unit di halaman <a href="<?= BASEURL ?>/positions">Jabatan</a>,
+    dan sebagai kode <code>kind</code> di API. Nama, urutan, dan kelompok bawaan boleh diubah kapan saja; <strong>kodenya tetap</strong>.
+    Jenis yang masih dipakai unit atau jabatan tidak bisa dihapus: ubah dulu jenis unitnya, atau nonaktifkan bila hanya tak ingin ditawarkan lagi.
+    &ldquo;Belum ditentukan&rdquo; adalah penampung bawaan sistem untuk unit yang jenisnya belum ditetapkan.
+    <?php if (!$kindAdmin): ?>Hanya super admin yang dapat mengubah daftar ini.<?php endif; ?>
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th class="num">Urut</th><th>Nama</th><th>Kode</th><th>Kelompok bawaan</th><th class="num">Unit</th><th class="num">Jabatan</th><th>Status</th><?php if ($kindAdmin): ?><th></th><?php endif; ?></tr>
+      </thead>
+      <tbody>
+      <?php foreach ($kindRows as $kr): $kid = 'kd-' . $kr['code']; $kUsed = (int) $kr['units'] + (int) $kr['positions']; ?>
+        <tr>
+          <td class="num small"><?= (int) $kr['sort_order'] ?></td>
+          <td>
+            <strong><?= e($kr['label']) ?></strong>
+            <?php if (!empty($kr['is_system'])): ?><span class="badge">bawaan sistem</span><?php endif; ?>
+          </td>
+          <td class="small mono"><?= e($kr['code']) ?></td>
+          <td class="small"><?= $kr['group_name'] !== null && $kr['group_name'] !== '' ? e($kr['group_name']) : '<span class="muted">&mdash;</span>' ?></td>
+          <td class="num"><?php if ($kr['units'] > 0): ?><a href="<?= e($qs(['kind' => $kr['code']])) ?>"><?= Ui::n($kr['units']) ?></a><?php else: ?><span class="muted">0</span><?php endif; ?></td>
+          <td class="num"><?= $kr['positions'] > 0 ? Ui::n($kr['positions']) : '<span class="muted">0</span>' ?></td>
+          <td><?= !empty($kr['is_active']) ? '<span class="badge ok">aktif</span>' : '<span class="badge ended">nonaktif</span>' ?></td>
+          <?php if ($kindAdmin): ?>
+          <td class="nowrap">
+            <details class="sn-edit" style="display:inline-block">
+              <summary class="btn small secondary" aria-label="Ubah jenis <?= e($kr['label']) ?>">Ubah</summary>
+              <div class="sn-panel">
+                <form method="post" action="<?= BASEURL ?>/units/kind_save">
+                  <?= Csrf::field() ?>
+                  <input type="hidden" name="code" value="<?= e($kr['code']) ?>">
+                  <div class="sn-form">
+                    <div class="field"><label for="<?= $kid ?>-l">Nama</label>
+                      <input type="text" id="<?= $kid ?>-l" name="label" required maxlength="60" value="<?= e($kr['label']) ?>"></div>
+                    <div class="field"><label for="<?= $kid ?>-s">Urutan</label>
+                      <input type="number" id="<?= $kid ?>-s" name="sort_order" min="0" max="65535" value="<?= (int) $kr['sort_order'] ?>"></div>
+                    <div class="field"><label for="<?= $kid ?>-g">Kelompok bawaan</label>
+                      <input type="text" id="<?= $kid ?>-g" name="group_name" maxlength="100" value="<?= e((string) $kr['group_name']) ?>" placeholder="mis. Biro-Biro"></div>
+                    <div class="field"><label for="<?= $kid ?>-o">Urutan kelompok</label>
+                      <input type="number" id="<?= $kid ?>-o" name="group_sort" min="0" max="65535" value="<?= $kr['group_sort'] !== null ? (int) $kr['group_sort'] : '' ?>" placeholder="500"></div>
+                  </div>
+                  <?php if (empty($kr['is_system'])): ?>
+                    <label class="check"><input type="checkbox" name="is_active" value="1" <?= !empty($kr['is_active']) ? 'checked' : '' ?>><span>Aktif &mdash; jenis nonaktif tidak ditawarkan untuk unit atau jabatan baru</span></label>
+                  <?php endif; ?>
+                  <p class="help" style="margin:8px 0 0">Kelompok bawaan: unit baru berjenis ini (dengan pilihan &ldquo;Otomatis menurut jenis unit&rdquo;) masuk ke kelompok itu, dibuat bila periodenya belum punya. Kosongkan bila jenis ini hidup di dalam Bidang.</p>
+                  <button type="submit" class="btn" style="margin-top:10px">Simpan</button>
+                </form>
+              </div>
+            </details>
+            <?php if (empty($kr['is_system'])): ?>
+              <form class="inline" method="post" action="<?= BASEURL ?>/units/kind_delete" onsubmit="return confirm(this.dataset.confirm)"
+                    data-confirm="Hapus jenis unit &quot;<?= e($kr['label']) ?>&quot;? Tidak bisa dibatalkan.">
+                <?= Csrf::field() ?>
+                <input type="hidden" name="code" value="<?= e($kr['code']) ?>">
+                <button type="submit" class="btn small secondary" <?= $kUsed > 0 ? 'disabled title="Masih dipakai: ' . (int) $kr['units'] . ' unit, ' . (int) $kr['positions'] . ' jabatan"' : '' ?>>Hapus</button>
+              </form>
+            <?php endif; ?>
+          </td>
+          <?php endif; ?>
+        </tr>
+      <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+
+  <?php if ($kindAdmin): ?>
+    <details class="sn-edit" style="margin-top:12px">
+      <summary class="btn small">Tambah jenis unit</summary>
+      <div class="sn-panel">
+        <form method="post" action="<?= BASEURL ?>/units/kind_save">
+          <?= Csrf::field() ?>
+          <div class="sn-form">
+            <div class="field"><label for="kd-new-l">Nama jenis</label>
+              <input type="text" id="kd-new-l" name="label" required maxlength="60" placeholder="mis. Satuan"></div>
+            <div class="field"><label for="kd-new-s">Urutan</label>
+              <input type="number" id="kd-new-s" name="sort_order" min="0" max="65535" placeholder="otomatis"></div>
+            <div class="field"><label for="kd-new-g">Kelompok bawaan</label>
+              <input type="text" id="kd-new-g" name="group_name" maxlength="100" placeholder="opsional, mis. Satuan-Satuan"></div>
+          </div>
+          <p class="help" style="margin:8px 0 0">Kodenya dibuat dari nama dan tidak berubah lagi. Sesudah dibuat, jenis ini langsung bisa dipilih untuk unit dan sebagai batas jenis unit pada jabatan.</p>
+          <button type="submit" class="btn" style="margin-top:10px">Tambah</button>
+        </form>
+      </div>
+    </details>
+  <?php endif; ?>
+</div>
 <?php $this->view('layouts/footer'); ?>

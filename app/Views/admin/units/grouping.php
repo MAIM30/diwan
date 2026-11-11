@@ -12,7 +12,9 @@
 // (Biro-Biro, Badan-Badan, Pusat-Pusat), jadi orang tak perlu lebih dulu membuat kelompok dan membuka-bukanya. Formulir di dalam tiap
 // kelompok tetap ada untuk menambah langsung ke kelompok itu.
 //
-// Variabel: $entries (struktur yang TAMPIL + periode berjalan + Bidang + unit), $without (struktur tanpa periode berjalan),
+// Pengurus Inti tampil di tiap struktur sebagai entri pertama SKUO, hanya-baca: ia penempatan tingkat struktur (tanpa unit), jadi tak
+// ikut disusun atau dipindah di sini; angkanya dari $e['inti'] (UnitModel::intiCountsByTerm).
+// Variabel: $entries (struktur yang TAMPIL + periode berjalan + Bidang + unit + jumlah orang inti), $without (struktur tanpa periode berjalan),
 // $openTerm (id periode yang dibuka), $catalog (nama katalog beserta sayap dan jenisnya, untuk saran isian),
 // $lv / $st / $q (saringan yang dipakai), $levelCounts / $statusCounts (angka chip), $totalAll (struktur berperiode), $matched (yang cocok), $maxRows.
 $this->view('layouts/header', ['title' => $title]);
@@ -22,12 +24,12 @@ $canEdit = Auth::canEdit();
 $wingOfTerm = [];
 foreach ($entries as $e0) $wingOfTerm[(int) $e0['term']['id']] = $e0['structure']['wing'];
 $groupRank = ['bidang' => 0, 'subbidang' => 1];
-$unitKinds = ['departemen' => 'Departemen', 'lembaga' => 'Lembaga', 'biro' => 'Biro', 'badan' => 'Badan', 'pusat' => 'Pusat', 'divisi' => 'Divisi', 'lainnya' => 'Lainnya'];
+$unitKinds = UnitKinds::labels(true);   // jenis unit yang masih ditawarkan (dikelola di halaman Unit Organisasi)
 $groupKinds = ['bidang' => 'Bidang', 'subbidang' => 'Subbidang (sayap Muslimah)', 'grup' => 'Kelompok lain (mis. Pengurus Harian, Biro-Biro, Pusat-Pusat)'];
 
 // Jenis unit yang paling wajar untuk kelompok bernama ini; isian awal pada "Tambah unit".
 $defaultUnitKind = function ($groupName) {
-    foreach (['biro', 'badan', 'pusat', 'divisi'] as $kind) if (stripos($groupName, $kind) !== false) return $kind;
+    foreach (array_diff(UnitKinds::codes(true), ['departemen', 'lembaga', UnitKinds::FALLBACK]) as $kind) if (stripos($groupName, $kind) !== false) return $kind;
     return 'departemen';
 };
 $fid = 0;
@@ -138,7 +140,7 @@ $bucket = function ($title, array $list, array $pick, $empty, $g, $tid, $formId,
                   <tr>
                     <td>
                       <strong><?= e($name) ?></strong>
-                      <?php if ($u['kind'] !== 'lainnya'): ?><span class="badge"><?= e(ucfirst($u['kind'])) ?></span><?php endif; ?>
+                      <?php if (!empty($u['kind_badge'])): ?><span class="badge"><?= e($u['kind_badge']) ?></span><?php endif; ?>
                       <?php if ($u['abbreviation']): ?><span class="small muted mono">(<?= e($u['abbreviation']) ?>)</span><?php endif; ?>
                     </td>
                     <?php if ($pick || $canEdit): ?>
@@ -233,6 +235,12 @@ $structureNode = function (array $e) use ($bucket, $canEdit, $groupRank, $openTe
         </summary>
 
         <div class="sn-body">
+          <p class="small" style="margin:0 0 10px">
+            <?= Ui::icon('users', 15) ?> <strong>Pengurus Inti</strong> <span class="badge">bawaan sistem</span>
+            <span class="muted">&middot; <?= $e['inti'] > 0 ? Ui::n($e['inti']) . ' orang' : 'belum ada pengurus inti' ?>
+              &middot; entri pertama SKUO; tanpa unit, jadi tak diatur di sini</span>
+            &middot; <a href="<?= BASEURL ?>/terms/detail/<?= $tid ?>">Lihat susunan</a>
+          </p>
           <div class="sn-actions">
             <?php if ($canEdit): $wingKey = $s['wing'] === 'muslimah' ? 'muslimah' : 'umum'; ?>
               <details class="sn-edit">

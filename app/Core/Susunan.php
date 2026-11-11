@@ -43,7 +43,8 @@ class Susunan {
         $unitNodes = function (array $list) use ($byUnit) {
             return array_map(function ($u) use ($byUnit) {
                 return self::node($u['display_name'] ?: $u['catalog_name'], [
-                    'badge' => $u['kind'] !== 'lainnya' ? ucfirst($u['kind']) : null,
+                    // Lencana = nama jenis unit (UnitModel::unitsByTerm: kind_badge, kosong untuk "belum ditentukan"). Larik tanpa kunci itu memakai kodenya.
+                    'badge' => array_key_exists('kind_badge', $u) ? $u['kind_badge'] : (in_array($u['kind'], ['belum', 'lainnya'], true) ? null : ucfirst($u['kind'])),
                     'rows'  => $byUnit[(int) $u['id']] ?? [],
                     'empty' => 'Belum ada pengurus di unit ini.',
                 ]);

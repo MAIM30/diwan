@@ -2,16 +2,16 @@
 // PATH LOKASI FILE: app/Controllers/UnitsController.php
 // SKUO: katalog unit bersama, Bidang per periode, unit per periode, dan pengelompokan unit ke Bidang per struktur.
 
-class UnitsController extends Controller {
-    const UNIT_KINDS = ['departemen', 'lembaga', 'biro', 'badan', 'pusat', 'divisi', 'lainnya'];
+require_once ROOT_DIR . '/app/Core/UnitKinds.php';   // jenis unit: daftar yang dikelola (tabel unit_kinds), bukan konstanta di sini
 
+class UnitsController extends Controller {
     // Katalog nama unit yang dipakai bersama lintas struktur: Departemen, Lembaga, Biro, Badan,
     // Pusat, Divisi. Bidang TIDAK di sini -- ia hidup per struktur per periode (units/grouping).
     public function catalog() {
         $this->requireLogin();
         $units = $this->model('UnitModel');
 
-        $kind    = in_array($_GET['kind'] ?? '', self::UNIT_KINDS, true) ? $_GET['kind'] : '';
+        $kind    = UnitKinds::exists($_GET['kind'] ?? '') ? $_GET['kind'] : '';
         $keyword = trim($_GET['q'] ?? '');
         $urut    = ($_GET['urut'] ?? '') === 'skuo';   // satu daftar menurut urutan resmi SKUO, bukan per jenis
         $wing    = isset(UnitModel::WINGS[$_GET['w'] ?? '']) ? $_GET['w'] : '';   // katalog sayap Umum / Muslimah; kosong = keduanya
@@ -37,14 +37,51 @@ class UnitsController extends Controller {
             'urut'    => $urut,
             'inti'    => $units->intiInfo(),
             'nextOrder' => $units->catalogNextOrder(),
+            'kindRows' => $units->kindList(),
         ]);
+    }
+
+    // Jenis unit (Departemen, Lembaga, Biro, ...): dibuat, diubah, dinonaktifkan, dan dihapus dari halaman Unit Organisasi. Hanya super admin,
+    // seperti katalog Jabatan: daftar ini ikut menentukan batas jabatan per jenis unit dan keluaran API.
+    public function kind_save() {
+        $this->requireLogin('super_admin');
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') $this->redirect('units/catalog');
+
+        $code = trim((string) ($_POST['code'] ?? ''));
+        try {
+            $units = $this->model('UnitModel');
+            $units->kindSave($code !== '' ? $code : null, [
+                'label'      => $_POST['label'] ?? '',
+                'sort_order' => trim((string) ($_POST['sort_order'] ?? '')),
+                'group_name' => $_POST['group_name'] ?? '',
+                'group_sort' => trim((string) ($_POST['group_sort'] ?? '')),
+                'is_active'  => !empty($_POST['is_active']),
+            ]);
+            Flash::set('success', $code !== '' ? 'Jenis unit disimpan.' : 'Jenis unit "' . trim((string) $_POST['label']) . '" dibuat. Sekarang bisa dipilih untuk unit dan jabatan.');
+        } catch (RuntimeException $e) {
+            Flash::set('error', $e->getMessage());
+        }
+        $this->redirect('units/catalog#jenis-unit');
+    }
+
+    public function kind_delete() {
+        $this->requireLogin('super_admin');
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') $this->redirect('units/catalog');
+
+        try {
+            $this->model('UnitModel')->kindDelete(trim((string) ($_POST['code'] ?? '')));
+            Flash::set('success', 'Jenis unit dihapus.');
+        } catch (RuntimeException $e) {
+            Flash::set('error', $e->getMessage());
+        }
+        $this->redirect('units/catalog#jenis-unit');
     }
 
     // Kembali ke katalog dengan saringan yang sedang dipakai masih utuh: setelah mengubah satu unit
     // di antara 105 baris, kembali ke daftar penuh berarti kehilangan tempat.
     // $baru: id entri yang baru dibuat, supaya halaman katalog menawarkan memasangnya ke struktur.
     private function backToCatalog($baru = 0) {
-        $kind = in_array($_POST['kind_filter'] ?? '', self::UNIT_KINDS, true) ? $_POST['kind_filter'] : '';
+        $kind = UnitKinds::exists($_POST['kind_filter'] ?? '') ? $_POST['kind_filter'] : '';
         $q    = trim($_POST['q_filter'] ?? '');
         $w    = isset(UnitModel::WINGS[$_POST['w_filter'] ?? '']) ? $_POST['w_filter'] : '';
         $p    = array_filter(['w' => $w, 'kind' => $kind, 'q' => $q, 'urut' => ($_POST['urut_filter'] ?? '') === 'skuo' ? 'skuo' : '', 'baru' => $baru ?: ''], function ($v) { return $v !== ''; });
@@ -77,7 +114,7 @@ class UnitsController extends Controller {
         $data = [
             'name'         => trim($_POST['name'] ?? ''),
             'abbreviation' => trim($_POST['abbreviation'] ?? ''),
-            'kind'         => in_array($_POST['kind'] ?? '', self::UNIT_KINDS, true) ? $_POST['kind'] : 'lainnya',
+            'kind'         => UnitKinds::normalize($_POST['kind'] ?? ''),
             'wing'         => isset(UnitModel::WINGS[$_POST['wing'] ?? '']) ? $_POST['wing'] : null,   // sayap katalog; kosong: entri baru 'umum', entri lama tak berubah
             'is_active'    => !empty($_POST['is_active']),
             'sort_order'   => trim((string) ($_POST['sort_order'] ?? '')),   // kosong: entri baru ke urutan terakhir, entri lama tetap
@@ -191,10 +228,11 @@ class UnitsController extends Controller {
         }
 
         $entries = [];
+        $intiCounts = $units->intiCountsByTerm(array_map(function ($e) { return $e['term']['id']; }, $shown));
         foreach ($shown as $e) {
             $tid = (int) $e['term']['id'];
             $entries[] = $e + ['groups' => $units->groupsByTerm($tid), 'units' => $units->unitsByTerm($tid),
-                               'coordinators' => $units->coordinatorCandidates($tid)];
+                               'coordinators' => $units->coordinatorCandidates($tid), 'inti' => $intiCounts[$tid] ?? 0];
         }
 
         $this->view('admin/units/grouping', [
@@ -419,7 +457,7 @@ class UnitsController extends Controller {
                 Flash::set('error', 'Pilih unit dari katalog, atau ketik nama unit (paling banyak 200 huruf).');
                 $this->back($termId);
             }
-            $kind = in_array($_POST['new_kind'] ?? '', self::UNIT_KINDS, true) ? $_POST['new_kind'] : 'lainnya';
+            $kind = UnitKinds::normalize($_POST['new_kind'] ?? '');
             // Nama dicari / dibuat di katalog SAYAP struktur ini (unit Muslimah tak memakai entri DPP, walau namanya sama).
             [$catalogId, $createdInCatalog] = $units->catalogEnsure($newName, $kind, $units->wingOfStructure($term['structure_id']));
         }
@@ -438,7 +476,7 @@ class UnitsController extends Controller {
                 $this->back($termId);
             }
             if ($auto) {
-                [$groupId, $groupNote] = $units->groupForKind($term['structure_id'], $termId, (string) ($units->catalogFindById($catalogId)['kind'] ?? 'lainnya'));
+                [$groupId, $groupNote] = $units->groupForKind($term['structure_id'], $termId, (string) ($units->catalogFindById($catalogId)['kind'] ?? UnitKinds::FALLBACK));
             }
         }
 

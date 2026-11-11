@@ -144,6 +144,13 @@ class Ui {
         return '<span class="av av-' . e($size) . ' av-c' . $hue . '" aria-hidden="true">' . e(Text::initials($name)) . '</span>';
     }
 
+    // Tempat sebuah penempatan di susunan, untuk kolom/keterangan "unit": nama unitnya; bila tanpa unit, "Pengurus Inti" (jabatan inti)
+    // atau "Pimpinan Lainnya" (jabatan tingkat struktur yang bukan inti). Cermin PlacementModel::landingLabel dan Susunan::arrange.
+    public static function slotLabel($unitName, $isCore) {
+        if ($unitName !== null && $unitName !== '') return (string) $unitName;
+        return !empty($isCore) ? 'Pengurus Inti' : 'Pimpinan Lainnya';
+    }
+
     // Sel tabel/daftar: avatar + nama asli + baris gelar (atau $sub bila diberikan).
     public static function personCell(array $p, $href = null, $sub = null, $size = 'md') {
         $name = '<span class="pcell-name">' . ($href ? '<a href="' . e($href) . '">' : '')

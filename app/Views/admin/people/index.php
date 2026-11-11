@@ -165,7 +165,7 @@ $chipGroups = PeopleOverview::chipGroups($levelCounts);
 </div>
 
 <?php if ($filter === 'tanpa_unit'): ?>
-  <div class="note">Daftar ini mencakup pengurus tanpa penempatan aktif di SKUO pada periode berjalan, termasuk yang hanya menjabat sebagai Pengurus Inti atau belum memiliki penempatan.</div>
+  <div class="note">Daftar ini mencakup pengurus yang tidak menjabat di unit SKUO mana pun maupun di Pengurus Inti pada periode berjalan: yang hanya menjabat sebagai Pimpinan Lainnya (mis. Pengarah atau Anggota tingkat struktur) atau belum memiliki penempatan. Pengurus Inti dihitung sebagai SKUO, jadi yang menjabat di sana tidak masuk.</div>
 <?php endif; ?>
 
 <?php if ($perStruktur): ?>
@@ -304,7 +304,7 @@ $structureRow = function (array $r, $d) use ($caret, $cols, $rosterUrl, $noTermN
             <td class="small">
               <?php if ($r['position_name']): ?>
                 <strong><?= e($r['position_name']) ?></strong>
-                <div class="muted"><?php if (!empty($r['unit_name'])): ?><?= e($r['unit_name']) ?> &middot; <?php endif; ?><span class="badge lv"><?= e($rowLevel) ?></span> <?= e(PeopleOverview::shortName($rowStructure)) ?><?php $otherPlacementCount = max(0, (int) ($r['current_placement_count'] ?? 0) - 1); ?><?php if ($otherPlacementCount > 0): ?> · <button type="button" class="placement-more" data-placement-recap-url="<?= BASEURL ?>/people/other_placements/<?= (int) $r['id'] ?>?featured=<?= (int) ($r['current_placement_id'] ?? 0) ?>" data-person-name="<?= e(Ui::fullName($r)) ?>">+<?= $otherPlacementCount ?> lainnya</button><?php endif; ?></div>
+                <div class="muted"><?php if (!empty($r['unit_name'])): ?><?= e($r['unit_name']) ?> &middot; <?php elseif (!empty($r['position_inti'])): ?>Pengurus Inti &middot; <?php endif; ?><span class="badge lv"><?= e($rowLevel) ?></span> <?= e(PeopleOverview::shortName($rowStructure)) ?><?php $otherPlacementCount = max(0, (int) ($r['current_placement_count'] ?? 0) - 1); ?><?php if ($otherPlacementCount > 0): ?> · <button type="button" class="placement-more" data-placement-recap-url="<?= BASEURL ?>/people/other_placements/<?= (int) $r['id'] ?>?featured=<?= (int) ($r['current_placement_id'] ?? 0) ?>" data-person-name="<?= e(Ui::fullName($r)) ?>">+<?= $otherPlacementCount ?> lainnya</button><?php endif; ?></div>
               <?php else: ?>
                 <span class="muted">Belum ditempatkan</span>
               <?php endif; ?>

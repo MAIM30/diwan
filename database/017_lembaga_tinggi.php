@@ -107,7 +107,8 @@ function migrate_017_lembaga_tinggi(PDO $pdo, callable $say) {
     $enumKind = $pdo->query("SELECT COLUMN_TYPE FROM information_schema.columns
         WHERE table_schema = DATABASE() AND table_name = 'unit_catalog'
           AND column_name = 'kind'")->fetchColumn();
-    if (strpos($enumKind, 'komisi') === false) {
+    // Hanya selama kolomnya masih ENUM: sejak migrasi 025 ia VARCHAR berisi kode jenis (daftarnya di tabel unit_kinds), jadi jangan dikembalikan.
+    if (stripos($enumKind, 'enum(') === 0 && strpos($enumKind, 'komisi') === false) {
         $pdo->exec("ALTER TABLE unit_catalog MODIFY COLUMN kind
             ENUM('departemen','lembaga','biro','badan','pusat','divisi','komisi','lainnya')
             NOT NULL DEFAULT 'lainnya'");

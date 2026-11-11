@@ -376,14 +376,16 @@ class PersonModel {
                 $where[] = "NOT EXISTS (SELECT 1 FROM placements pln WHERE pln.person_id = p.id AND pln.deleted_at IS NULL)";
                 break;
             case 'tanpa_unit':
-                // Hanya SKUO yang aktif pada periode berjalan dan dalam lingkup admin yang dihitung.
-                // Jabatan Pengurus Inti (structure_unit_id NULL) tidak dianggap sebagai keanggotaan SKUO.
+                // Hanya SKUO yang aktif pada periode berjalan dan dalam lingkup admin yang dihitung. Pengurus Inti (jabatan inti tingkat
+                // struktur, structure_unit_id NULL) dihitung sebagai SKUO: ia entri pertama SKUO di setiap struktur (hanya tampilan, tanpa baris
+                // unit), jadi orang yang menjabat di sana sudah punya tempat. Pimpinan Lainnya (tingkat struktur, bukan inti) tetap "tanpa unit".
                 $where[] = "NOT EXISTS (SELECT 1 FROM placements plu
                               JOIN terms tu ON tu.id = plu.term_id AND tu.is_current = 1 AND tu.deleted_at IS NULL
-                              JOIN structure_units su ON su.id = plu.structure_unit_id
+                              JOIN positions po ON po.id = plu.position_id
+                              LEFT JOIN structure_units su ON su.id = plu.structure_unit_id
                                    AND su.term_id = plu.term_id AND su.structure_id = plu.structure_id AND su.deleted_at IS NULL
                               WHERE plu.person_id = p.id AND plu.deleted_at IS NULL
-                                AND plu.structure_unit_id IS NOT NULL
+                                AND (su.id IS NOT NULL OR (plu.structure_unit_id IS NULL AND " . PositionModel::CORE_SQL . "))
                                 AND (plu.start_date IS NULL OR plu.start_date <= CURDATE())
                                 AND (plu.end_date IS NULL OR plu.end_date >= CURDATE())
                                 AND " . AdminScope::sqlFilter('plu.structure_id') . ")";
@@ -436,6 +438,8 @@ class PersonModel {
                       JOIN positions poa ON poa.id = pla.position_id WHERE $activeLatest) AS current_placement_id,
                    (SELECT po.name FROM placements pl JOIN terms t ON t.id = pl.term_id
                       JOIN positions po ON po.id = pl.position_id WHERE $latest) AS position_name,
+                   (SELECT (po.is_core = 1 AND pl.structure_unit_id IS NULL) FROM placements pl JOIN terms t ON t.id = pl.term_id
+                      JOIN positions po ON po.id = pl.position_id WHERE $latest) AS position_inti,
                    (SELECT COALESCE(su.display_name, uc.name) FROM placements pl JOIN terms t ON t.id = pl.term_id
                       JOIN positions po ON po.id = pl.position_id
                       LEFT JOIN structure_units su ON su.id = pl.structure_unit_id

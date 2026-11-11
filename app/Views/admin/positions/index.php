@@ -75,7 +75,8 @@ $rc = function ($label, $count, $icon, $active, $href, $tone = '') {
 
 <div class="note">
   Jabatan yang tersedia saat menempatkan pengurus ke struktur atau ke unit. Kolom
-  <strong>Inti</strong> menentukan siapa yang tampil sebagai Pengurus Inti di roster periode.
+  <strong>Inti</strong> menunjukkan jabatan yang tampil sebagai Pengurus Inti bila dipegang di tingkat struktur;
+  tandanya tidak diubah dari halaman ini, dan jabatan baru tidak inti.
 </div>
 
 <div class="stats recap">
@@ -139,21 +140,13 @@ $rc = function ($label, $count, $icon, $active, $href, $tone = '') {
         <input type="number" id="new_sort" name="sort_order" value="500" min="0" max="65535">
       </div>
       <div class="field">
-        <label>Pengurus Inti</label>
-        <label class="check">
-          <input type="checkbox" name="is_core" value="1">
-          <span>Termasuk Pengurus Inti</span>
-        </label>
-        <div class="help">Berlaku bila jabatan dipegang di tingkat struktur. Di dalam unit tidak pernah dihitung inti.</div>
-      </div>
-      <div class="field">
         <label>Jenis unit</label>
         <div style="display:flex;flex-wrap:wrap;gap:2px 14px">
-          <?php foreach (PositionModel::UNIT_KINDS as $k => $kl): ?>
+          <?php foreach (UnitKinds::labels(true) as $k => $kl): ?>
             <label class="check"><input type="checkbox" name="unit_kinds[]" value="<?= e($k) ?>"><span><?= e($kl) ?></span></label>
           <?php endforeach; ?>
         </div>
-        <div class="help">Untuk jabatan yang berlaku di unit: pilih jenis unit tempatnya (mis. &ldquo;Ketua Biro&rdquo; hanya Biro). Kosong = semua jenis unit.</div>
+        <div class="help">Untuk jabatan yang berlaku di unit: pilih jenis unit tempatnya (mis. &ldquo;Ketua Biro&rdquo; hanya Biro). Kosong = semua jenis unit. Daftar jenis dikelola di Unit Organisasi.</div>
       </div>
     </div>
     <input type="hidden" name="is_active" value="1">
@@ -279,18 +272,11 @@ $rc = function ($label, $count, $icon, $active, $href, $tone = '') {
                       <input type="number" id="s<?= $id ?>" name="sort_order" value="<?= (int) $r['sort_order'] ?>" min="0" max="65535">
                     </div>
                     <div class="field">
-                      <label>Pengurus Inti</label>
-                      <label class="check">
-                        <input type="checkbox" name="is_core" value="1" <?= $r['is_core'] ? 'checked' : '' ?>>
-                        <span>Termasuk Pengurus Inti</span>
-                      </label>
-                      <div class="help">Berlaku bila jabatan dipegang di tingkat struktur. Di dalam unit tidak pernah dihitung inti.</div>
-                    </div>
-                    <div class="field">
                       <label>Jenis unit</label>
                       <?php $rowKinds = PositionModel::kindList($r['unit_kinds'] ?? ''); ?>
                       <div style="display:flex;flex-wrap:wrap;gap:2px 14px">
-                        <?php foreach (PositionModel::UNIT_KINDS as $k => $kl): ?>
+                        <?php // Jenis yang sudah dinonaktifkan tetap tampil bila jabatan ini masih memakainya, supaya tak hilang diam-diam saat disimpan. ?>
+                        <?php foreach (UnitKinds::labels() as $k => $kl): if (!UnitKinds::find($k)['is_active'] && !in_array($k, $rowKinds, true)) continue; ?>
                           <label class="check"><input type="checkbox" name="unit_kinds[]" value="<?= e($k) ?>" <?= in_array($k, $rowKinds, true) ? 'checked' : '' ?>><span><?= e($kl) ?></span></label>
                         <?php endforeach; ?>
                       </div>
