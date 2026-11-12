@@ -409,6 +409,10 @@ if ($kosong) {
     }
 }
 
+// Simpan (atau batalkan) SEBELUM mencetak laporan. Laporannya panjang, dan keluaran yang terputus di tengah (mis. `| head`)
+// bisa mematikan proses; perubahan yang sudah dihitung tidak boleh ikut hilang karenanya.
+if ($commit) $pdo->commit(); else $pdo->rollBack();
+
 // ---------- Laporan ----------
 say();
 say("HASIL: sudah sesuai {$stat['sama']} | jabatan diganti {$stat['diganti']} | penempatan ditambah {$stat['ditambah']}");
@@ -440,5 +444,5 @@ foreach ($sections as $k => $title) {
 say();
 say("Sisa penempatan \"Ketua\" polos di tingkat struktur pada " . count($plainStruct) . " struktur yang diproses, dipegang orang yang bukan Ketua menurut sheet: $plain (tidak diubah).");
 
-if ($commit) { $pdo->commit(); say(); say('TERSIMPAN.'); }
-else         { $pdo->rollBack(); say(); say('DRY-RUN: dibatalkan (tidak ada yang disimpan). Tambahkan --commit untuk menyimpan.'); }
+say();
+say($commit ? 'TERSIMPAN.' : 'DRY-RUN: dibatalkan (tidak ada yang disimpan). Tambahkan --commit untuk menyimpan.');
