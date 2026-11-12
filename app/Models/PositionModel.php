@@ -332,6 +332,7 @@ class PositionModel {
 
         if ($id) {
             $this->assertScopeKeepsPlacements($id, $data['applies_to'], $kinds);
+            $before = $this->findById($id);
             $stmt = $this->db->prepare("
                 UPDATE positions SET name = :name, code = :code, applies_to = :at, unit_kinds = :kinds,
                        is_core = COALESCE(:core, is_core), sort_order = :sort, is_active = :active
@@ -347,6 +348,21 @@ class PositionModel {
                 ':active' => !empty($data['is_active']) ? 1 : 0,
                 ':id'     => (int) $id,
             ]);
+
+            // Kode, nama, urutan, dan tanda inti sebuah jabatan keluar di API (/placements: position_code, position_name, order, is_core) pada SETIAP
+            // penempatan jabatan itu, tetapi dibaca lewat JOIN, sedangkan sinkronisasi inkremental (/sync/changes) hanya melihat
+            // placements.updated_at. Tanpa penyentuhan ini, kode yang diganti di sini tak pernah dikirim ulang dan salinan lokal konsumen
+            // menyimpan nilai lama selamanya. Yang disentuh hanya penempatan hidup; aktif/nonaktif, tempat berlaku, dan batas jenis unit
+            // tidak terlihat di API, jadi tidak memicunya.
+            if ($before) {
+                $coreAfter = array_key_exists('is_core', $data) ? (int) !empty($data['is_core']) : (int) $before['is_core'];
+                if ($before['code'] !== trim($data['code']) || $before['name'] !== trim($data['name'])
+                    || (int) $before['sort_order'] !== (int) $data['sort_order'] || (int) $before['is_core'] !== $coreAfter) {
+                    $this->db->prepare("UPDATE placements SET updated_at = NOW(3) WHERE position_id = :id AND deleted_at IS NULL")
+                             ->execute([':id' => (int) $id]);
+                }
+            }
+
             Audit::log('positions', $id, 'update', null, $data);
             return (int) $id;
         }
