@@ -122,6 +122,8 @@ require_once __DIR__ . '/023_struktur_mwln.php';
 migrate_023_struktur_mwln($pdo, 'say');
 require_once __DIR__ . '/024_pengajuan_koreksi_penempatan.php';
 migrate_024_pengajuan_koreksi_penempatan($pdo, 'say');
+require_once __DIR__ . '/026_ketua_mww_mwd.php';
+migrate_026_ketua_mww_mwd($pdo, 'say');
 
 // ---------- Struktur akar ----------
 // DPP dibuat sebagai akar, MWP sebagai anaknya. Inilah yang membuat lingkup "Nasional" (akar)

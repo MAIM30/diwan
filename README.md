@@ -20,7 +20,8 @@ dirawat bersama. Target MySQL 8.0+ (memakai generated column dan composite forei
 3. **Jabatan adalah katalog.** `positions` menggantikan `position_name` VARCHAR bebas. Kolom
    `positions.is_core` menggantikan seluruh `CASE WHEN` di `app/Core/PengurusInti.php` syuro:
    Pengurus Inti kini = `placements.structure_unit_id IS NULL AND positions.is_core = 1`. Aturannya satu tempat:
-   `PositionModel::CORE_SQL`. Jabatan dibedakan menurut tempatnya: **Ketua DPW** dan **Ketua DPD**, **Wakil Ketua DPW** dan
+   `PositionModel::CORE_SQL`. Jabatan dibedakan menurut tempatnya: **Ketua DPW** dan **Ketua DPD**, **Ketua MWW** dan **Ketua MWD**
+   (migrasi 026), **Wakil Ketua DPW** dan
    **Wakil Ketua DPD** (tingkat Wilayah dan Daerah), **Ketua Bidang** dan **Wakil Ketua Bidang** (Pengurus Inti DPP, migrasi 020;
    urutan resmi SKUO diatur lewat `sort_order`), **Ketua** / **Wakil Ketua** polos (tingkat struktur lain seperti MWP, selalu inti), dan
    **Wakil Ketua Departemen/Lembaga** (di dalam unit, tak pernah inti). Kepala unit dibedakan menurut jenis unitnya:
@@ -100,9 +101,12 @@ database/
   023_struktur_mwln.php             migrasi: tingkat MWLN (Muslimah Luar Negeri, padanan DPLN: setingkat MWW di bawah MWP); hanya definisi kolom, tanpa mengubah baris
   024_pengajuan_koreksi_penempatan.php migrasi: antrean laporan pengurus untuk kekeliruan jabatan/penempatan
   025_jenis_unit.php          migrasi: jenis unit menjadi daftar yang dikelola (tabel unit_kinds); unit_catalog.kind ENUM -> VARCHAR; "Lainnya" -> "Belum ditentukan" (kode 'belum')
+  026_ketua_mww_mwd.php       migrasi: jabatan "Ketua MWW" dan "Ketua MWD" (pucuk pimpinan Muslimah Wahdah Wilayah dan Daerah)
   sinkron_ketua_dpw_dpd.php   memasukkan Ketua DPW/DPD dari tab DPW dan DPD (Google Sheet, atau berkas CSV lewat --dpw/--dpd, mis. sheet Data Peserta Mukernas); opsi
                               --ketua-lain-jadi-anggota ("Ketua" polos lain di struktur yang Ketuanya terpasang menjadi Anggota; yang sudah Anggota dianulir) dan
                               --buat-orang='Nama|HP|L' (CLI; dry-run bawaan, --commit untuk menyimpan; wajib mysqldump dulu)
+  sinkron_ketua_mww_mwd.php   memasukkan Ketua MWW/MWD dari sheet "MWW" dan "MWD" di docs/Data MWW-MWD Nov 2026.xlsx (lewat dua berkas CSV bersih di deploy/dump,
+                              --mww/--mwd; nama MWD dicocokkan per provinsi, lalu antarprovinsi bila tak ketemu) (CLI; dry-run bawaan, --commit untuk menyimpan; wajib mysqldump dulu)
   sinkron_sheet_dpp.php       menyamakan penempatan satu struktur dengan tab-nya di Google Sheet pengurus: --tab=DPP (bawaan) atau --tab=MWP;
                               pilihan --rinci, --mirip, --buat-unit, --buat-orang untuk sheet tanpa nomor HP (CLI; dry-run bawaan, --commit untuk menyimpan)
   migrate.php                 menerapkan migrasi bernomor pada basis data yang SUDAH terpasang (idempoten; jalankan setiap kali kode diperbarui)

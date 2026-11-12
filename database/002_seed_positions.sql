@@ -5,9 +5,9 @@
 -- Cara membaca `is_core`: 1 berarti jabatan ini termasuk Pengurus Inti KETIKA dipegang di level
 -- struktur (placements.structure_unit_id IS NULL). Label polos "Ketua"/"Sekretaris"/"Bendahara"
 -- dipakai di dua tempat sekaligus -- pucuk pimpinan DPC/MW* maupun kepala Pusat/Divisi/Komisi di DPP --
--- dan pembedanya tetap structure_unit_id, bukan nama jabatannya. (Ketua DPW, Ketua DPD, Ketua/Wakil Ketua Bidang di Pengurus
--- Inti DPP, dan Ketua Departemen/Lembaga/Biro/Badan kini jabatan tersendiri lewat migrasi 018, 020, dan 021, bukan bagian
--- seed ini.) Jadi:
+-- dan pembedanya tetap structure_unit_id, bukan nama jabatannya. (Ketua DPW, Ketua DPD, Ketua MWW, Ketua MWD, Ketua/Wakil Ketua
+-- Bidang di Pengurus Inti DPP, dan Ketua Departemen/Lembaga/Biro/Badan kini jabatan tersendiri lewat migrasi 018, 026, 020, dan
+-- 021, bukan bagian seed ini.) Jadi:
 --   pengurus inti = JOIN positions p ON p.id = pl.position_id
 --                   WHERE pl.structure_unit_id IS NULL AND p.is_core = 1
 -- Itu menggantikan seluruh PengurusInti::sqlCaseFragment() di syuro.

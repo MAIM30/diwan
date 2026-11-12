@@ -566,16 +566,17 @@ Beberapa jabatan dibedakan menurut tempatnya dan punya kode sendiri:
 | Dulu | Kini |
 |---|---|
 | `ketua` di DPW / DPD | `ketua_dpw` / `ketua_dpd` |
+| `ketua` di MWW / MWD | `ketua_mww` / `ketua_mwd` |
 | `wakil_ketua` di DPW / DPD (tingkat struktur) | `wakil_ketua_dpw` / `wakil_ketua_dpd` |
 | `wakil_ketua` di dalam unit | `wakil_ketua_departemen_lembaga` |
 | `ketua` di Pengurus Inti DPP (tanpa unit) | `ketua_bidang` |
 | `wakil_ketua` di Pengurus Inti DPP (tanpa unit) | `wakil_ketua_bidang` |
 | `ketua` di dalam unit berjenis Departemen / Lembaga / Biro / Badan | `ketua_departemen` / `ketua_lembaga` / `ketua_biro` / `ketua_badan` |
 
-`ketua` tetap untuk tingkat struktur lain (MWP, MWW, MWD, DSO, DSY, DPK, ...) dan untuk ketua unit berjenis Divisi dan
+`ketua` tetap untuk tingkat struktur lain (MWP, DSO, DSY, DPK, ...) dan untuk ketua unit berjenis Divisi dan
 Komisi; kepala unit berjenis Pusat dan Lainnya umumnya berkode `kepala`; `wakil_ketua` tetap untuk Wakil Ketua tingkat
-struktur selain DPW/DPD/DPP (mis. MWP). **Pemindahan data lama belum tentu tuntas**: di DPW dan DPD masih bisa ada
-penempatan berkode `ketua` polos di samping `ketua_dpw` / `ketua_dpd`; terima keduanya sebagai Ketua.
+struktur selain DPW/DPD/DPP (mis. MWP, MWW, MWD). **Pemindahan data lama belum tentu tuntas**: di DPW, DPD, MWW, dan MWD masih bisa ada
+penempatan berkode `ketua` polos di samping `ketua_dpw` / `ketua_dpd` / `ketua_mww` / `ketua_mwd`; terima keduanya sebagai Ketua.
 Himpunan kode jabatan bisa bertambah (kelak `ketua_dpc`,
 `ketua_dpra`), jadi perlakukan kode yang tak dikenal sebagai jabatan biasa, jangan sebagai galat.
 

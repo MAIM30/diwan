@@ -12,10 +12,10 @@ class PositionModel {
     // Masih harus digabung dengan "placements.structure_unit_id IS NULL": jabatan di dalam unit tidak pernah inti.
     const CORE_SQL = '(po.is_core = 1)';
 
-    // Kode jabatan "Ketua" pucuk pimpinan sebuah struktur: label polos (MWP, MWW, MWD, ... dan kepala unit) ditambah jabatan yang
-    // dikhususkan per tingkat (migrasi 018: DPW, DPD; migrasi 020: Ketua Bidang di Pengurus Inti DPP). Ketua DPC / Ketua DPRa
-    // kelak ditambahkan di sini juga.
-    const KETUA_CODES = ['ketua', 'ketua_dpw', 'ketua_dpd', 'ketua_bidang'];
+    // Kode jabatan "Ketua" pucuk pimpinan sebuah struktur: label polos (MWP, DSO, DSY, DPK, ... dan kepala unit) ditambah jabatan yang
+    // dikhususkan per tingkat (migrasi 018: DPW, DPD; migrasi 020: Ketua Bidang di Pengurus Inti DPP; migrasi 026: MWW, MWD).
+    // Ketua DPC / Ketua DPRa kelak ditambahkan di sini juga.
+    const KETUA_CODES = ['ketua', 'ketua_dpw', 'ketua_dpd', 'ketua_mww', 'ketua_mwd', 'ketua_bidang'];
 
     // Kode jabatan "Wakil Ketua" tingkat struktur (Pengurus Inti): label polos (MWP, MWW, MWD, DSO, DSY, DPK) ditambah yang
     // dikhususkan (migrasi 019: DPW, DPD; migrasi 020: Wakil Ketua Bidang di Pengurus Inti DPP). Yang di dalam unit dipisah:
@@ -29,7 +29,7 @@ class PositionModel {
 
     // "Inti lengkap" di halaman Data Pengurus: struktur dianggap punya inti yang lengkap bila Ketua, Sekretaris, dan Bendahara-nya
     // masing-masing dipegang seseorang di tingkat struktur (tanpa unit). Ketua DPC / DPRa kelak ditambahkan ke INTI_KETUA di sini.
-    const INTI_KETUA      = ['ketua_umum', 'ketua', 'ketua_dpw', 'ketua_dpd'];
+    const INTI_KETUA      = ['ketua_umum', 'ketua', 'ketua_dpw', 'ketua_dpd', 'ketua_mww', 'ketua_mwd'];
     const INTI_SEKRETARIS = ['sekretaris_jenderal', 'sekretaris'];
     const INTI_BENDAHARA  = ['bendahara_umum', 'bendahara'];
 

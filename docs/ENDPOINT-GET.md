@@ -223,12 +223,14 @@ Field: `uuid`, `person_uuid`, `person_name`, `structure_uuid`, `structure` (labe
 | Pengurus Inti DPP (tanpa unit) | `ketua_bidang` | `wakil_ketua_bidang` |
 | DPW (tingkat struktur) | `ketua_dpw` | `wakil_ketua_dpw` |
 | DPD (tingkat struktur) | `ketua_dpd` | `wakil_ketua_dpd` |
-| Tingkat struktur lain (MWP, MWW, MWD, DSO, DSY, DPK, …) | `ketua` | `wakil_ketua` |
+| MWW (tingkat struktur) | `ketua_mww` | `wakil_ketua` |
+| MWD (tingkat struktur) | `ketua_mwd` | `wakil_ketua` |
+| Tingkat struktur lain (MWP, DSO, DSY, DPK, …) | `ketua` | `wakil_ketua` |
 | Unit Departemen / Lembaga / Biro / Badan | `ketua_departemen` / `ketua_lembaga` / `ketua_biro` / `ketua_badan` | `wakil_ketua_departemen_lembaga` |
 
 Ketua unit Divisi dan Komisi berkode `ketua`; kepala unit Pusat dan Lainnya umumnya `kepala`.
-**Data lama belum tentu tuntas dipindahkan**: di DPW dan DPD masih bisa ada penempatan berkode `ketua`
-polos di samping `ketua_dpw` / `ketua_dpd` — terima keduanya sebagai Ketua. Himpunan kode bisa bertambah
+**Data lama belum tentu tuntas dipindahkan**: di DPW, DPD, MWW, dan MWD masih bisa ada penempatan berkode `ketua`
+polos di samping `ketua_dpw` / `ketua_dpd` / `ketua_mww` / `ketua_mwd` — terima keduanya sebagai Ketua. Himpunan kode bisa bertambah
 (kelak `ketua_dpc`, `ketua_dpra`): perlakukan kode yang tak dikenal sebagai jabatan biasa, bukan galat.
 Kunci unit pada `unit_uuid`, bukan `unit_name`: nama yang sama (mis. "Departemen Kesehatan") bisa ada
 di sayap Umum dan Muslimah sebagai dua unit berbeda.
