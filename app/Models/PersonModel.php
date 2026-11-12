@@ -623,7 +623,10 @@ class PersonModel {
 
     public function setPhoto($id, $path) {
         $before = $this->findById($id);
-        $this->db->prepare("UPDATE people SET photo_path = :p WHERE id = :id")
+        // updated_at disentuh eksplisit: foto yang diganti ditulis ke jalur yang SAMA (uploads/people/<uuid>.jpg),
+        // jadi photo_path tidak berubah nilainya dan MySQL tidak menjalankan ON UPDATE. Tanpa ini, penggantian foto
+        // tidak pernah muncul di /sync/changes dan salinan lokal konsumen API memegang foto lama selamanya.
+        $this->db->prepare("UPDATE people SET photo_path = :p, updated_at = CURRENT_TIMESTAMP(3) WHERE id = :id")
                  ->execute([':p' => $path, ':id' => (int) $id]);
         Audit::log('people', $id, 'update', $before, $this->findById($id));
     }

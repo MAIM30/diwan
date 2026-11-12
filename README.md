@@ -705,6 +705,8 @@ mengubah data master dari jauh. Autentikasi: `Authorization: Bearer pgr_<prefix>
 | `GET /api/v1/terms?structure={uuid}` | `structures:read` | Periode, bisa disaring per struktur |
 | `GET /api/v1/people` | `people:read` | Berhalaman dengan kursor |
 | `GET /api/v1/people/{uuid}` | `people:read` | Satu orang |
+| `GET /api/v1/people/{uuid}/photo` | `people:read` | Foto profil (gambar JPEG, bukan JSON); alamatnya ada di `photo_url` setiap orang. Foto perempuan tidak diberikan (404) |
+| `GET /api/v1/people/by-phone/{phone}` | `people:read` | Lookup by nomor HP/WA; nomor yang dipakai lebih dari satu orang dijawab 404 |
 | `GET /api/v1/people/by-nik/{nik}` | `people:nik` | Lookup by NIK (lihat bagian NIK di atas) |
 | `GET /api/v1/placements` | `placements:read` | Berhalaman; saring `structure`, `term`, `person`, `current=1`, `core=1` |
 | `GET /api/v1/sync/full` | ketiganya | Tarikan awal |
@@ -714,8 +716,9 @@ Parameter umum: `since` (ISO-8601 atau epoch detik), `cursor`, `limit` (bawaan 2
 `include_deleted=1`.
 
 **Panduan lengkap untuk pengembang aplikasi konsumen ada di [`docs/API.md`](docs/API.md)** — skema
-field tiap entitas, protokol sinkronisasi langkah demi langkah, daftar jebakan, dan contoh klien
-PHP/Node/Python yang siap pakai. Bagian di bawah ini hanya ringkasan untuk perawat aplikasi ini.
+field tiap entitas, protokol sinkronisasi langkah demi langkah, daftar jebakan, contoh klien
+PHP/Node/Python yang siap pakai, dan catatan perubahan data bertanggal. Daftar ringkas semua URL ada di
+[`docs/ENDPOINT-GET.md`](docs/ENDPOINT-GET.md). Bagian di bawah ini hanya ringkasan untuk perawat aplikasi ini.
 
 ### Bentuk response
 

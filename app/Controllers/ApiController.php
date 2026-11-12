@@ -168,6 +168,7 @@ class ApiController extends Controller {
 
     // GET /api/v1/people?since=&cursor=&limit=
     // GET /api/v1/people/{uuid}
+    // GET /api/v1/people/{uuid}/photo
     // GET /api/v1/people/by-nik/{nik}
     // GET /api/v1/people/by-phone/{phone}
     private function people(array $segments) {
@@ -182,6 +183,13 @@ class ApiController extends Controller {
 
         $this->api->requireScope('people:read');
         $sync = $this->newSync();
+
+        // GET /people/{uuid}/photo -- berkas fotonya (image/jpeg), bukan JSON. Izin dan lingkup sama dengan /people/{uuid}.
+        if (!empty($segments[0]) && ($segments[1] ?? '') === 'photo') {
+            $photo = $sync->photoFileByUuid($segments[0]);
+            if (!$photo) $this->api->fail(404, 'not_found', 'Foto tidak ditemukan.');
+            $this->api->image($photo['file'], $photo['mtime']);
+        }
 
         if (!empty($segments[0])) {
             $row = $sync->personByUuid($segments[0]);

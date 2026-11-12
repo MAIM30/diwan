@@ -204,7 +204,7 @@ class SyncModel {
 
         $stmt = $this->db->prepare("
             SELECT t.id, t.uuid, t.title_prefix, t.name, t.title_suffix, t.full_name, t.gender, t.phone, t.email, t.birth_date,
-                   t.city, t.province, t.status, t.updated_at, t.deleted_at
+                   t.city, t.province, t.status, t.photo_path, t.updated_at, t.deleted_at
             FROM people t
             WHERE " . implode(' AND ', $where) . "
             ORDER BY t.updated_at, t.id
@@ -221,7 +221,7 @@ class SyncModel {
         if (!Uuid::isValid($uuid)) return null;
         $stmt = $this->db->prepare("
             SELECT t.id, t.uuid, t.title_prefix, t.name, t.title_suffix, t.full_name, t.gender, t.phone, t.email, t.birth_date,
-                   t.city, t.province, t.status, t.updated_at, t.deleted_at
+                   t.city, t.province, t.status, t.photo_path, t.updated_at, t.deleted_at
             FROM people t WHERE t.uuid = :u AND t.deleted_at IS NULL
         ");
         $stmt->execute([':u' => $uuid]);
@@ -235,6 +235,39 @@ class SyncModel {
         return $this->mapPerson($row);
     }
 
+    // Berkas foto satu orang untuk GET /people/{uuid}/photo: ['file' => jalur mutlak, 'mtime' => int],
+    // atau null bila orangnya tidak ada / terhapus / di luar lingkup token / tidak punya foto. Semua
+    // sebab itu sengaja tak dibedakan oleh pemanggil (semuanya 404), supaya endpoint ini tidak bisa
+    // dipakai menebak siapa yang ada di luar lingkup tokennya.
+    public function photoFileByUuid($uuid) {
+        if (!Uuid::isValid($uuid)) return null;
+        $stmt = $this->db->prepare("SELECT t.id, t.photo_path, t.gender FROM people t WHERE t.uuid = :u AND t.deleted_at IS NULL");
+        $stmt->execute([':u' => $uuid]);
+        $row = $stmt->fetch();
+        if (!$row) return null;
+        if ($this->scopeIds !== null && !$this->personInScope((int) $row['id'])) return null;
+        return $this->photoFile($row['photo_path'], $row['gender']);
+    }
+
+    // Foto profil hanya sah bila (1) orangnya laki-laki, (2) jalurnya persis uploads/people/<nama-berkas>
+    // (ditulis server oleh PeopleController::photo / impor biodata) DAN (3) berkasnya ada di disk.
+    //
+    // (1) Foto perempuan TIDAK diberikan ke konsumen API sama sekali (keputusan 2026-11-13). Kolom gender
+    //     ENUM('L','P') NOT NULL, jadi hanya dua nilai itu yang mungkin; pemeriksaannya sengaja "hanya 'L'
+    //     yang lolos" (bukan "selain 'P'"), supaya nilai tak terduga apa pun jatuh ke sisi tertutup.
+    //     Mengoreksi jenis kelamin mengubah updated_at orangnya, jadi perubahannya terkirim lewat
+    //     sinkronisasi: photo_url muncul atau hilang sendiri.
+    // (3) photo_path yang terisi tetapi berkasnya hilang diperlakukan sebagai "tidak punya foto",
+    //     supaya konsumen tidak diberi URL yang 404.
+    private function photoFile($photoPath, $gender) {
+        if ($gender !== 'L') return null;
+        if ($photoPath === null || $photoPath === '') return null;
+        if ($photoPath !== 'uploads/people/' . basename($photoPath)) return null;
+        $abs = ROOT_DIR . '/public/' . $photoPath;
+        if (!is_file($abs)) return null;
+        return ['file' => $abs, 'mtime' => (int) filemtime($abs)];
+    }
+
     private function personInScope($personId) {
         $stmt = $this->db->prepare("
             SELECT COUNT(*) FROM placements pl
@@ -245,6 +278,8 @@ class SyncModel {
     }
 
     private function mapPerson($r) {
+        // Orang terhapus tidak diberi foto: endpoint fotonya memang menjawab 404 untuk mereka.
+        $photo = empty($r['deleted_at']) ? $this->photoFile($r['photo_path'] ?? null, $r['gender'] ?? null) : null;
         return [
             'uuid'       => $r['uuid'],
             // Nama terpisah: konsumen yang ingin menampilkan "nama asli" tanpa gelar, mengurutkan
@@ -261,6 +296,12 @@ class SyncModel {
             'city'       => $r['city'],
             'province'   => $r['province'],
             'status'     => $r['status'],
+            // Foto TIDAK pernah disisipkan sebagai data: hanya alamat endpoint yang butuh token yang sama,
+            // plus waktu berkasnya terakhir berubah supaya konsumen hanya mengunduh ulang bila perlu.
+            // photo_path (jalur di disk) tidak ikut keluar. null/null = tidak ada foto yang boleh diberikan
+            // (tidak punya foto, atau perempuan / jenis kelamin belum diisi -- lihat photoFile()).
+            'photo_url'        => $photo ? BASEURL . '/api/v1/people/' . $r['uuid'] . '/photo' : null,
+            'photo_updated_at' => $photo ? date('c', $photo['mtime']) : null,
             'updated_at' => $this->iso($r['updated_at']),
             'deleted'    => !empty($r['deleted_at']),
             // 'nik' SENGAJA tidak ada di sini. Lihat catatan di kepala file.

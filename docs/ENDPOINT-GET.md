@@ -3,13 +3,14 @@
 Daftar ringkas semua URL yang bisa dipanggil aplikasi konsumen. Penjelasan mendalam (protokol
 sinkronisasi, skema field lengkap, contoh klien, jebakan) ada di [API.md](API.md).
 
-*Terakhir diverifikasi: 2026-11-06 terhadap kode dan data. Daftar field tiap endpoint di bawah dicocokkan
-langsung dengan keluaran nyata API (urutan dan jumlahnya sama).*
+*Terakhir diverifikasi: 2026-11-12 terhadap kode dan salinan data produksi. Daftar field tiap endpoint di
+bawah dicocokkan langsung dengan keluaran nyata API (urutan dan jumlahnya sama); nilai-nilai yang boleh
+muncul (tingkat, kode jabatan, jenis kelompok) dicocokkan dengan isi data.*
 
 - **Basis URL produksi:** `https://diwan.wahdah.or.id/api/v1`
 - **Basis URL pengembangan:** `http://localhost/pengurus/api/v1`
 - **Metode:** hanya `GET` (metode lain dijawab `405 method_not_allowed`)
-- **Format:** JSON (`application/json; charset=utf-8`)
+- **Format:** JSON (`application/json; charset=utf-8`), kecuali `/people/{uuid}/photo` yang berupa gambar JPEG
 - **Autentikasi:** setiap permintaan wajib membawa header `Authorization: Bearer pgr_<prefix>_<secret>`.
   Token diterbitkan Super Admin DIWAN di menu **Token API**.
 
@@ -26,14 +27,16 @@ curl -H "Authorization: Bearer $TOKEN" https://diwan.wahdah.or.id/api/v1/whoami
 | 1 | `GET /whoami` | token sah saja | – | Cek token & izin (health check) |
 | 2 | `GET /structures` | `structures:read` | – | Seluruh struktur organisasi |
 | 3 | `GET /structures/{uuid}` | `structures:read` | – | Satu struktur |
-| 4 | `GET /terms` | `structures:read` | – | Periode kepengurusan |
-| 5 | `GET /people` | `people:read` | ya | Daftar orang |
-| 6 | `GET /people/{uuid}` | `people:read` | – | Satu orang |
-| 7 | `GET /people/by-phone/{phone}` | `people:read` | – | Cari orang lewat nomor HP/WA |
-| 8 | `GET /people/by-nik/{nik}` | **`people:nik`** | – | Cari orang lewat NIK 16 digit |
-| 9 | `GET /placements` | `placements:read` | ya | Penempatan jabatan (inti data kepengurusan) |
-| 10 | `GET /sync/full` | ketiga izin `*:read`¹ | ya | Tarikan awal untuk salinan lokal |
-| 11 | `GET /sync/changes` | ketiga izin `*:read`¹ | ya | Tarikan perubahan berkala, termasuk penghapusan |
+| 4 | `GET /skuos` | `structures:read` | – | Katalog SKUO pusat (urutan dan kelompok baku) |
+| 5 | `GET /terms` | `structures:read` | – | Periode kepengurusan |
+| 6 | `GET /people` | `people:read` | ya | Daftar orang |
+| 7 | `GET /people/{uuid}` | `people:read` | – | Satu orang |
+| 8 | `GET /people/{uuid}/photo` | `people:read` | – | Foto profil satu orang (gambar JPEG, bukan JSON) |
+| 9 | `GET /people/by-phone/{phone}` | `people:read` | – | Cari orang lewat nomor HP/WA |
+| 10 | `GET /people/by-nik/{nik}` | **`people:nik`** | – | Cari orang lewat NIK 16 digit |
+| 11 | `GET /placements` | `placements:read` | ya | Penempatan jabatan (inti data kepengurusan) |
+| 12 | `GET /sync/full` | ketiga izin `*:read`¹ | ya | Tarikan awal untuk salinan lokal |
+| 13 | `GET /sync/changes` | ketiga izin `*:read`¹ | ya | Tarikan perubahan berkala, termasuk penghapusan |
 
 ¹ `structures:read` + `people:read` + `placements:read`, ketiganya sekaligus.
 
@@ -92,6 +95,10 @@ Field: `uuid`, `parent_uuid`, `level`, `wing`, `tier`, `name`, `region_code`, `d
 - `DSO` (Dewan Syura), `DSY` (Dewan Syariah), `DPK` (Dewan Pengawas Keuangan) adalah **akar tersendiri**
   (`parent_uuid: null`, `depth: 0`, `tier: 1`, `wing: umum`), sejajar dengan DPP — bukan anak DPP.
   Jangan mengasumsikan hanya ada satu akar.
+- Induk tiap tingkat (per data sekarang): `DPW` dan `DPLN` → `DPP`; `DPD` → `DPW`; `MWP` → `DPP`; `MWW` dan
+  `MWLN` → `MWP`; `MWD` → `MWW`. **`MWLN` (Muslimah Luar Negeri) berinduk MWP, bukan MWW**, dan `DPLN` berinduk
+  DPP, bukan DPW: keduanya tier `2` tetapi tidak berada di bawah wilayah mana pun. Ikuti `parent_uuid`, jangan
+  menurunkan induk dari `level` atau `tier`.
 
 ---
 
@@ -106,7 +113,33 @@ luar lingkup token.
 
 ---
 
-### 4. `GET /terms`
+### 4. `GET /skuos`
+
+```
+/skuos
+```
+
+Katalog SKUO pusat (sayap umum) dengan urutan dan kelompok baku. Tanpa parameter, tidak berhalaman, tanpa
+`since` — selalu lengkap dalam satu respons.
+
+`data` berupa daftar kelompok berurutan: `PI` (Pengurus Inti), `BIDANG I` … `BIDANG IX`, `PUSAT-PUSAT`, `SPI`,
+`BADAN`, `BIRO`.
+
+- Field kelompok: `code`, `name`, `units`, `order`.
+- Field unit: `id`, `uuid`, `name`, `abbreviation`, `kind`, `wing`, `order`.
+- `uuid` adalah kunci stabil. `id` hanyalah ID internal katalog di instalasi ini, untuk aplikasi yang sudah
+  memakai ID; jangan dijadikan kunci sinkronisasi.
+- `PI` hanya penanda kelompok: `units` selalu kosong, karena Pengurus Inti dipegang di tingkat struktur
+  (`unit_uuid: null` di `/placements`), bukan di dalam unit.
+- `kind` adalah **kode jenis unit**, bukan daftar tertutup: `departemen` `lembaga` `biro` `badan` `pusat`
+  `divisi` `komisi` `belum` (Belum ditentukan; dulu `lainnya`). Admin dapat menambah jenis lain.
+- Yang tercantum hanya unit sayap umum yang termasuk daftar baku SKUO pusat. Unit lain di katalog (mis. Komisi)
+  dan unit sayap Muslimah tidak ada di sini; susunan aktual per struktur dan periode ada di `/placements`
+  (`unit_uuid`, `unit_group`).
+
+---
+
+### 5. `GET /terms`
 
 ```
 /terms
@@ -123,7 +156,7 @@ Untuk mencari periode berjalan pakai `is_current`, bukan perbandingan tanggal.
 
 ---
 
-### 5. `GET /people`
+### 6. `GET /people`
 
 ```
 /people?limit=500
@@ -136,13 +169,23 @@ Parameter: `since`, `cursor`, `limit`, `include_deleted`. **Berhalaman** — ula
 
 Field: `uuid`, `title_prefix`, `name` (tanpa gelar), `title_suffix`, `full_name`, `gender` (`L` | `P`),
 `phone` (E.164 tanpa `+`, mis. `6281234567890`), `email`, `birth_date`, `city`, `province`,
-`status` (`active` | `inactive` | `deceased`), `updated_at`, `deleted`.
+`status` (`active` | `inactive` | `deceased`), `photo_url`, `photo_updated_at`, `updated_at`, `deleted`.
+
+`photo_url` adalah alamat endpoint foto orang itu ([nomor 8](#8-get-peopleuuidphoto)), `photo_updated_at`
+adalah kapan berkas fotonya terakhir berubah; keduanya `null` bila orang itu tidak punya foto **atau perempuan**
+(foto perempuan tidak diberikan lewat API). Fotonya tidak ikut di dalam JSON.
 
 **NIK tidak pernah ada di endpoint ini.**
 
+**Tidak setiap orang punya penempatan.** `/people` memuat semua orang yang tercatat, termasuk yang belum (atau
+tidak lagi) punya penempatan — mis. pendaftar yang diterima tanpa penempatan, atau orang yang baru dimasukkan
+dan belum ditempatkan (sekitar sepersepuluh data). Di `/placements?person=<uuid>` mereka kosong. Jangan
+menyaring `/people` dengan syarat "punya penempatan" kecuali itu memang yang Anda maksud. Token **berlingkup
+subtree** hanya melihat orang yang punya penempatan di subtree-nya, jadi tidak melihat mereka sama sekali.
+
 ---
 
-### 6. `GET /people/{uuid}`
+### 7. `GET /people/{uuid}`
 
 ```
 /people/7f1d2a40-0000-0000-0000-000000000000
@@ -152,7 +195,31 @@ Satu orang, field sama seperti di atas. `404 not_found` bila tidak ada atau di l
 
 ---
 
-### 7. `GET /people/by-phone/{phone}`
+### 8. `GET /people/{uuid}/photo`
+
+```
+/people/7f1d2a40-0000-0000-0000-000000000000/photo
+```
+
+Foto profil orang itu: **berkas gambar** (`Content-Type: image/jpeg`, persegi 512×512), bukan JSON. Izin dan
+lingkup sama dengan `/people/{uuid}`. Pakai alamat dari field `photo_url`, jangan menyusunnya sendiri.
+
+- **Foto perempuan tidak diberikan lewat API.** Orang dengan `gender: "P"` selalu `photo_url: null` dan endpoint
+  ini menjawab `404`, walau DIWAN menyimpan fotonya.
+- `404 not_found` bila orang itu tidak punya foto, perempuan, tidak ada, terhapus, atau di luar lingkup token.
+  Semuanya sengaja tak dibedakan.
+- Wajib membawa token, jadi **tidak bisa dipakai langsung di `<img src>` browser**. Unduh dari backend, simpan
+  salinan, lalu sajikan dari aplikasi Anda.
+- Respons membawa `ETag`. Kirim kembali sebagai `If-None-Match` untuk mendapat `304` tanpa isi. Cara yang lebih
+  hemat: bandingkan `photo_updated_at` di `/people` dengan yang Anda simpan, dan unduh hanya yang berbeda.
+- Foto yang diganti atau dihapus membuat orang itu muncul lagi di `/sync/changes` (`updated_at` ikut berubah),
+  dengan `photo_updated_at` baru atau `photo_url: null`. Bila `null`, hapus foto lokalnya.
+- Setiap foto adalah satu permintaan dan dihitung ke batas per menit token. Tarikan awal untuk semua orang
+  berfoto akan memakan beberapa menit pada batas 60/menit; hormati `Retry-After`.
+
+---
+
+### 9. `GET /people/by-phone/{phone}`
 
 ```
 /people/by-phone/081234567890
@@ -171,7 +238,7 @@ Respons: satu objek orang (field seperti `/people/{uuid}`).
 
 ---
 
-### 8. `GET /people/by-nik/{nik}`
+### 10. `GET /people/by-nik/{nik}`
 
 ```
 /people/by-nik/7371xxxxxxxxxxxx
@@ -185,7 +252,7 @@ Respons: satu objek orang. Tidak ditemukan dan di luar lingkup token sama-sama `
 
 ---
 
-### 9. `GET /placements`
+### 11. `GET /placements`
 
 ```
 /placements?current=1&core=1&limit=1000
@@ -216,6 +283,13 @@ Field: `uuid`, `person_uuid`, `person_name`, `structure_uuid`, `structure` (labe
 `is_core` dihitung server — jangan disalin aturannya. Pakai `position_code` untuk logika dan
 `position_name` untuk tampilan.
 
+`person_name`, `structure`, `term_name`, `unit_name`, `unit_abbr`, dan `unit_group` adalah salinan **untuk
+tampilan** pada saat baris ditulis. Mengganti nama sebuah struktur, orang, atau unit tidak membuat penempatannya
+dikirim ulang; nama yang berlaku ada di `/structures` dan `/people` (kunci: `structure_uuid`, `person_uuid`).
+Sebaliknya, perubahan pada jabatan (`position_code`, `position_name`, `order`, `is_core`) **ikut dikirim ulang**:
+setiap kali admin mengubah kode, nama, urutan, atau tanda inti sebuah jabatan, semua penempatan hidup jabatan itu
+muncul lagi di `/sync/changes` dengan nilai barunya.
+
 **Kode jabatan dibedakan menurut tempatnya** (jangan bercabang hanya pada `ketua` / `wakil_ketua`):
 
 | Tempat | Ketua | Wakil Ketua |
@@ -225,19 +299,26 @@ Field: `uuid`, `person_uuid`, `person_name`, `structure_uuid`, `structure` (labe
 | DPD (tingkat struktur) | `ketua_dpd` | `wakil_ketua_dpd` |
 | MWW (tingkat struktur) | `ketua_mww` | `wakil_ketua` |
 | MWD (tingkat struktur) | `ketua_mwd` | `wakil_ketua` |
-| Tingkat struktur lain (MWP, DSO, DSY, DPK, …) | `ketua` | `wakil_ketua` |
-| Unit Departemen / Lembaga / Biro / Badan | `ketua_departemen` / `ketua_lembaga` / `ketua_biro` / `ketua_badan` | `wakil_ketua_departemen_lembaga` |
+| Tingkat struktur lain (MWP, DPLN, MWLN, DSO, DSY, DPK, …) | `ketua` | `wakil_ketua` |
+| Unit Departemen / Lembaga / Biro / Badan | `ketua_departemen` / `ketua_lembaga` / `ketua_biro` / `ketua_badan` | `wakil_ketua_departemen` (Departemen) / `wakil_ketua_lembaga` (Lembaga); Biro dan Badan belum punya kode wakil |
 
-Ketua unit Divisi dan Komisi berkode `ketua`; kepala unit Pusat dan Lainnya umumnya `kepala`.
-**Data lama belum tentu tuntas dipindahkan**: di DPW, DPD, MWW, dan MWD masih bisa ada penempatan berkode `ketua`
-polos di samping `ketua_dpw` / `ketua_dpd` / `ketua_mww` / `ketua_mwd` — terima keduanya sebagai Ketua. Himpunan kode bisa bertambah
-(kelak `ketua_dpc`, `ketua_dpra`): perlakukan kode yang tak dikenal sebagai jabatan biasa, bukan galat.
+Ketua unit Divisi dan Komisi berkode `ketua`; kepala unit Pusat dan "Belum ditentukan" umumnya `kepala`.
+**Data lama belum tentu tuntas dipindahkan**: di DPD, MWW, dan MWD masih ada penempatan berkode `ketua` polos
+di samping `ketua_dpd` / `ketua_mww` / `ketua_mwd` — terima keduanya sebagai Ketua (di DPW pemindahannya sudah tuntas).
+
+**Daftar kode ini bukan daftar tertutup, dan sebuah kode bisa berganti.** Admin dapat menambah jabatan dan mengganti
+kodenya lewat menu Jabatan (mis. pada 11 November 2026 `wakil_ketua_departemen_lembaga` dipecah menjadi
+`wakil_ketua_departemen` dan `wakil_ketua_lembaga`; `ketua_dewan` dan `pemimpin_umum` ada di katalog tetapi belum
+dipegang siapa pun). Karena itu: perlakukan kode yang tak dikenal sebagai jabatan biasa, bukan galat; jangan
+mengeraskan daftar kode di aplikasi Anda; dan terapkan penempatan sebagai *upsert* berdasarkan `uuid` supaya kode
+yang berganti ikut tergantikan.
+
 Kunci unit pada `unit_uuid`, bukan `unit_name`: nama yang sama (mis. "Departemen Kesehatan") bisa ada
 di sayap Umum dan Muslimah sebagai dua unit berbeda.
 
 ---
 
-### 10. `GET /sync/full`
+### 12. `GET /sync/full`
 
 ```
 /sync/full?limit=1000
@@ -253,7 +334,7 @@ lalu simpan `meta.sync_token`.
 
 ---
 
-### 11. `GET /sync/changes`
+### 13. `GET /sync/changes`
 
 ```
 /sync/changes?since=2026-10-24T00:47:25%2B08:00&limit=1000
@@ -320,6 +401,8 @@ Cek `error.code`, bukan `error.message`. Batas permintaan per token (bawaan 60/m
 | Riwayat jabatan satu orang | `/placements?person=<uuid>` |
 | Periode kepengurusan satu struktur | `/terms?structure=<uuid>` |
 | Daftar seluruh struktur / pohon organisasi | `/structures` |
+| Urutan dan kelompok baku SKUO pusat (Bidang I–IX, Pusat, Badan, Biro) | `/skuos` |
+| Menampilkan foto pengurus | `photo_url` dari `/people` → `/people/{uuid}/photo` (dari backend, simpan salinan) |
 | Mengenali pengguna dari nomor WA-nya (login, verifikasi) | `/people/by-phone/{phone}` |
 | Mengenali orang dari NIK (hanya bila benar-benar perlu) | `/people/by-nik/{nik}` |
 | Membangun lalu menjaga salinan lokal | `/sync/full` sekali, lalu `/sync/changes` tiap 15–60 menit |

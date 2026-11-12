@@ -129,6 +129,37 @@ class Api {
         $this->respond($status, ['error' => ['code' => $code, 'message' => $message]]);
     }
 
+    // Mengirim satu berkas foto JPEG apa adanya (bukan JSON). ETag + Last-Modified diturunkan dari waktu
+    // ubah dan ukuran berkas, jadi konsumen yang mengirim If-None-Match mendapat 304 tanpa badan.
+    // Cache-Control: private, no-cache -> boleh disimpan, tetapi wajib divalidasi ulang; foto pengurus
+    // tidak boleh tersangkut di cache bersama (proxy/CDN) yang tidak mengenal token.
+    // Permintaan tetap tercatat di api_request_log dan dihitung ke batas per menit, seperti endpoint lain.
+    public function image($file, $mtime) {
+        $size = (int) filesize($file);
+        $etag = '"' . dechex((int) $mtime) . '-' . dechex($size) . '"';
+
+        header('Content-Type: image/jpeg');
+        header('ETag: ' . $etag);
+        header('Last-Modified: ' . gmdate('D, d M Y H:i:s', (int) $mtime) . ' GMT');
+        header('Cache-Control: private, no-cache');
+
+        foreach (explode(',', $_SERVER['HTTP_IF_NONE_MATCH'] ?? '') as $candidate) {
+            $candidate = trim($candidate);
+            if (strncmp($candidate, 'W/', 2) === 0) $candidate = substr($candidate, 2);
+            if ($candidate === $etag) {
+                http_response_code(304);
+                $this->logRequest(304, null);
+                exit;
+            }
+        }
+
+        http_response_code(200);
+        header('Content-Length: ' . $size);
+        $this->logRequest(200, ['foto']); // satu "baris" untuk kolom row_count
+        readfile($file);
+        exit;
+    }
+
     private function respond($status, array $payload) {
         http_response_code($status);
         $body = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

@@ -134,7 +134,7 @@ Token membawa daftar izin. Endpoint yang butuh izin yang tidak dimiliki menjawab
 | Izin | Membuka |
 |---|---|
 | `structures:read` | `/structures`, `/skuos`, `/terms` |
-| `people:read` | `/people`, `/people/{uuid}`, `/people/by-phone/{phone}` |
+| `people:read` | `/people`, `/people/{uuid}`, `/people/{uuid}/photo`, `/people/by-phone/{phone}` |
 | `placements:read` | `/placements` |
 | `people:nik` | `/people/by-nik/{nik}` |
 
@@ -251,8 +251,9 @@ atau menghapus jenis (halaman Unit Organisasi). Nilai bawaan: `departemen`, `lem
 tidak berubah selama jenis itu ada, tetapi konsumen sebaiknya tidak menganggap daftarnya tertutup.
 
 Endpoint ini menyajikan daftar induk katalog SKUO sayap umum, bukan susunan aktual suatu periode.
-Untuk melihat unit yang terpasang pada struktur/periode dan Bidang aktualnya, gunakan `/placements`
-(`unit_uuid` dan `unit_group`).
+Yang tercantum hanya unit yang termasuk daftar baku SKUO pusat: unit lain di katalog (mis. Komisi) dan unit sayap
+Muslimah tidak ada di sini. Untuk melihat unit yang terpasang pada struktur/periode dan Bidang aktualnya, gunakan
+`/placements` (`unit_uuid` dan `unit_group`).
 
 ### `GET /terms`
 
@@ -282,6 +283,35 @@ NIK tidak pernah ada di endpoint ini. Lihat [bagian 11](#11-nik-aturan-khusus).
 ### `GET /people/{uuid}`
 
 Satu orang.
+
+### `GET /people/{uuid}/photo`
+
+Foto profil orang itu: **berkas gambar** (`Content-Type: image/jpeg`, persegi 512×512), bukan JSON. Izin dan
+lingkup sama dengan `/people/{uuid}`. Pakai alamat dari field `photo_url`, jangan menyusunnya sendiri.
+
+- **Foto perempuan tidak diberikan lewat API.** Orang dengan `gender: "P"` selalu `photo_url: null` dan endpoint
+  fotonya menjawab `404`, walau DIWAN menyimpan fotonya. Untuk konsumen, ini tak berbeda dengan "tidak punya foto".
+- `404 not_found` bila orang itu tidak punya foto, perempuan, tidak ada, terhapus, atau di luar lingkup token. Semuanya
+  sengaja tak dibedakan, sama seperti objek di luar subtree pada endpoint lain.
+- Wajib membawa token, jadi **tidak bisa dipakai langsung di `<img src>` browser**. Unduh dari backend aplikasi
+  Anda, simpan salinan, lalu sajikan dari aplikasi Anda sendiri.
+- Respons membawa `ETag` dan `Last-Modified`. Kirim `ETag` kembali sebagai `If-None-Match` untuk mendapat `304`
+  tanpa isi. Cara yang lebih hemat lagi: bandingkan `photo_updated_at` di data orang dengan yang Anda simpan,
+  dan unduh hanya yang berbeda.
+- Foto tidak pernah ikut di dalam JSON `/people`, `/sync/full`, atau `/sync/changes` — hanya `photo_url` dan
+  `photo_updated_at`.
+
+**Menjaga foto tetap mutakhir bersama sinkronisasi.** Mengganti atau menghapus foto di DIWAN menyentuh
+`updated_at` orangnya, jadi orang itu muncul lagi di `/sync/changes`. Untuk setiap orang di `people`:
+
+| `photo_url` | Yang dilakukan |
+|---|---|
+| `null` | Hapus foto lokal bila ada |
+| terisi, `photo_updated_at` sama dengan yang tersimpan | Tidak ada |
+| terisi, `photo_updated_at` baru atau belum pernah diunduh | Unduh ulang dan simpan `photo_updated_at`-nya |
+
+Setiap foto adalah satu permintaan dan dihitung ke batas per menit token ([bagian 10](#10-batas-permintaan-rate-limit)).
+Tarikan awal untuk semua orang berfoto akan memakan beberapa menit pada batas 60/menit; hormati `Retry-After`.
 
 ### `GET /people/by-nik/{nik}`
 
@@ -314,7 +344,7 @@ API memisahkan data orang dari relasi jabatan.
 | Lahir | 1993-05-30 |
 | Domisili | Kota Kendari, Sulawesi Tenggara |
 | Status | active |
-| Penempatan aktif | Ketua Departemen di DPW Sulawesi Tenggara; Ketua Departemen di DPP Dewan Pimpinan Pusat |
+| Penempatan aktif | Ketua Departemen di DPW Sulawesi Tenggara; Ketua Departemen di DPP Wahdah Islamiyah |
 
 Request pertama:
 
@@ -340,12 +370,14 @@ Response JSON:
     "city": "Kota Kendari",
     "province": "Sulawesi Tenggara",
     "status": "active",
-    "updated_at": "2026-11-06T16:33:42+08:00",
+    "photo_url": null,
+    "photo_updated_at": null,
+    "updated_at": "2026-10-31T06:59:09+08:00",
     "deleted": false
   },
   "meta": {
     "count": 1,
-    "server_time": "2026-11-07T10:40:35+08:00"
+    "server_time": "2026-11-12T15:09:19+08:00"
   }
 }
 ```
@@ -369,8 +401,8 @@ Response JSON:
       "structure_uuid": "e47d81cd-f4c8-489b-a351-e0c2d7b9ce27",
       "structure": "DPW Sulawesi Tenggara",
       "term_uuid": "66e27939-bb32-4df0-879f-a0dedded6145",
-      "term_name": "2021-2026",
-      "governance_period_uuid": "4a0eaf24-d296-11f1-a308-525400dcd674",
+      "term_name": "2022-2027",
+      "governance_period_uuid": "c08e7fc0-ddb0-11f1-b780-525400dcd674",
       "term_is_current": true,
       "position_code": "ketua_departemen",
       "position_name": "Ketua Departemen",
@@ -385,7 +417,7 @@ Response JSON:
       "start_date": null,
       "end_date": null,
       "end_reason": null,
-      "updated_at": "2026-11-05T13:43:49+08:00",
+      "updated_at": "2026-11-05T08:10:59+08:00",
       "deleted": false
     },
     {
@@ -393,7 +425,7 @@ Response JSON:
       "person_uuid": "b757e8bf-ff94-4f43-a6a9-d21dd197874e",
       "person_name": "Muhammad Adhan, S.AP., M.Pd",
       "structure_uuid": "f8641bc8-20fc-49db-a62c-8bf981d84b47",
-      "structure": "DPP Dewan Pimpinan Pusat",
+      "structure": "DPP Wahdah Islamiyah",
       "term_uuid": "d0665b49-03b2-4650-81ce-6c2e61b377fb",
       "term_name": "2026-2031",
       "governance_period_uuid": "4a0eb151-d296-11f1-a308-525400dcd674",
@@ -411,13 +443,13 @@ Response JSON:
       "start_date": null,
       "end_date": null,
       "end_reason": null,
-      "updated_at": "2026-11-05T13:43:49+08:00",
+      "updated_at": "2026-11-05T08:10:59+08:00",
       "deleted": false
     }
   ],
   "meta": {
     "count": 2,
-    "server_time": "2026-11-07T10:40:35+08:00",
+    "server_time": "2026-11-12T15:09:19+08:00",
     "next_cursor": null
   }
 }
@@ -450,7 +482,7 @@ tanpa perlu tahu nama periodenya.
 > di katalog dan dipegang di tingkat struktur (`unit_uuid` kosong) adalah Pengurus Inti — termasuk
 > Wakil Ketua di semua tingkat (`wakil_ketua`, `wakil_ketua_dpw`, `wakil_ketua_dpd`, `wakil_ketua_bidang`).
 > Jabatan di dalam unit (Departemen/Lembaga/Biro/Badan, mis. `ketua_biro`,
-> `wakil_ketua_departemen_lembaga`) tidak pernah inti, walau kodenya (mis. `ketua` di unit Divisi)
+> `wakil_ketua_departemen`) tidak pernah inti, walau kodenya (mis. `ketua` di unit Divisi)
 > bertanda inti di katalog.
 
 ### `GET /sync/full` dan `GET /sync/changes`
@@ -483,6 +515,11 @@ Field bertanda *nullable* bisa bernilai `null`.
 `level` dan `tier` menyatakan hal yang sama dari dua sisi: `tier` nyaman untuk perbandingan
 (`tier >= 2`), `level` nyaman untuk ditampilkan. Sayap Muslimah punya tier yang setara dengan sayap
 umum — `MWW` dan `DPW` sama-sama tier 2.
+
+Induk tiap tingkat (per data sekarang): `DPW` dan `DPLN` → `DPP`; `DPD` → `DPW`; `MWP` → `DPP`; `MWW` dan
+`MWLN` → `MWP`; `MWD` → `MWW`. **`MWLN` (Muslimah Luar Negeri) berinduk MWP, bukan MWW**, dan `DPLN` berinduk
+DPP, bukan DPW — keduanya tier 2 tetapi tidak berada di bawah wilayah mana pun. Ikuti `parent_uuid`; jangan
+menurunkan induk dari `level` atau `tier`.
 
 ### Periode (`terms`)
 
@@ -521,6 +558,8 @@ Pakai `is_current`, bukan perbandingan tanggal: periode bisa diperpanjang melewa
 | `city` | string \| null | Kota/kabupaten domisili |
 | `province` | string \| null | Provinsi domisili |
 | `status` | enum | `active` `inactive` `deceased` |
+| `photo_url` | string \| null | Alamat `GET /people/{uuid}/photo` (butuh token); `null` bila tidak punya foto **atau perempuan** (foto perempuan tidak diberikan lewat API) |
+| `photo_updated_at` | datetime \| null | Kapan **berkas foto** terakhir berubah; `null` dalam kondisi yang sama dengan `photo_url` |
 | `updated_at` | datetime | |
 | `deleted` | bool | |
 
@@ -528,6 +567,12 @@ Nama disimpan terpisah supaya Anda tidak perlu memecah `full_name` sendiri — p
 jebakan (`"M."` di data Indonesia hampir selalu "Muhammad", bukan "Magister").
 
 **`nik` tidak ada di sini, dan tidak akan pernah ada.**
+
+**Tidak setiap orang punya penempatan.** `/people` memuat semua orang yang tercatat, termasuk yang belum (atau
+tidak lagi) punya penempatan — mis. pendaftar yang diterima tanpa penempatan, atau orang yang baru dimasukkan dan
+belum ditempatkan (sekitar sepersepuluh data). Di `/placements?person=<uuid>` mereka kosong; itu data yang sah,
+bukan galat sinkronisasi. Token berlingkup subtree tidak melihat mereka sama sekali (lihat
+[bagian 4](#4-izin-scope-dan-lingkup-wilayah)).
 
 ### Penempatan (`placements`)
 
@@ -559,7 +604,15 @@ jebakan (`"M."` di data Indonesia hampir selalu "Muhammad", bukan "Magister").
 | `deleted` | bool | |
 
 Pakai `position_code` untuk percabangan logika dan `position_name` untuk ditampilkan. Nama bisa
-diperhalus redaksinya; kodenya tidak berubah.
+diperhalus redaksinya. Kode jarang berganti, tetapi **bisa**: admin dapat menambah jabatan dan mengganti kodenya
+lewat menu Jabatan (lihat catatan di bawah tabel).
+
+`person_name`, `structure`, `term_name`, `unit_name`, `unit_abbr`, dan `unit_group` adalah salinan **untuk
+tampilan** pada saat baris ditulis. Mengganti nama sebuah struktur, orang, atau unit tidak membuat penempatannya
+dikirim ulang; nama yang berlaku ada di `/structures` dan `/people` (kunci: `structure_uuid`, `person_uuid`).
+Sebaliknya, perubahan pada jabatan (`position_code`, `position_name`, `order`, `is_core`) **ikut dikirim ulang**:
+setiap kali admin mengubah kode, nama, urutan, atau tanda inti sebuah jabatan, semua penempatan hidup jabatan itu
+muncul lagi di `/sync/changes` dengan nilai barunya.
 
 Beberapa jabatan dibedakan menurut tempatnya dan punya kode sendiri:
 
@@ -568,17 +621,24 @@ Beberapa jabatan dibedakan menurut tempatnya dan punya kode sendiri:
 | `ketua` di DPW / DPD | `ketua_dpw` / `ketua_dpd` |
 | `ketua` di MWW / MWD | `ketua_mww` / `ketua_mwd` |
 | `wakil_ketua` di DPW / DPD (tingkat struktur) | `wakil_ketua_dpw` / `wakil_ketua_dpd` |
-| `wakil_ketua` di dalam unit | `wakil_ketua_departemen_lembaga` |
+| `wakil_ketua` di dalam unit Departemen / Lembaga | `wakil_ketua_departemen` / `wakil_ketua_lembaga` (semula satu kode, `wakil_ketua_departemen_lembaga`) |
 | `ketua` di Pengurus Inti DPP (tanpa unit) | `ketua_bidang` |
 | `wakil_ketua` di Pengurus Inti DPP (tanpa unit) | `wakil_ketua_bidang` |
 | `ketua` di dalam unit berjenis Departemen / Lembaga / Biro / Badan | `ketua_departemen` / `ketua_lembaga` / `ketua_biro` / `ketua_badan` |
 
-`ketua` tetap untuk tingkat struktur lain (MWP, DSO, DSY, DPK, ...) dan untuk ketua unit berjenis Divisi dan
-Komisi; kepala unit berjenis Pusat dan Lainnya umumnya berkode `kepala`; `wakil_ketua` tetap untuk Wakil Ketua tingkat
-struktur selain DPW/DPD/DPP (mis. MWP, MWW, MWD). **Pemindahan data lama belum tentu tuntas**: di DPW, DPD, MWW, dan MWD masih bisa ada
-penempatan berkode `ketua` polos di samping `ketua_dpw` / `ketua_dpd` / `ketua_mww` / `ketua_mwd`; terima keduanya sebagai Ketua.
-Himpunan kode jabatan bisa bertambah (kelak `ketua_dpc`,
-`ketua_dpra`), jadi perlakukan kode yang tak dikenal sebagai jabatan biasa, jangan sebagai galat.
+`ketua` tetap untuk tingkat struktur lain (MWP, DPLN, MWLN, DSO, DSY, DPK, ...) dan untuk ketua unit berjenis
+Divisi dan Komisi; kepala unit berjenis Pusat dan "Belum ditentukan" umumnya berkode `kepala`; `wakil_ketua` tetap
+untuk Wakil Ketua tingkat struktur selain DPW/DPD/DPP (mis. MWP, MWW, MWD). Wakil Ketua unit Biro dan Badan belum
+punya kode khusus. **Pemindahan data lama belum tentu tuntas**: di DPD, MWW, dan MWD masih ada penempatan berkode
+`ketua` polos di samping `ketua_dpd` / `ketua_mww` / `ketua_mwd`; terima keduanya sebagai Ketua (di DPW
+pemindahannya sudah tuntas).
+
+**Daftar kode ini bukan daftar tertutup, dan sebuah kode bisa berganti.** Pada 11 November 2026, misalnya,
+`wakil_ketua_departemen_lembaga` dipecah menjadi `wakil_ketua_departemen` dan `wakil_ketua_lembaga`, sementara
+`ketua_dewan` dan `pemimpin_umum` ditambahkan ke katalog tanpa dipegang siapa pun. Kelak akan ada `ketua_dpc` dan
+`ketua_dpra`. Karena itu: perlakukan kode yang tak dikenal sebagai jabatan biasa, jangan sebagai galat; jangan
+mengeraskan daftar kode di aplikasi Anda; dan terapkan penempatan sebagai *upsert* berdasarkan `uuid` supaya kode yang
+berganti ikut tergantikan.
 
 Satu orang bisa punya beberapa penempatan sekaligus (rangkap jabatan di beberapa struktur). Urutkan
 dengan `order` untuk menampilkan susunan pengurus sesuai hierarki jabatan.
@@ -996,6 +1056,21 @@ Sebelum menyebut integrasi Anda siap produksi:
 API ini berversi di URL (`/api/v1/`). Penambahan field baru bisa terjadi kapan saja dan **bukan**
 perubahan yang merusak — aplikasi Anda harus mengabaikan field yang tidak dikenalnya, bukan
 menolaknya. Perubahan yang merusak akan terbit sebagai `/api/v2/`.
+
+### Catatan perubahan data (terbaru di atas)
+
+Bentuk respons tidak berubah, tetapi **isi** beberapa field berubah mengikuti data di DIWAN. Baris yang
+terdampak dikirim lewat `/sync/changes` seperti pembaruan biasa (uuid-nya tetap; yang berganti hanya nilainya).
+
+| Tanggal | Perubahan | Yang perlu Anda lakukan |
+|---|---|---|
+| 2026-11-12 | Penempatan Ketua MWW dan Ketua MWD berganti `position_code` dari `ketua` menjadi `ketua_mww` / `ketua_mwd` (195 penempatan saat itu). | Terima `ketua_mww`/`ketua_mwd` sebagai Ketua; jangan hanya mencocokkan `ketua`. |
+| 2026-11-12 | Mengubah kode, nama, urutan, atau tanda inti sebuah jabatan kini membuat penempatan jabatan itu dikirim ulang lewat `/sync/changes`. Sebelumnya tidak dikirim, sehingga perubahan pada hari-hari sebelumnya (baris di bawah) mungkin belum sampai ke salinan lokal Anda. | Bila salinan Anda terakhir menyinkron sebelum tanggal ini, tarik ulang penempatan (`/sync/full`) untuk memastikan kode jabatannya mutakhir. |
+| 2026-11-11 | `wakil_ketua_departemen_lembaga` dipecah menjadi `wakil_ketua_departemen` (27 penempatan) dan `wakil_ketua_lembaga`; jabatan `ketua_dewan` dan `pemimpin_umum` ditambahkan ke katalog; urutan (`order`) beberapa jabatan berubah. | Jangan mengeraskan daftar kode; lihat catatan di bagian 7. |
+| 2026-11-11 | Jenis unit `lainnya` diganti `belum` ("Belum ditentukan"); jenis unit kini daftar yang dikelola admin, bukan daftar tetap. Terlihat pada `kind` di `/skuos`. | Perlakukan `kind` yang tak dikenal sebagai jenis biasa. |
+| 2026-11-09 | Tingkat baru `MWLN` (Muslimah Luar Negeri): tier 2, sayap Muslimah, berinduk MWP. | Ikuti `parent_uuid`; jangan menurunkan induk dari `level`. |
+| 2026-11-07 | Endpoint `GET /skuos` ditambahkan. | – |
+| 2026-11-05 | Kode jabatan dibedakan menurut tempat: `ketua_dpw`, `ketua_dpd`, `wakil_ketua_dpw`, `wakil_ketua_dpd`, `ketua_bidang`, `wakil_ketua_bidang`, dan ketua unit menurut jenisnya (`ketua_departemen` dst.). | Lihat tabel "Dulu / Kini" di bagian 7. |
 
 Untuk permintaan izin tambahan, penyesuaian batas per menit, atau laporan masalah, hubungi Super
 Admin DIWAN.
