@@ -163,8 +163,17 @@ class RegistrationModel {
             throw new RuntimeException('Nomor WhatsApp ini sudah terdaftar. Anda tidak perlu mendaftar lagi; hubungi admin struktur jika ada data atau penempatan yang perlu diperbarui.');
         }
 
-        // Cegah pengajuan kedua dengan nomor yang sama, meskipun nama yang diisi berbeda.
-        $samePhone = $this->db->prepare("SELECT id FROM registration_requests WHERE phone = :phone AND status IN ('submitted','verified','activated') LIMIT 1");
+        // Cegah pengajuan kedua dengan nomor yang sama, meskipun nama yang diisi berbeda. Hanya pengajuan yang MASIH berlaku yang menahan nomor:
+        // yang menunggu atau diverifikasi, dan yang Aktif selama orang hasilnya masih ada. Pengajuan Aktif tidak bisa dihapus dari daftar, jadi
+        // bila orangnya sudah dihapus ia tak boleh mengunci nomor itu selamanya (orang yang dipulihkan menahannya lagi). Pengajuan Ditolak
+        // dan yang dihapus admin memang tidak menahan.
+        $samePhone = $this->db->prepare("
+            SELECT r.id
+            FROM registration_requests r
+            LEFT JOIN people p ON p.id = r.resulting_person_id AND p.deleted_at IS NULL
+            WHERE r.phone = :phone
+              AND (r.status IN ('submitted','verified') OR (r.status = 'activated' AND p.id IS NOT NULL))
+            LIMIT 1");
         $samePhone->execute([':phone' => $phone]);
         if ($samePhone->fetchColumn()) {
             throw new RuntimeException('Nomor WhatsApp ini sudah pernah diajukan. Silakan hubungi admin struktur tujuan untuk memeriksa pengajuan Anda.');

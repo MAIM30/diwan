@@ -256,6 +256,57 @@ $pdo->prepare("INSERT INTO people (uuid, name, name_normalized, gender, phone, s
 $ditolak = false; try { $reg->activate($rid2, null, ['term_id' => (int) $term['id'], 'structure_id' => $dpp, 'position_id' => $pos]); } catch (RuntimeException $e) { $ditolak = stripos($e->getMessage(), 'sudah dipakai') !== false; }
 ok($ditolak && $reg->findById($rid2)['status'] === 'verified', '9: nomor yang sudah dipakai orang lain tetap menggagalkan aktivasi, pengajuan tetap Diverifikasi');
 
+// ---------- 10. Nomor tidak terkunci oleh pengajuan yang sudah tidak berlaku ----------
+// Pengecekan "nomor ini sudah pernah diajukan" hanya boleh menahan pengajuan yang MASIH berlaku: yang menunggu, yang diverifikasi, dan yang
+// Aktif dengan orang yang masih ada. Pengajuan Aktif yang orangnya sudah dihapus tak boleh mengunci nomornya selamanya (pengajuan Aktif
+// sendiri tak bisa dihapus dari daftar, jadi admin tak punya jalan keluar).
+function jumlahReq($phone) { global $pdo; $s = $pdo->prepare("SELECT COUNT(*) FROM registration_requests WHERE phone = ?"); $s->execute([Text::normalizePhone($phone)]); return (int) $s->fetchColumn(); }
+function aktifkan($phone, $name, $personId = null) {
+    global $reg, $term, $dpp, $pos;
+    kirim($dpp, $phone, $name);
+    $rid = (int) req($phone)['id'];
+    $reg->markVerified($rid, 'uji');
+    return [$rid, $reg->activate($rid, $personId, ['term_id' => (int) $term['id'], 'structure_id' => $dpp, 'position_id' => $pos, 'is_primary' => 1])];
+}
+sesi($aSuper, ['super_admin']);
+
+// 10a. Pengajuan Diajukan menahan nomornya; setelah admin menghapusnya, nomor itu boleh mendaftar lagi.
+$nama10a = 'Hapus Ulang Uji' . getmypid();
+kirim($dpp, '08111000621', $nama10a);
+$rid10a = (int) req('08111000621')['id'];
+[$to] = kirim($dpp, '08111000621', $nama10a);
+ok($to === 'daftar' && stripos(flashText(), 'sudah pernah diajukan') !== false && jumlahReq('08111000621') === 1, '10a: pengajuan yang masih menunggu menahan nomornya', (string) $to . ' ' . flashText());
+ok($reg->delete($rid10a) === true && jumlahReq('08111000621') === 0, '10a: admin menghapus pengajuan ganda');
+[$to, $c] = kirim($dpp, '08111000621', $nama10a);
+ok($to === null && outcome($c) === 'review' && jumlahReq('08111000621') === 1, '10a: sesudah dihapus, nomor yang sama bisa mendaftar lagi', (string) $to . ' ' . flashText());
+
+// 10b. Pengajuan Aktif dengan orang yang MASIH ada tetap menahan nomornya.
+[$rid10b, $res10b] = aktifkan('08111000622', 'Aktif Masih Ada Uji' . getmypid());
+[$to] = kirim($dpp, '08111000622', 'Aktif Masih Ada Uji' . getmypid());
+ok($to === 'daftar' && jumlahReq('08111000622') === 1 && flashText() !== '', '10b: nomor milik orang yang masih ada tidak bisa mendaftar lagi', (string) $to . ' ' . flashText());
+
+// 10c. Orangnya dihapus -> pengajuan Aktif lama tak lagi mengunci nomornya.
+// Sama dengan isi PersonModel::softDelete (orang + penempatannya diberi deleted_at); dipanggil langsung karena softDelete membuka transaksinya sendiri.
+$pdo->exec("UPDATE placements SET deleted_at = NOW(3) WHERE person_id = " . (int) $res10b['person_id'] . " AND deleted_at IS NULL");
+$pdo->exec("UPDATE people SET deleted_at = NOW(3) WHERE id = " . (int) $res10b['person_id']);
+ok($one("SELECT deleted_at FROM people WHERE id = " . (int) $res10b['person_id']) !== null, '10c: orang hasil pengajuan Aktif sudah dihapus (uji prasyarat)');
+ok($reg->findById($rid10b)['status'] === 'activated', '10c: pengajuan Aktif lama tetap ada sebagai catatan (tidak ikut terhapus)');
+[$to, $c] = kirim($dpp, '08111000622', 'Aktif Masih Ada Uji' . getmypid());
+ok($to === null && outcome($c) === 'review' && jumlahReq('08111000622') === 2, '10c: nomor dari orang yang sudah dihapus bisa mendaftar lagi; pengajuan barunya menunggu', (string) $to . ' ' . flashText());
+[$to] = kirim($dpp, '08111000622', 'Aktif Masih Ada Uji' . getmypid());
+ok($to === 'daftar' && jumlahReq('08111000622') === 2, '10c: pengajuan barunya sendiri kembali menahan nomor itu (tidak bisa dobel)', (string) $to);
+
+// 10d. Pengajuan Aktif yang ditautkan verifikator ke orang yang SUDAH ada (nomornya tak tercatat di orang itu) dan orangnya masih ada:
+// tetap menahan, karena itulah satu-satunya catatan bahwa nomor ini sudah diproses.
+$namaD = 'Orang Tanpa Nomor Uji' . getmypid();
+$pdo->prepare("INSERT INTO people (uuid, name, name_normalized, gender, phone, status, portal_enabled, home_structure_id) VALUES (?, ?, ?, 'L', NULL, 'active', 1, ?)")
+    ->execute([Uuid::v4(), $namaD, Text::normalizeBase($namaD), $dpp]);
+$orangD = (int) $pdo->lastInsertId();
+[$ridD] = aktifkan('08111000623', $namaD, $orangD);
+ok($reg->findById($ridD)['status'] === 'activated' && $one("SELECT phone FROM people WHERE id = $orangD") === null, '10d: prasyarat: pengajuan Aktif tertaut ke orang yang nomornya kosong');
+[$to] = kirim($dpp, '08111000623', $namaD);
+ok($to === 'daftar' && stripos(flashText(), 'sudah pernah diajukan') !== false && jumlahReq('08111000623') === 1, '10d: orang masih ada -> nomor tetap tidak bisa mendaftar dobel', (string) $to . ' ' . flashText());
+
 $pdo->rollBack();
 ok(!req('08111000611') && (int) $one("SELECT COUNT(*) FROM people WHERE deleted_at IS NULL") === $orangSebelum && !$one("SELECT COUNT(*) FROM settings WHERE `key` = 'verval_pengajuan'"),
    'data uji tidak tersisa setelah rollback (pengajuan, orang, pengaturan)');
