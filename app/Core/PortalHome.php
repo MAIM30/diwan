@@ -5,6 +5,8 @@
 // (tests/portal_beranda_test.php). Masukannya baris dari MemberModel::history() / MemberModel::life(); MemberModel
 // sudah dimuat oleh pemanggilnya (controller memuatnya lewat $this->model()).
 
+require_once __DIR__ . '/StructureLevels.php';
+
 class PortalHome {
     // Batas tampil di Beranda: jabatan lain, rekan, dan baris "Perjalanan saya" (sisanya di halaman Susunan / Riwayat).
     const OTHERS_MAX = 4;
@@ -36,7 +38,7 @@ class PortalHome {
     // "Dewan Pengawas Keuangan") cukup "DPP", atau nama itu saja untuk dewan lainnya.
     public static function structureLabel($level, $name) {
         $level = trim((string) $level); $name = trim((string) $name);
-        if (strpos($name, 'Dewan ') === 0) return $level === 'DPP' ? 'DPP' : $name;
+        if (strpos($name, 'Dewan ') === 0) return StructureLevels::isRoot($level) ? $level : $name;
         return trim($level . ' ' . $name);
     }
 

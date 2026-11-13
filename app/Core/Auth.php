@@ -78,7 +78,7 @@ class Auth {
     }
 
     // Boleh menyalakan/mematikan verval pengajuan (RegistrationModel::vervalActive): Super Admin, atau admin_struktur yang lingkupnya berpangkal
-    // di DPP atau MWP (struktur pusat). Dibaca dari account_roles, bukan sesi: sesi hanya menyimpan GABUNGAN lingkup semua peran akun, jadi tak
+    // di struktur pusat (tingkat bawaan sistem: DPP dan MWP, dikenali dari structure_levels.is_system, jadi singkatannya boleh diganti). Dibaca dari account_roles, bukan sesi: sesi hanya menyimpan GABUNGAN lingkup semua peran akun, jadi tak
     // bisa membedakan "admin DPW + verifikator DPP" dari "admin DPP". Pengaturannya berlaku untuk seluruh pendaftaran, bukan per struktur.
     public static function canManageVerval() {
         if (self::isSuperAdmin()) return true;
@@ -86,7 +86,8 @@ class Auth {
         $stmt = Database::getInstance()->getConnection()->prepare("
             SELECT COUNT(*) FROM account_roles ar
             JOIN structures s ON s.id = ar.scope_structure_id AND s.deleted_at IS NULL
-            WHERE ar.account_id = :a AND ar.role = 'admin_struktur' AND s.level IN ('DPP', 'MWP')
+            JOIN structure_levels sl ON sl.code = s.level AND sl.is_system = 1
+            WHERE ar.account_id = :a AND ar.role = 'admin_struktur'
         ");
         $stmt->execute([':a' => (int) self::id()]);
         return (int) $stmt->fetchColumn() > 0;

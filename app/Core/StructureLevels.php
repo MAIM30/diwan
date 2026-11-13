@@ -5,8 +5,10 @@
 // nama lengkap tingkat, kelompoknya (Umum / Muslimah / Dewan), tier-nya (setingkat Pusat / Wilayah / Daerah / Cabang / Ranting), dan induk
 // yang lazim (atau wajib) bagi tingkat itu.
 //
-// Kode tingkat tetap selamanya (dipakai structures.level, ?lv= di alamat halaman, dan API); yang bisa berubah adalah nama, kelompok, tier,
-// induk, urutan, dan status aktif. structures.wing dan structures.tier adalah SALINAN dari kelompok dan tier tingkatnya (StructureModel
+// Kode tingkat (singkatan) adalah kunci yang dipakai structures.level, ?lv= di alamat halaman, dan API. Super Admin boleh menggantinya
+// (StructureLevelModel::save; foreign key ON UPDATE CASCADE, migrasi 028), yang mengubah `level` semua struktur bertingkat itu. Karena itu kode
+// tak boleh ditulis sebagai literal untuk keputusan logika: pucuk nasional dikenali dari penanda is_system (isRoot), bukan dari 'DPP'.
+// Nama, kelompok, tier, induk, urutan, dan status aktif juga bisa diubah. structures.wing dan structures.tier adalah SALINAN dari kelompok dan tier tingkatnya (StructureModel
 // menuliskannya saat struktur disimpan, dan StructureLevelModel menyelaraskannya bila tingkatnya diubah).
 //
 // Dibaca sekali per permintaan lalu disimpan; panggil reset() setelah mengubah daftar. Tanpa basis data (uji murni) atau bila tabelnya belum
@@ -89,6 +91,12 @@ class StructureLevels {
         $p = (string) (self::find($code)['parent_code'] ?? '');
         return $p !== '' ? $p : null;
     }
+
+    // Tingkat bawaan sistem (DPP dan MWP): pucuk nasional. Dikenali dari penanda is_system, bukan dari kodenya, sehingga singkatannya boleh diganti.
+    public static function isSystem($code) { return !empty(self::find($code)['is_system']); }
+
+    // Pucuk nasional Umum (DPP): bawaan sistem dan tanpa induk tingkat. Dipakai untuk menyebut strukturnya dengan singkatan, bukan namanya.
+    public static function isRoot($code) { return self::isSystem($code) && self::parentOf($code) === null; }
 
     // Induk yang WAJIB (struktur tingkat ini hanya boleh berinduk tingkat itu), atau null bila tak diwajibkan.
     public static function requiredParent($code) {

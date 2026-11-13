@@ -47,6 +47,12 @@ berdasarkan nama serta tanggal yang sama. Migrasi 016 tidak menghapus atau mengg
 4. Penanda berhasil: `SELECT COUNT(*) FROM structure_levels;` = 15 dan `SELECT data_type FROM information_schema.columns
    WHERE table_schema = 'db_pengurus' AND table_name = 'structures' AND column_name = 'level';` = `varchar`.
 
+**Migrasi 028 (singkatan tingkat bisa diganti)** hanya mengubah aturan foreign key `fk_structures_level` menjadi `ON UPDATE CASCADE`; tak ada baris
+yang berubah, dan aman diulang. Tanpanya, tombol Simpan pada Ubah Tingkat yang mengganti singkatan menolak dengan pesan "jalankan migrasi 028".
+Penanda berhasil: `SELECT update_rule FROM information_schema.referential_constraints WHERE constraint_schema = 'db_pengurus'
+AND constraint_name = 'fk_structures_level';` = `CASCADE`. **Mengganti singkatan sebuah tingkat itu sendiri** mengubah `level` semua struktur
+bertingkat itu (juga di API): lakukan dengan sadar, dan kabari pengelola aplikasi konsumen sebelumnya.
+
 ## C. Perubahan DATA (bukan skema — isi tabel: orang, penempatan, dll.)
 
 **Hati-hati:** server sekarang LIVE. Kalau ada yang sudah mendaftar/mengubah data lewat Portal

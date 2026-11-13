@@ -1,7 +1,7 @@
 <?php
 // PATH LOKASI FILE: database/027_tingkat_struktur.php
 // Migrasi 027: tingkat struktur (DPP, DPW, DPLN, ..., MWP, MWW, ..., DSO, DSY, DPK) menjadi daftar yang dikelola, bukan ENUM yang dipatri di kolom.
-//   1. Tabel structure_levels: kode (tetap), nama lengkap, kelompok (umum / musl / dewan), tier (setingkat Pusat..Ranting), induk yang lazim
+//   1. Tabel structure_levels: kode (kunci yang tersimpan di structures.level; bisa diganti sejak migrasi 028), nama lengkap, kelompok (umum / musl / dewan), tier (setingkat Pusat..Ranting), induk yang lazim
 //      atau wajib, sebutan untuk nama admin, urutan, aktif, dan penanda bawaan sistem (DPP dan MWP, dikenal langsung oleh kode akses).
 //   2. structures.level: ENUM -> VARCHAR(10) dengan foreign key ke structure_levels.code. Nilai lama tetap utuh sebagai teks; tingkat yang
 //      masih dipakai struktur tak bisa dihapus dari daftar.

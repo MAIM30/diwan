@@ -1,8 +1,9 @@
 <?php
 // PATH LOKASI FILE: app/Models/StructureLevelModel.php
-// Pengelolaan daftar tingkat struktur (tabel structure_levels, migrasi 027): membuat, mengubah, menonaktifkan, dan menghapus tingkat.
-// Pembacaannya lewat StructureLevels (app/Core). Struktur yang memakai sebuah tingkat menyimpan kodenya di structures.level, serta SALINAN
-// kelompok (wing) dan tier tingkat itu; model ini menyelaraskan salinan itu bila kelompok atau tier sebuah tingkat diubah.
+// Pengelolaan daftar tingkat struktur (tabel structure_levels, migrasi 027): membuat, mengubah (termasuk mengganti singkatan/kodenya, migrasi 028),
+// menonaktifkan, dan menghapus tingkat. Pembacaannya lewat StructureLevels (app/Core). Struktur yang memakai sebuah tingkat menyimpan kodenya di
+// structures.level, serta SALINAN kelompok (wing) dan tier tingkat itu; model ini menyelaraskan salinan itu bila kelompok atau tier sebuah tingkat
+// diubah, dan memperbarui kodenya bila singkatannya diganti.
 
 require_once ROOT_DIR . '/app/Core/StructureLevels.php';
 
@@ -26,21 +27,45 @@ class StructureLevelModel {
         return $out;
     }
 
-    // $code null = tingkat baru (kodenya dipilih sekali ini lalu TIDAK berubah lagi); selain itu mengubah nama, kelompok, tier, induk,
-    // sebutan, urutan, dan status aktif. Tingkat nonaktif tak ditawarkan untuk struktur baru, tetapi struktur yang sudah bertingkat itu tetap
-    // utuh. $data: code (hanya untuk yang baru), name, grp, tier, parent_code, parent_strict, short_label, sort_order ('' = urutan berikutnya
-    // di kelompoknya), is_active. Mengembalikan kode tingkatnya.
+    // Setelah save() yang mengganti singkatan: ['from' => kode lama, 'to' => kode baru, 'structures' => jumlah struktur yang ikut berganti], selain
+    // itu null. Dibaca pemanggil untuk menyusun pesan.
+    public $renamed = null;
+
+    // $code null = tingkat baru; selain itu mengubah tingkat itu: singkatan (kode), nama, kelompok, tier, induk, sebutan, urutan, dan status aktif.
+    // Tingkat nonaktif tak ditawarkan untuk struktur baru, tetapi struktur yang sudah bertingkat itu tetap utuh. $data: code (singkatan; untuk
+    // yang sudah ada, kode BARU bila ingin diganti), name, grp, tier, parent_code, parent_strict, short_label, sort_order ('' = urutan berikutnya
+    // di kelompoknya), is_active. Mengembalikan kode tingkatnya (yang baru bila diganti).
+    //
+    // MENGGANTI SINGKATAN mengubah structures.level semua struktur bertingkat itu (foreign key ON UPDATE CASCADE, migrasi 028), parent_code tingkat
+    // lain yang menunjuknya, dan menggerakkan updated_at struktur-struktur itu supaya API mengirim ulang; semuanya satu transaksi. Konsumen API yang
+    // mencocokkan `level` dengan kode lama perlu menyesuaikan.
     public function save($code, array $data) {
+        $this->renamed = null;
         $cur = null;
         if ($code !== null && $code !== '') {
             $cur = StructureLevels::find($code);
             if (!$cur) throw new RuntimeException('Tingkat tidak ditemukan.');
             $code = $cur['code'];
             if (!empty($cur['is_system'])) {
-                // DPP dan MWP dikenal langsung oleh kode akses (admin nasional): hanya nama, sebutan, dan urutan yang boleh berubah. Isian
-                // lainnya (di formulir terkunci, jadi tak terkirim) dipakai apa adanya dari yang tersimpan.
+                // DPP dan MWP (pucuk nasional; admin berlingkup di sini dikenali sebagai admin pusat lewat is_system): hanya singkatan, nama,
+                // sebutan, dan urutan yang boleh berubah. Isian lainnya (di formulir terkunci, jadi tak terkirim) dipakai apa adanya dari yang tersimpan.
                 $data['grp'] = $cur['grp']; $data['tier'] = (int) $cur['tier']; $data['parent_code'] = (string) $cur['parent_code'];
                 $data['parent_strict'] = (int) $cur['parent_strict']; $data['is_active'] = 1;
+            }
+        }
+
+        // Singkatan baru untuk tingkat yang sudah ada (kosong atau sama = tak diganti). Mengganti huruf besar-kecilnya saja (dpw -> DPW) boleh.
+        $newCode = $cur === null ? null : $code;
+        if ($cur !== null) {
+            $given = trim((string) ($data['code'] ?? ''));
+            if ($given !== '' && $given !== $code) {
+                if (!preg_match('/^[A-Za-z][A-Za-z0-9]{1,9}$/', $given)) {
+                    throw new RuntimeException('Singkatan tingkat harus 2-10 huruf atau angka, diawali huruf, tanpa spasi (mis. DPLN).');
+                }
+                foreach (StructureLevels::all() as $c => $r) {
+                    if ($c !== $code && strcasecmp($c, $given) === 0) throw new RuntimeException('Singkatan "' . $c . '" sudah dipakai (' . $r['name'] . ').');
+                }
+                $newCode = $given;
             }
         }
 
@@ -102,25 +127,42 @@ class StructureLevelModel {
             }
         }
 
+        $renamedStructures = 0;
         $this->db->beginTransaction();
         try {
-            $this->db->prepare("UPDATE structure_levels SET name = ?, grp = ?, tier = ?, parent_code = ?, parent_strict = ?, short_label = ?, sort_order = ?, is_active = ? WHERE code = ?")
-                     ->execute([$name, $grp, $tier, $parent !== '' ? $parent : null, $strict, $short !== '' ? $short : null, $order, $active, $code]);
+            $this->db->prepare("UPDATE structure_levels SET code = ?, name = ?, grp = ?, tier = ?, parent_code = ?, parent_strict = ?, short_label = ?, sort_order = ?, is_active = ? WHERE code = ?")
+                     ->execute([$newCode, $name, $grp, $tier, $parent !== '' ? $parent : null, $strict, $short !== '' ? $short : null, $order, $active, $code]);
+            if ($newCode !== $code) {
+                // structures.level sudah mengikuti lewat foreign key (CASCADE). Yang tidak: tingkat lain yang menjadikan kode lama sebagai induknya
+                // (parent_code tak punya foreign key), dan updated_at struktur (perubahan lewat CASCADE tak menggerakkannya, padahal `level`
+                // berubah di API). UPDATE kedua juga menuliskan huruf besar-kecil yang tepat bila yang berganti hanya itu (kuncinya tak membedakan).
+                $this->db->prepare("UPDATE structure_levels SET parent_code = ? WHERE parent_code = ?")->execute([$newCode, $code]);
+                $this->db->prepare("UPDATE structures SET level = ?, updated_at = CURRENT_TIMESTAMP(3) WHERE level = ?")->execute([$newCode, $newCode]);
+                $live = $this->db->prepare("SELECT COUNT(*) FROM structures WHERE level = ? AND deleted_at IS NULL");
+                $live->execute([$newCode]);
+                $renamedStructures = (int) $live->fetchColumn();
+            }
             if ($wingChanged || $tierChanged) {
                 // Salinan di structures (wing, tier) mengikuti. Baris yang sudah dihapus ikut diselaraskan supaya tak ada yang basi bila dipulihkan.
                 $this->db->prepare("UPDATE structures SET wing = ?, tier = ? WHERE level = ?")
-                         ->execute([$grp === 'musl' ? 'muslimah' : 'umum', $tier, $code]);
+                         ->execute([$grp === 'musl' ? 'muslimah' : 'umum', $tier, $newCode]);
             }
             $this->db->commit();
         } catch (PDOException $e) {
             $this->db->rollBack();
+            // 1451: foreign key menolak mengganti kode induk = migrasi 028 (ON UPDATE CASCADE) belum dijalankan di database ini.
+            if (isset($e->errorInfo[1]) && (int) $e->errorInfo[1] === 1451) {
+                throw new RuntimeException('Singkatan belum bisa diganti di database ini: jalankan php database/migrate.php (migrasi 028) lebih dulu.');
+            }
             throw $e;
         }
+        if ($newCode !== $code) $this->renamed = ['from' => $code, 'to' => $newCode, 'structures' => $renamedStructures];
         Audit::log('structure_levels', 0, 'update',
                    ['code' => $code, 'name' => $cur['name'], 'grp' => $cur['grp'], 'tier' => $cur['tier'], 'parent_code' => $cur['parent_code'], 'parent_strict' => $cur['parent_strict'], 'sort_order' => $cur['sort_order'], 'is_active' => $cur['is_active']],
-                   ['code' => $code, 'name' => $name, 'grp' => $grp, 'tier' => $tier, 'parent_code' => $parent, 'parent_strict' => $strict, 'sort_order' => $order, 'is_active' => $active]);
+                   ['code' => $newCode, 'name' => $name, 'grp' => $grp, 'tier' => $tier, 'parent_code' => $parent, 'parent_strict' => $strict, 'sort_order' => $order, 'is_active' => $active]
+                   + ($newCode !== $code ? ['structures_renamed' => $renamedStructures] : []));
         StructureLevels::reset();
-        return $code;
+        return $newCode;
     }
 
     // Menghapus tingkat yang tak terpakai. Yang masih dipakai ditolak dengan alasan yang bisa dikerjakan; yang hanya tak diperlukan lagi
@@ -129,7 +171,7 @@ class StructureLevelModel {
         $cur = StructureLevels::find($code);
         if (!$cur) throw new RuntimeException('Tingkat tidak ditemukan.');
         $code = $cur['code'];
-        if (!empty($cur['is_system'])) throw new RuntimeException($code . ' adalah tingkat bawaan sistem (pucuk nasional yang dikenali kode akses), jadi tidak bisa dihapus.');
+        if (!empty($cur['is_system'])) throw new RuntimeException($code . ' adalah tingkat bawaan sistem (pucuk nasional: admin berlingkup di sini dikenali sebagai admin pusat), jadi tidak bisa dihapus.');
 
         foreach ($this->levelList() as $r) {
             if ($r['code'] !== $code) continue;

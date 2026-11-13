@@ -17,6 +17,7 @@ require ROOT_DIR . '/config/config.php';
 foreach (['Database', 'Controller', 'Audit', 'Text', 'Uuid', 'Csrf', 'Auth', 'Ui', 'Flash', 'AdminScope', 'Susunan', 'PeopleOverview', 'AdminNaming', 'StructureLevels'] as $c) require_once ROOT_DIR . "/app/Core/$c.php";
 require_once ROOT_DIR . '/app/Controllers/StructuresController.php';
 require_once ROOT_DIR . '/app/Controllers/LevelsController.php';
+require_once ROOT_DIR . '/app/Core/PortalHome.php';
 foreach (['StructureModel', 'StructureLevelModel', 'UnitModel'] as $m) require_once ROOT_DIR . "/app/Models/$m.php";
 
 class Redirected extends Exception {}
@@ -65,14 +66,17 @@ if (!$dpp || !$dpw || !$one("SELECT COUNT(*) FROM structure_levels")) { echo "LE
 $pid = getmypid();
 $codeA = 'UJ' . $pid;            // tingkat uji utama (Umum, setingkat Wilayah, wajib di bawah DPP)
 $codeB = 'UJB' . ($pid % 10000); // tingkat uji kedua (anak tingkat pertama)
+$codeC = 'UJR' . ($pid % 100000); // tingkat uji untuk penggantian singkatan (bagian 10); $codeD = nama barunya, $codeE = anaknya
+$codeD = 'UJX' . ($pid % 100000);
+$codeE = 'UJE' . ($pid % 100000);
 $prefix = 'UJI-TINGKAT-' . $pid;
 $auditFrom = (int) $one("SELECT COALESCE(MAX(id), 0) FROM audit_log");   // jejak audit yang ditulis uji ini = yang id-nya di atas ini
-$cleanup = function () use ($pdo, $prefix, $codeA, $codeB, $auditFrom) {
+$cleanup = function () use ($pdo, $prefix, $codeA, $codeB, $codeC, $codeD, $codeE, $auditFrom) {
     foreach ($pdo->query("SELECT id FROM structures WHERE name LIKE '" . $prefix . "%'")->fetchAll(PDO::FETCH_COLUMN) as $id) {
         $pdo->exec("DELETE FROM audit_log WHERE entity = 'structures' AND entity_id = " . (int) $id);
         $pdo->exec("DELETE FROM structures WHERE id = " . (int) $id . " AND name LIKE '" . $prefix . "%'");
     }
-    foreach ([$codeA, $codeB] as $c) $pdo->exec("DELETE FROM structure_levels WHERE code = " . $pdo->quote($c) . " AND is_system = 0");
+    foreach ([$codeE, $codeA, $codeB, $codeC, $codeD, ucfirst(strtolower($codeD))] as $c) $pdo->exec("DELETE FROM structure_levels WHERE code = " . $pdo->quote($c) . " AND is_system = 0");
     $pdo->exec("DELETE FROM audit_log WHERE entity = 'structure_levels' AND id > " . (int) $auditFrom);
 };
 register_shutdown_function($cleanup);
@@ -238,6 +242,73 @@ $r = call('TL', 'save', ['code' => $codeA, 'name' => 'Duplikat', 'grp' => 'umum'
 ok(strpos(flashText(), 'sudah dipakai') !== false, '9: Tambah dengan singkatan yang sudah ada ditolak dengan pesan', flashText());
 $r = call('TL', 'delete', ['code' => $codeA]);
 ok($r === 'levels' && !StructureLevels::exists($codeA) && strpos(flashText(), 'dihapus') !== false, '9: Hapus lewat controller menghapus tingkat tak terpakai', flashText());
+
+// ---------- 10. Mengganti singkatan (kode) tingkat ----------
+sess('super_admin');
+$fk = $pdo->query("SELECT update_rule FROM information_schema.referential_constraints WHERE constraint_schema = DATABASE() AND table_name = 'structures' AND constraint_name = 'fk_structures_level'")->fetchColumn();
+ok($fk === 'CASCADE', '10: foreign key structures.level -> structure_levels berstatus ON UPDATE CASCADE (migrasi 028 sudah dijalankan?)', (string) $fk);
+$mkLevel = function ($code, $parent) use ($model) {
+    return $model->save(null, ['code' => $code, 'name' => 'Uji Ganti ' . $code, 'grp' => 'umum', 'tier' => 3, 'parent_code' => $parent, 'parent_strict' => 0, 'short_label' => '', 'sort_order' => '', 'is_active' => 1]);
+};
+$mkLevel($codeC, 'DPP');
+$mkLevel($codeE, $codeC);   // anak: parent_code menunjuk $codeC
+$sm = new StructureModel();
+$rid = $sm->create(['level' => $codeC, 'name' => $prefix . '-R', 'parent_id' => $dpp, 'region_code' => '']);
+$pdo->exec("UPDATE structures SET updated_at = '2000-01-01 00:00:00.000' WHERE id = " . (int) $rid);   // supaya gerakan updated_at memang terlihat
+$payload = ['name' => 'Uji Ganti ' . $codeC, 'grp' => 'umum', 'tier' => 3, 'parent_code' => 'DPP', 'parent_strict' => 0, 'short_label' => '', 'sort_order' => '', 'is_active' => 1];
+
+// penolakan
+foreach ([['code' => 'DPW', 'k' => 'sudah dipakai'], ['code' => 'dpw', 'k' => 'sudah dipakai'], ['code' => '1ab', 'k' => 'Singkatan'], ['code' => 'a b', 'k' => 'Singkatan'], ['code' => 'ABCDEFGHIJK', 'k' => 'Singkatan']] as $c) {
+    $r = rejects(function () use ($model, $codeC, $payload, $c) { $model->save($codeC, ['code' => $c['code']] + $payload); }, $c['k']);
+    ok($r === true && StructureLevels::exists($codeC), '10: singkatan baru ditolak: ' . $c['code'], is_string($r) ? $r : 'tidak ditolak');
+}
+ok($pdo->query("SELECT level FROM structures WHERE id = " . (int) $rid)->fetchColumn() === $codeC, '10: penolakan tak mengubah struktur');
+// tanpa isian singkatan / sama dengan yang lama = tak diganti
+$model->save($codeC, ['code' => ''] + $payload);
+$model->save($codeC, ['code' => $codeC] + $payload);
+ok($model->renamed === null && StructureLevels::exists($codeC), '10: singkatan kosong atau sama tidak dianggap penggantian');
+
+// penggantian
+$res = $model->save($codeC, ['code' => $codeD] + $payload);
+ok($res === $codeD && StructureLevels::exists($codeD) && !StructureLevels::exists($codeC), '10: singkatan diganti: kode baru ada, kode lama hilang dari daftar');
+ok($model->renamed === ['from' => $codeC, 'to' => $codeD, 'structures' => 1], '10: pemanggil mendapat jumlah struktur yang ikut', json_encode($model->renamed));
+$rs = $pdo->query("SELECT level, wing, tier, updated_at FROM structures WHERE id = " . (int) $rid)->fetch(PDO::FETCH_ASSOC);
+ok($rs['level'] === $codeD && $rs['wing'] === 'umum' && (int) $rs['tier'] === 3, '10: structures.level ikut berganti, wing/tier utuh', json_encode($rs));
+ok($rs['updated_at'] > '2000-01-02', '10: updated_at struktur bergerak, jadi API mengirim ulang nilai level yang baru', (string) $rs['updated_at']);
+ok(StructureLevels::parentOf($codeE) === $codeD, '10: tingkat lain yang menjadikannya induk ikut menunjuk kode baru', (string) StructureLevels::parentOf($codeE));
+ok(in_array($codeE, StructureLevels::childrenOf($codeD), true) && StructureLevels::childrenOf($codeC) === [], '10: anak lazim mengikuti kode baru');
+ok((int) $pdo->query("SELECT COUNT(*) FROM structure_levels WHERE code = " . $pdo->quote($codeC))->fetchColumn() === 0, '10: tak ada baris lama yang tertinggal di tabel');
+$aud = $pdo->query("SELECT after_data FROM audit_log WHERE entity = 'structure_levels' AND action = 'update' AND id > $auditFrom AND after_data LIKE '%structures_renamed%' ORDER BY id DESC LIMIT 1")->fetchColumn();
+ok($aud && strpos($aud, $codeD) !== false, '10: penggantian tercatat di audit (kode baru + jumlah struktur)');
+$h = html('TS', 'form', $rid);
+ok(strpos($h, '<option value="' . $codeD . '"') !== false && strpos($h, '<option value="' . $codeC . '"') === false, '10: formulir Struktur menawarkan kode baru, bukan yang lama');
+ok(in_array($codeD, (new StructureModel())->levelsInScope(), true) && !in_array($codeC, (new StructureModel())->levelsInScope(), true), '10: pilihan Tingkat mengikuti kode baru');
+
+// hanya huruf besar-kecil yang berganti
+$low = ucfirst(strtolower($codeD));
+$model->save($codeD, ['code' => $low] + $payload);
+ok(StructureLevels::exists($low) && !StructureLevels::exists($codeD) && $pdo->query("SELECT BINARY level FROM structures WHERE id = " . (int) $rid)->fetchColumn() === $low && StructureLevels::parentOf($codeE) === $low, '10: penggantian huruf besar-kecil saja: struktur dan induk tingkat lain menuliskan huruf yang tepat', (string) StructureLevels::parentOf($codeE));
+$model->save($low, ['code' => $codeD] + $payload);
+ok(StructureLevels::exists($codeD) && !StructureLevels::exists($low), '10: dan bisa dikembalikan');
+
+// pucuk nasional dikenali dari data (tak diuji dengan mengganti kode DPP asli: itu menggerakkan seluruh struktur DPP)
+ok(StructureLevels::isRoot('DPP') && !StructureLevels::isRoot('MWP') && !StructureLevels::isRoot('DPW'), '10: pucuk nasional (isRoot) dikenali dari penanda bawaan sistem dan tanpa induk, bukan dari kodenya');
+StructureLevels::load([['code' => 'PUSAT', 'is_system' => 1, 'parent_code' => null, 'grp' => 'umum', 'tier' => 1, 'name' => 'Pusat'], ['code' => 'WIL', 'parent_code' => 'PUSAT', 'tier' => 2, 'name' => 'Wil']]);
+ok(PortalHome::structureLabel('PUSAT', 'Dewan Pimpinan Pusat') === 'PUSAT' && PortalHome::structureLabel('WIL', 'Dewan Syura') === 'Dewan Syura', '10: label struktur pusat di portal mengikuti penanda, bukan literal "DPP"');
+StructureLevels::reset();
+// admin pusat (verval): sama dengan aturan lama "tingkat DPP atau MWP" pada data sekarang
+$oldRule = (int) $pdo->query("SELECT COUNT(*) FROM account_roles ar JOIN structures s ON s.id = ar.scope_structure_id AND s.deleted_at IS NULL WHERE ar.role = 'admin_struktur' AND s.level IN ('DPP', 'MWP')")->fetchColumn();
+$newRule = (int) $pdo->query("SELECT COUNT(*) FROM account_roles ar JOIN structures s ON s.id = ar.scope_structure_id AND s.deleted_at IS NULL JOIN structure_levels sl ON sl.code = s.level AND sl.is_system = 1 WHERE ar.role = 'admin_struktur'")->fetchColumn();
+ok($oldRule === $newRule, '10: admin pusat menurut penanda bawaan sistem = menurut kode DPP/MWP pada data sekarang', $oldRule . ' vs ' . $newRule);
+
+// lewat halaman
+$h = html('TL', 'index');
+ok(strpos($h, 'name="new_code"') !== false && strpos($h, 'data-level-form') !== false && substr_count($h, 'name="new_code" required') === count(StructureLevels::all()), '10: setiap baris punya isian Singkatan di panel Ubah, dengan konfirmasi');
+ok(strpos($h, 'Singkatan</strong>: mengganti') !== false && strpos($h, 'Singkatannya tetap') === false && strpos($h, 'tidak bisa diubah lagi') === false, '10: teks halaman tak lagi menyatakan singkatan tetap');
+$r = call('TL', 'save', ['edit' => '1', 'code' => $codeD, 'new_code' => $codeC, 'name' => 'Uji Ganti ' . $codeC, 'grp' => 'umum', 'tier' => '3', 'parent_code' => 'DPP', 'short_label' => '', 'sort_order' => '', 'is_active' => '1']);
+ok($r === 'levels' && StructureLevels::exists($codeC) && strpos(flashText(), 'diganti menjadi ' . $codeC) !== false && strpos(flashText(), '1 struktur ikut') !== false, '10: ganti lewat controller: pesan menyebut kode lama, baru, dan jumlah struktur', flashText());
+$r = call('TL', 'save', ['edit' => '1', 'code' => $codeC, 'new_code' => 'DPW', 'name' => 'Uji Ganti ' . $codeC, 'grp' => 'umum', 'tier' => '3', 'parent_code' => 'DPP']);
+ok(strpos(flashText(), 'sudah dipakai') !== false && StructureLevels::exists($codeC), '10: ganti ke singkatan yang sudah ada ditolak dengan pesan', flashText());
 
 echo "\nLULUS: $pass    GAGAL: $fail\n";
 exit($fail ? 1 : 0);

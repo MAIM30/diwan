@@ -20,6 +20,9 @@ $fields = function (array $r, $id, $isNew) use ($groups, $tiers, $rows) {
       <?php if ($isNew): ?>
         <div class="field"><label for="<?= $id ?>-c">Singkatan</label>
           <input type="text" id="<?= $id ?>-c" name="code" required minlength="2" maxlength="10" pattern="[A-Za-z][A-Za-z0-9]{1,9}" placeholder="mis. DPLN" autocomplete="off"></div>
+      <?php else: ?>
+        <div class="field"><label for="<?= $id ?>-c">Singkatan</label>
+          <input type="text" id="<?= $id ?>-c" name="new_code" required minlength="2" maxlength="10" pattern="[A-Za-z][A-Za-z0-9]{1,9}" value="<?= e($r['code']) ?>" autocomplete="off"></div>
       <?php endif; ?>
       <div class="field" style="grid-column:span 2"><label for="<?= $id ?>-n">Nama lengkap</label>
         <input type="text" id="<?= $id ?>-n" name="name" required maxlength="100" value="<?= e($r['name'] ?? '') ?>" placeholder="mis. Dewan Pimpinan Luar Negeri"></div>
@@ -70,9 +73,10 @@ $fields = function (array $r, $id, $isNew) use ($groups, $tiers, $rows) {
 <div class="note">
   Daftar ini menjadi pilihan <strong>Tingkat</strong> pada formulir <a href="<?= BASEURL ?>/structures">Struktur</a>, menentukan urutan dan
   pengelompokan jenjang (DPP, DPW, MWW, ...) di Data Pengurus, Struktur, dan Periode, serta nilai <code>level</code>, <code>wing</code>, dan
-  <code>tier</code> di API. <strong>Singkatannya tetap</strong> sesudah dibuat (dipakai alamat halaman dan API); nama, kelompok, setingkat, induk,
-  urutan, dan status boleh diubah. Tingkat yang masih dipakai struktur tidak bisa dihapus: ubah dulu tingkat strukturnya, atau nonaktifkan bila
-  hanya tak ingin ditawarkan lagi.
+  <code>tier</code> di API. <strong>Singkatan</strong>, nama, kelompok, setingkat, induk, urutan, dan status diubah lewat tombol <strong>Ubah</strong>
+  pada barisnya. Mengganti <strong>singkatan</strong> ikut mengganti nilai <code>level</code> semua struktur bertingkat itu, termasuk di API:
+  aplikasi konsumen yang mencocokkan <code>level</code> dengan singkatan lama perlu disesuaikan (yang berpegang pada <code>uuid</code> tidak terpengaruh).
+  Tingkat yang masih dipakai struktur tidak bisa dihapus: ubah dulu tingkat strukturnya, atau nonaktifkan bila hanya tak ingin ditawarkan lagi.
 </div>
 
 <div class="card">
@@ -116,13 +120,17 @@ $fields = function (array $r, $id, $isNew) use ($groups, $tiers, $rows) {
         </tr>
         <tr id="<?= e($cid) ?>" hidden>
           <td colspan="8">
-            <form method="post" action="<?= BASEURL ?>/levels/save">
+            <form method="post" action="<?= BASEURL ?>/levels/save" data-level-form data-code="<?= e($r['code']) ?>" data-structures="<?= (int) $r['structures'] ?>">
               <?= Csrf::field() ?>
               <input type="hidden" name="edit" value="1">
               <input type="hidden" name="code" value="<?= e($r['code']) ?>">
               <?= $fields($r, $cid, false) ?>
+              <p class="help" style="margin:8px 0 0">
+                <strong>Singkatan</strong>: mengganti <?= e($r['code']) ?> ikut mengganti <code>level</code> <?= Ui::n($r['structures']) ?> struktur bertingkat ini,
+                termasuk di API (aplikasi konsumen yang mencocokkan kode lama perlu disesuaikan), dan alamat dengan <code>?lv=<?= e($r['code']) ?></code> tak lagi berlaku.
+              </p>
               <?php if (!empty($r['is_system'])): ?>
-              <p class="help" style="margin:8px 0 0"><?= e($r['code']) ?> dikenali langsung oleh kode akses (admin nasional), jadi hanya nama, sebutan, dan urutannya yang boleh diubah.</p>
+              <p class="help" style="margin:8px 0 0"><?= e($r['code']) ?> adalah pucuk nasional (admin yang berlingkup di sini dikenali sebagai admin pusat), jadi kelompok, setingkat, induk, dan statusnya terkunci; singkatan, nama, sebutan, dan urutan boleh diubah.</p>
               <?php elseif ($r['structures'] > 0): ?>
               <p class="help" style="margin:8px 0 0">Mengubah &ldquo;Setingkat&rdquo; ikut mengubah tier <?= Ui::n($r['structures']) ?> struktur <?= e($r['code']) ?> (dan di API). Kelompok Umum/Muslimah tidak bisa berganti selama masih ada struktur bertingkat ini.</p>
               <?php endif; ?>
@@ -146,12 +154,28 @@ $fields = function (array $r, $id, $isNew) use ($groups, $tiers, $rows) {
           <strong>Kelompok</strong> menentukan sayap: Umum dan Dewan (lembaga tinggi setara DPP, seperti DSO, DSY, DPK) memakai katalog unit sayap Umum,
           Muslimah memakai katalog Muslimah. Urutan tingkat di seluruh halaman mengikuti kolom <strong>Urutan</strong> (angka kecil lebih dulu).
           <strong>Berada di bawah</strong> menentukan tingkat apa yang boleh dibuat admin di bawah strukturnya; dengan &ldquo;Wajib&rdquo; struktur
-          tingkat ini juga tidak bisa dipasang di bawah tingkat lain. Singkatan tidak bisa diubah lagi sesudah dibuat.
+          tingkat ini juga tidak bisa dipasang di bawah tingkat lain. Singkatan bisa diganti kapan saja lewat <strong>Ubah</strong>, tetapi mengubah
+          nilai <code>level</code> struktur yang sudah memakainya (juga di API), jadi pilih yang akan dipakai lama.
         </p>
         <button type="submit" class="btn" style="margin-top:10px">Tambah</button>
       </form>
     </div>
   </details>
 </div>
+
+<script>
+// Mengganti singkatan mengubah `level` banyak struktur dan nilai di API: minta konfirmasi, menyebut jumlahnya.
+(function () {
+  document.querySelectorAll('form[data-level-form]').forEach(function (form) {
+    form.addEventListener('submit', function (ev) {
+      var field = form.querySelector('[name="new_code"]');
+      var old = form.getAttribute('data-code');
+      if (!field || field.value.trim() === '' || field.value.trim() === old) return;
+      var n = form.getAttribute('data-structures');
+      if (!confirm('Ganti singkatan ' + old + ' menjadi ' + field.value.trim() + '?\n\n' + n + ' struktur ikut berganti, dan nilai level di API berubah. Aplikasi konsumen yang memakai kode lama perlu disesuaikan.')) ev.preventDefault();
+    });
+  });
+})();
+</script>
 
 <?php $this->view('layouts/footer'); ?>
