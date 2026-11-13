@@ -86,7 +86,7 @@ if (!empty($_SESSION['daftar_phone'])) {
         <input type="text" id="structure_search" autocomplete="off" required
                placeholder="Ketik nama kota/kabupaten atau provinsi...">
         <div id="structure-results" class="autocomplete-list"></div>
-        <div class="help">Ketik minimal 2 huruf untuk mencari. Laki-laki memilih struktur DPP/DPW/DPLN/DPD/DPC/DPRa; perempuan memilih MWP/MWW/MWLN/MWD/MWC/MWRa.</div>
+        <div class="help">Ketik minimal 2 huruf untuk mencari. Laki-laki memilih struktur <?= e(implode('/', array_filter(StructureLevels::codes(true), function ($c) { return StructureLevels::group($c) === 'umum'; }))) ?>; perempuan memilih <?= e(implode('/', array_filter(StructureLevels::codes(true), function ($c) { return StructureLevels::group($c) === 'musl'; }))) ?>.</div>
       </div>
 
       <div class="field">

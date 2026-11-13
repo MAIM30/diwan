@@ -47,45 +47,54 @@ function migrate_017_lembaga_tinggi(PDO $pdo, callable $say) {
     }
 
     // --- 3 & 4. Alter ENUM level + regenerated tier + wing ---
-    // Drop index dulu karena pakai kolom generated tier & wing
-    $hasIdx = (int) $pdo->query("SELECT COUNT(*) FROM information_schema.statistics
-        WHERE table_schema = DATABASE() AND table_name = 'structures'
-          AND index_name = 'idx_structures_region'")->fetchColumn();
-    if ($hasIdx) {
-        $pdo->exec("ALTER TABLE structures DROP INDEX idx_structures_region");
-    }
-
-    $enumLevel = $pdo->query("SELECT COLUMN_TYPE FROM information_schema.columns
+    // Sejak migrasi 027 structures.level bukan ENUM lagi (daftar tingkat ada di tabel structure_levels; wing/tier kolom biasa). Bagian ini
+    // dan pembuatan struktur DSO/DSY/DPK (langkah 7) hanya untuk basis data yang belum sampai 027: menjalankannya sesudah itu akan
+    // mengembalikan kolomnya ke ENUM dan kolom turunan, atau gagal menyisipkan baris tanpa wing dan tier.
+    $enumLevel = (string) $pdo->query("SELECT COLUMN_TYPE FROM information_schema.columns
         WHERE table_schema = DATABASE() AND table_name = 'structures'
           AND column_name = 'level'")->fetchColumn();
-    if (strpos($enumLevel, 'DSO') === false) {
-        $pdo->exec("ALTER TABLE structures MODIFY COLUMN level
-            ENUM('DPP','DPW','DPD','DPC','DPRa','DPLN','MWP','MWW','MWD','MWC','MWRa','DSO','DSY','DPK')
-            NOT NULL");
-        $say('  structures.level: tambah DSO, DSY, DPK ke ENUM.');
-    }
+    $levelIsEnum = stripos($enumLevel, 'enum(') === 0;
 
-    // wing: DSO/DSY/DPK tetap 'umum' (tidak termasuk muslimah)
-    $pdo->exec("ALTER TABLE structures MODIFY COLUMN wing ENUM('umum','muslimah')
-        GENERATED ALWAYS AS (IF(level IN ('MWP','MWW','MWD','MWC','MWRa'),'muslimah','umum')) STORED");
+    if ($levelIsEnum) {
+        // Drop index dulu karena pakai kolom generated tier & wing
+        $hasIdx = (int) $pdo->query("SELECT COUNT(*) FROM information_schema.statistics
+            WHERE table_schema = DATABASE() AND table_name = 'structures'
+              AND index_name = 'idx_structures_region'")->fetchColumn();
+        if ($hasIdx) {
+            $pdo->exec("ALTER TABLE structures DROP INDEX idx_structures_region");
+        }
 
-    // tier: DSO/DSY/DPK = 1 (setara pusat)
-    $pdo->exec("ALTER TABLE structures MODIFY COLUMN tier TINYINT UNSIGNED
-        GENERATED ALWAYS AS (CASE level
-            WHEN 'DPP' THEN 1 WHEN 'MWP' THEN 1
-            WHEN 'DSO' THEN 1 WHEN 'DSY' THEN 1 WHEN 'DPK' THEN 1
-            WHEN 'DPW' THEN 2 WHEN 'DPLN' THEN 2 WHEN 'MWW' THEN 2
-            WHEN 'DPD' THEN 3 WHEN 'MWD' THEN 3
-            WHEN 'DPC' THEN 4 WHEN 'MWC' THEN 4
-            WHEN 'DPRa' THEN 5 WHEN 'MWRa' THEN 5 END) STORED");
-    $say('  structures.tier: DSO/DSY/DPK ditambahkan (tier=1).');
+        if (strpos($enumLevel, 'DSO') === false) {
+            $pdo->exec("ALTER TABLE structures MODIFY COLUMN level
+                ENUM('DPP','DPW','DPD','DPC','DPRa','DPLN','MWP','MWW','MWD','MWC','MWRa','DSO','DSY','DPK')
+                NOT NULL");
+            $say('  structures.level: tambah DSO, DSY, DPK ke ENUM.');
+        }
 
-    // Buat ulang index
-    $hasIdx = (int) $pdo->query("SELECT COUNT(*) FROM information_schema.statistics
-        WHERE table_schema = DATABASE() AND table_name = 'structures'
-          AND index_name = 'idx_structures_region'")->fetchColumn();
-    if (!$hasIdx) {
-        $pdo->exec("ALTER TABLE structures ADD KEY idx_structures_region (region_code, tier, wing)");
+        // wing: DSO/DSY/DPK tetap 'umum' (tidak termasuk muslimah)
+        $pdo->exec("ALTER TABLE structures MODIFY COLUMN wing ENUM('umum','muslimah')
+            GENERATED ALWAYS AS (IF(level IN ('MWP','MWW','MWD','MWC','MWRa'),'muslimah','umum')) STORED");
+
+        // tier: DSO/DSY/DPK = 1 (setara pusat)
+        $pdo->exec("ALTER TABLE structures MODIFY COLUMN tier TINYINT UNSIGNED
+            GENERATED ALWAYS AS (CASE level
+                WHEN 'DPP' THEN 1 WHEN 'MWP' THEN 1
+                WHEN 'DSO' THEN 1 WHEN 'DSY' THEN 1 WHEN 'DPK' THEN 1
+                WHEN 'DPW' THEN 2 WHEN 'DPLN' THEN 2 WHEN 'MWW' THEN 2
+                WHEN 'DPD' THEN 3 WHEN 'MWD' THEN 3
+                WHEN 'DPC' THEN 4 WHEN 'MWC' THEN 4
+                WHEN 'DPRa' THEN 5 WHEN 'MWRa' THEN 5 END) STORED");
+        $say('  structures.tier: DSO/DSY/DPK ditambahkan (tier=1).');
+
+        // Buat ulang index
+        $hasIdx = (int) $pdo->query("SELECT COUNT(*) FROM information_schema.statistics
+            WHERE table_schema = DATABASE() AND table_name = 'structures'
+              AND index_name = 'idx_structures_region'")->fetchColumn();
+        if (!$hasIdx) {
+            $pdo->exec("ALTER TABLE structures ADD KEY idx_structures_region (region_code, tier, wing)");
+        }
+    } else {
+        $say('  structures.level sudah bukan ENUM (migrasi 027): langkah ENUM/tier/wing dilewati.');
     }
 
     // --- FK lembaga_tinggi_id ---
@@ -122,7 +131,8 @@ function migrate_017_lembaga_tinggi(PDO $pdo, callable $say) {
     $existing = $pdo->query("SELECT level FROM structures WHERE level IN ('DSO','DSY','DPK')")
         ->fetchAll(PDO::FETCH_COLUMN);
 
-    foreach (array_diff(['DSO', 'DSY', 'DPK'], $existing) as $level) {
+    // Sesudah migrasi 027 struktur ini dikelola dari aplikasi (tabel structures tak lagi mengisi wing/tier sendiri): tak dibuat ulang di sini.
+    foreach ($levelIsEnum ? array_diff(['DSO', 'DSY', 'DPK'], $existing) : [] as $level) {
         $uuid = sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
             mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff),
             mt_rand(0, 0x0fff) | 0x4000,

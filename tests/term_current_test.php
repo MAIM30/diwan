@@ -90,7 +90,7 @@ $gps = $pdo->query("SELECT id, name FROM governance_periods ORDER BY start_date"
 if (!$dpp || count($gps) < 2) { echo "LEWAT: butuh DPP dan dua acuan periode di database lokal.\n"; exit(0); }
 [$gpA, $gpB] = [(int) $gps[0]['id'], (int) $gps[1]['id']];
 $mkStructure = function ($suffix) use ($pdo, $dpp) {
-    $pdo->prepare("INSERT INTO structures (uuid, level, name, parent_id, is_active) VALUES (?, 'DPLN', ?, ?, 1)")->execute([Uuid::v4(), 'UJI-PERIODE-' . $suffix, $dpp['id']]);
+    $pdo->prepare("INSERT INTO structures (uuid, level, wing, tier, name, parent_id, is_active) VALUES (?, 'DPLN', 'umum', 2, ?, ?, 1)")->execute([Uuid::v4(), 'UJI-PERIODE-' . $suffix, $dpp['id']]);
     $id = (int) $pdo->lastInsertId();
     $pdo->prepare("UPDATE structures SET path = ?, depth = ? WHERE id = ?")->execute([$dpp['path'] . $id . '/', $dpp['depth'] + 1, $id]);
     return $id;

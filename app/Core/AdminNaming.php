@@ -14,6 +14,8 @@
 // Begitu admin sungguhan ditunjuk, nomornya diganti lewat menu Akun (Ubah) -- tidak ada yang lain yang
 // perlu berubah. Pembatas percobaan masuk (LoginThrottle) bekerja per nomor + IP seperti biasa.
 
+require_once __DIR__ . '/StructureLevels.php';
+
 class AdminNaming {
     const PHONE_PREFIX = '62000';   // 62 + 000 + id struktur 6 digit = 11 digit, sah menurut Text::normalizePhone
 
@@ -31,9 +33,10 @@ class AdminNaming {
         return is_string($phone) && strpos($phone, self::PHONE_PREFIX) === 0 && strlen($phone) === 11;
     }
 
+    // Sebutan tingkat di nama akun: sebutan khusus tingkatnya bila ada (DPLN/MWLN: "Luar Negeri"), selain itu nama tier-nya (Pusat, Wilayah,
+    // Daerah, ...). Dibaca dari daftar tingkat (StructureLevels); kode yang tak dikenal ditulis apa adanya.
     private static function tierName($level) {
-        return ['DPP' => 'Pusat', 'MWP' => 'Pusat', 'DPW' => 'Wilayah', 'DPLN' => 'Luar Negeri', 'MWW' => 'Wilayah', 'MWLN' => 'Luar Negeri', 'DPD' => 'Daerah', 'MWD' => 'Daerah',
-                'DPC' => 'Cabang', 'MWC' => 'Cabang', 'DPRa' => 'Ranting', 'MWRa' => 'Ranting'][$level] ?? $level;
+        return StructureLevels::adminLabel($level);
     }
 
     // "Admin Daerah: DPD Kota Kendari", "Admin Wilayah: MWW Sulawesi Tenggara", "Admin Pusat: MWP". Awalan

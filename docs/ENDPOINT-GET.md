@@ -90,8 +90,9 @@ Urutan mengikuti pohon (induk selalu sebelum anak).
 Field: `uuid`, `parent_uuid`, `level`, `wing`, `tier`, `name`, `region_code`, `depth`, `is_active`,
 `updated_at`, `deleted`.
 
-- `level`: `DPP` `DPW` `DPLN` `DPD` `DPC` `DPRa` `MWP` `MWW` `MWLN` `MWD` `MWC` `MWRa` **`DSO` `DSY` `DPK`**
-- `wing`: `umum` | `muslimah` · `tier`: `1` Pusat … `5` Ranting
+- `level`: kode tingkat (teks). Saat ini: `DPP` `DPW` `DPLN` `DPD` `DPC` `DPRa` `MWP` `MWW` `MWLN` `MWD` `MWC` `MWRa` **`DSO` `DSY` `DPK`**.
+  **Daftar ini dikelola admin DIWAN dan bisa bertambah** (menu Tingkat Struktur): perlakukan `level` sebagai teks bebas, jangan sebagai enum tetap.
+- `wing`: `umum` | `muslimah` · `tier`: `1` Pusat … `5` Ranting. Keduanya ditetapkan per tingkat (bukan lagi diturunkan dari awalan kode).
 - `DSO` (Dewan Syura), `DSY` (Dewan Syariah), `DPK` (Dewan Pengawas Keuangan) adalah **akar tersendiri**
   (`parent_uuid: null`, `depth: 0`, `tier: 1`, `wing: umum`), sejajar dengan DPP — bukan anak DPP.
   Jangan mengasumsikan hanya ada satu akar.

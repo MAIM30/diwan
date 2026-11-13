@@ -154,7 +154,7 @@ if (!isset($sc['DPLN'])) {
     $dpp = $pdo->query("SELECT id, path, depth FROM structures WHERE level = 'DPP' AND deleted_at IS NULL LIMIT 1")->fetch();
     $new = [];
     foreach (['Arab Saudi', 'Yaman'] as $nm) {
-        $pdo->prepare("INSERT INTO structures (uuid, level, name, parent_id, is_active) VALUES (?, 'DPLN', ?, ?, 1)")->execute([Uuid::v4(), $nm, $dpp['id']]);
+        $pdo->prepare("INSERT INTO structures (uuid, level, wing, tier, name, parent_id, is_active) VALUES (?, 'DPLN', 'umum', 2, ?, ?, 1)")->execute([Uuid::v4(), $nm, $dpp['id']]);
         $id = (int) $pdo->lastInsertId();
         $pdo->prepare("UPDATE structures SET path = ?, depth = ? WHERE id = ?")->execute([$dpp['path'] . $id . '/', $dpp['depth'] + 1, $id]);
         $new[$nm] = $id;

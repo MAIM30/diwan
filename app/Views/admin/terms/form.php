@@ -8,7 +8,7 @@ $selectedStructure = (int) ($row['structure_id'] ?? $structureId ?? 0);
 <div class="page-head"><h1><?= e($title) ?></h1></div>
 
 <div class="card" style="max-width:720px">
-  <form method="post" action="<?= BASEURL ?>/terms/save" enctype="multipart/form-data">
+  <form method="post" action="<?= BASEURL ?>/terms/save" enctype="multipart/form-data" id="term-form">
     <?= Csrf::field() ?>
     <input type="hidden" name="id" value="<?= (int) ($row['id'] ?? 0) ?>">
 
@@ -32,9 +32,15 @@ $selectedStructure = (int) ($row['structure_id'] ?? $structureId ?? 0);
     <div class="field">
       <label for="governance_period_id">Acuan Periode Kepengurusan</label>
       <?php if (!empty($row['id'])): ?>
-        <input type="hidden" name="governance_period_id" value="<?= (int) $row['governance_period_id'] ?>">
-        <input type="text" id="governance_period_id" value="<?= e($row['name']) ?> · <?= e($row['start_date']) ?> s.d. <?= e($row['end_date_planned'] ?: 'belum ditentukan') ?>" disabled>
-        <div class="help">Acuan periode dikunci setelah susunan struktur dibuat. Nama dan tanggal bersama diatur dari daftar acuan periode.</div>
+        <select id="governance_period_id" name="governance_period_id" required data-original="<?= (int) $row['governance_period_id'] ?>">
+          <?php foreach ($governancePeriods as $period): ?>
+            <option value="<?= (int) $period['id'] ?>" <?= (int) $row['governance_period_id'] === (int) $period['id'] ? 'selected' : '' ?>><?= e($period['name']) ?> · <?= e($period['start_date']) ?> s.d. <?= e($period['end_date_planned'] ?: 'belum ditentukan') ?></option>
+          <?php endforeach; ?>
+        </select>
+        <div class="help">Periode ini salah acuan? Pilih acuan yang benar: nama dan tanggal periode ini mengikuti acuan baru, sedangkan
+          <strong>penempatan<?= !empty($placementCount) ? ' (' . (int) $placementCount . ')' : '' ?> dan susunan unitnya tetap di periode ini</strong>.
+          Nama atau tanggal acuan yang keliru (bukan pilihannya) diperbaiki dari
+          <a href="<?= BASEURL ?>/terms/period_catalog">daftar acuan periode</a>.</div>
       <?php else: ?>
         <select id="governance_period_id" name="governance_period_id" required>
           <option value="">— pilih acuan periode —</option>
@@ -110,5 +116,19 @@ $selectedStructure = (int) ($row['structure_id'] ?? $structureId ?? 0);
     </div>
   </form>
 </div>
+
+<?php if (!empty($row['id'])): ?>
+<script>
+// Mengganti acuan mengubah nama dan tanggal periode ini: minta konfirmasi bila pilihannya berbeda dari yang tersimpan.
+(function () {
+  var form = document.getElementById('term-form'), sel = document.getElementById('governance_period_id');
+  if (!form || !sel) return;
+  form.addEventListener('submit', function (ev) {
+    if (sel.value !== sel.getAttribute('data-original') &&
+        !confirm('Ganti acuan periode ke "' + sel.options[sel.selectedIndex].text + '"? Nama dan tanggal periode ini ikut berubah; penempatan tetap.')) ev.preventDefault();
+  });
+})();
+</script>
+<?php endif; ?>
 
 <?php $this->view('layouts/footer'); ?>

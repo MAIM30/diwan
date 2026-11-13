@@ -11,7 +11,9 @@ $this->view('layouts/header', ['title' => $title]);
   </div>
 </div>
 
-<div class="note">Buat satu acuan untuk nama dan tanggal periode. Acuan yang sama dapat dipakai oleh banyak struktur agar rekap susunan lintas struktur tersaji bersama.</div>
+<div class="note">Buat satu acuan untuk nama dan tanggal periode. Acuan yang sama dapat dipakai oleh banyak struktur agar rekap susunan lintas struktur tersaji bersama.
+  Nama atau tanggal yang keliru bisa diubah dengan <strong>Ubah</strong> (semua struktur pemakainya ikut berubah; tombolnya hanya muncul bila seluruh pemakainya
+  ada di lingkup Anda). Bila yang keliru hanya acuan yang dipilih satu struktur, gantilah lewat <strong>Ubah Periode</strong> pada struktur itu.</div>
 
 <div class="card">
   <div class="table-wrap">
@@ -26,7 +28,12 @@ $this->view('layouts/header', ['title' => $title]);
           <td class="small"><?= e($r['end_date_planned'] ?: '—') ?></td>
           <td class="num"><?= (int) $r['structure_count'] ?></td>
           <td class="num"><?= (int) $r['placement_count'] ?></td>
-          <td><a class="btn small secondary" href="<?= BASEURL ?>/terms/period_detail/<?= (int) $r['id'] ?>">Rekap struktur</a></td>
+          <td class="nowrap">
+            <a class="btn small secondary" href="<?= BASEURL ?>/terms/period_detail/<?= (int) $r['id'] ?>">Rekap struktur</a>
+            <?php if (Auth::canEdit() && (int) $r['outside_count'] === 0): ?>
+              <a class="btn small secondary" href="<?= BASEURL ?>/terms/period_form/<?= (int) $r['id'] ?>" title="Betulkan nama atau tanggal acuan ini">Ubah</a>
+            <?php endif; ?>
+          </td>
         </tr>
       <?php endforeach; ?>
       </tbody>

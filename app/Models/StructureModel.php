@@ -7,15 +7,10 @@
 // karena itulah definisi lingkup admin) jadi satu index range scan. Seluruh penulisan parent_id
 // WAJIB lewat model ini, karena di sinilah path ikut diperbarui.
 
-class StructureModel {
-    // Urutan tampilan tingkat pada masing-masing sayap. DPLN setingkat DPW, MWLN (padanan Muslimahnya) setingkat MWW, dan MWRa tingkat Ranting.
-    const BY_WING = [
-        // DPLN sementara ditempatkan setingkat DPW di bawah DPP; MWLN setingkat MWW di bawah MWP; MWRa adalah tingkat ranting di bawah MWC.
-        'umum'     => ['DPP', 'DPW', 'DPLN', 'DPD', 'DPC', 'DPRa'],
-        'muslimah' => ['MWP', 'MWW', 'MWLN', 'MWD', 'MWC', 'MWRa'],
-    ];
-    const LEVELS = [...self::BY_WING['umum'], ...self::BY_WING['muslimah']];
+// Daftar tingkat (DPP, DPW, MWW, ...) ada di tabel structure_levels, dibaca lewat StructureLevels.
+require_once ROOT_DIR . '/app/Core/StructureLevels.php';
 
+class StructureModel {
     private $db;
 
     public function __construct() {
@@ -108,18 +103,23 @@ class StructureModel {
         return $out;
     }
 
-    // Tingkat yang sudah ada di lingkup admin dan tingkat yang dapat dibuat sebagai anaknya.
+    // Tingkat (yang masih aktif) yang sudah ada di lingkup admin dan tingkat yang dapat dibuat sebagai anaknya, menurut induk yang lazim di
+    // daftar tingkat (structure_levels.parent_code). Terurut menurut urutan daftar tingkat.
     public function levelsInScope() {
-        if (AdminScope::isUnbounded()) return self::LEVELS;
-        $rows = $this->db->query("SELECT s.level FROM structures s
+        $active = StructureLevels::codes(true);
+        if (AdminScope::isUnbounded()) return $active;
+        $rows = $this->db->query("SELECT DISTINCT s.level FROM structures s
             WHERE s.deleted_at IS NULL AND " . AdminScope::sqlFilter('s.id'))->fetchAll(PDO::FETCH_COLUMN);
-        $children = [
-            'DPP' => ['DPW', 'DPLN', 'MWP'], 'DPW' => ['DPD'], 'DPD' => ['DPC'], 'DPC' => ['DPRa'],
-            'MWP' => ['MWW', 'MWLN'], 'MWW' => ['MWD'], 'MWD' => ['MWC'], 'MWC' => ['MWRa'],
-        ];
         $allowed = array_fill_keys($rows, true);
-        foreach ($rows as $level) foreach ($children[$level] ?? [] as $child) $allowed[$child] = true;
-        return array_values(array_filter(self::LEVELS, function ($level) use ($allowed) { return isset($allowed[$level]); }));
+        foreach ($rows as $level) foreach (StructureLevels::childrenOf($level) as $child) $allowed[$child] = true;
+        return array_values(array_filter($active, function ($level) use ($allowed) { return isset($allowed[$level]); }));
+    }
+
+    // Kolom turunan structures.wing dan structures.tier untuk sebuah tingkat: salinan dari daftar tingkat (structure_levels), ditulis
+    // bersama level setiap kali struktur dibuat atau tingkatnya diganti. Tingkat yang tak terdaftar ditolak, bukan ditebak.
+    private function levelColumns($level) {
+        if (!StructureLevels::exists($level)) throw new RuntimeException('Tingkat "' . $level . '" tidak ada di daftar tingkat struktur.');
+        return [':wing' => StructureLevels::structureWing($level), ':tier' => StructureLevels::tier($level)];
     }
 
     public function roots() {
@@ -173,12 +173,13 @@ class StructureModel {
 
     public function create(array $data) {
         $parentId = empty($data['parent_id']) ? null : (int) $data['parent_id'];
+        $cols = $this->levelColumns($data['level']);
 
         $this->db->beginTransaction();
         try {
             $stmt = $this->db->prepare("
-                INSERT INTO structures (uuid, level, name, parent_id, region_code, is_active)
-                VALUES (:uuid, :level, :name, :parent_id, :region_code, 1)
+                INSERT INTO structures (uuid, level, wing, tier, name, parent_id, region_code, is_active)
+                VALUES (:uuid, :level, :wing, :tier, :name, :parent_id, :region_code, 1)
             ");
             $stmt->execute([
                 ':uuid'        => Uuid::v4(),
@@ -186,7 +187,7 @@ class StructureModel {
                 ':name'        => trim($data['name']),
                 ':parent_id'   => $parentId,
                 ':region_code' => $data['region_code'] !== '' ? $data['region_code'] : null,
-            ]);
+            ] + $cols);
             $id = (int) $this->db->lastInsertId();
 
             // path hanya bisa dihitung setelah id terbit, jadi diisi di langkah kedua -- di dalam
@@ -214,12 +215,13 @@ class StructureModel {
         if ($parentId !== null && in_array($parentId, $this->descendantIds($id), true)) {
             throw new RuntimeException('Induk tidak boleh struktur itu sendiri atau keturunannya.');
         }
+        $cols = $this->levelColumns($data['level']);
 
         $this->db->beginTransaction();
         try {
             $stmt = $this->db->prepare("
                 UPDATE structures
-                SET level = :level, name = :name, parent_id = :parent_id,
+                SET level = :level, wing = :wing, tier = :tier, name = :name, parent_id = :parent_id,
                     region_code = :region_code, is_active = :is_active
                 WHERE id = :id
             ");
@@ -230,7 +232,7 @@ class StructureModel {
                 ':region_code' => $data['region_code'] !== '' ? $data['region_code'] : null,
                 ':is_active'   => !empty($data['is_active']) ? 1 : 0,
                 ':id'          => $id,
-            ]);
+            ] + $cols);
 
             // Induk berubah -> path seluruh subtree di bawahnya ikut berubah.
             if ((int) $before['parent_id'] !== (int) $parentId) {

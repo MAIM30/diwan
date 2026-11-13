@@ -2,6 +2,9 @@
 // PATH LOKASI FILE: app/Models/TermModel.php
 // Acuan periode dipakai bersama; baris terms tetap menjadi susunan periode milik satu struktur.
 
+require_once ROOT_DIR . '/app/Core/StructureLevels.php'; // urutan jenjang di daftar periode
+require_once ROOT_DIR . '/app/Core/PeopleOverview.php';
+
 class TermModel {
     private $db;
 
@@ -68,7 +71,9 @@ class TermModel {
                      WHERE t.governance_period_id = gp.id AND t.deleted_at IS NULL AND " . AdminScope::sqlFilter('s.id') . ") AS structure_count,
                     (SELECT COUNT(*) FROM placements pl JOIN terms t ON t.id = pl.term_id
                      WHERE t.governance_period_id = gp.id AND t.deleted_at IS NULL AND pl.deleted_at IS NULL
-                       AND " . AdminScope::sqlFilter('pl.structure_id') . ") AS placement_count
+                       AND " . AdminScope::sqlFilter('pl.structure_id') . ") AS placement_count,
+                    (SELECT COUNT(*) FROM terms t
+                     WHERE t.governance_period_id = gp.id AND t.deleted_at IS NULL AND NOT (" . AdminScope::sqlFilter('t.structure_id') . ")) AS outside_count
                 FROM governance_periods gp
                 ORDER BY gp.start_date DESC, gp.name DESC, gp.id DESC")->fetchAll();
     }
@@ -108,6 +113,78 @@ class TermModel {
         $id = (int) $this->db->lastInsertId();
         Audit::log('governance_periods', $id, 'create', null, $this->governancePeriodFindById($id));
         return $id;
+    }
+
+    // Boleh mengubah acuan ini? Acuan dipakai bersama: mengubah namanya atau tanggalnya mengubah SEMUA struktur yang memakainya. Jadi hanya admin
+    // yang lingkupnya mencakup semua struktur pemakai (Super Admin selalu) -- bukan admin satu DPW terhadap acuan yang juga dipakai DPW lain.
+    public function governancePeriodEditable($periodId) {
+        $stmt = $this->db->prepare("SELECT COUNT(*) FROM terms t
+            WHERE t.governance_period_id = :id AND t.deleted_at IS NULL AND NOT (" . AdminScope::sqlFilter('t.structure_id') . ")");
+        $stmt->execute([':id' => (int) $periodId]);
+        return (int) $stmt->fetchColumn() === 0;
+    }
+
+    // Membetulkan nama atau tanggal sebuah acuan yang keliru. Setiap baris periode yang memakainya menyimpan SALINAN nama, tanggal mulai, dan
+    // akhir rencananya (terms.name/start_date/end_date_planned), jadi salinan itu ikut disesuaikan dalam satu transaksi (updated_at-nya bergerak,
+    // sehingga API mengirim ulang periodenya). Penempatan tidak disentuh. Ditolak bila: sudah ada acuan lain yang identik (nama + kedua tanggal),
+    // sebuah struktur pemakai sudah punya periode lain bernama itu (nama periode unik per struktur), atau sebuah periode sudah berakhir (aktual)
+    // sebelum tanggal mulai yang baru. Mengembalikan jumlah baris periode yang berubah.
+    public function updateGovernancePeriod($id, array $data) {
+        $id = (int) $id;
+        $before = $this->governancePeriodFindById($id);
+        if (!$before) throw new RuntimeException('Acuan periode tidak ditemukan.');
+
+        $name = trim((string) ($data['name'] ?? ''));
+        $start = (string) ($data['start_date'] ?? '');
+        $end = (string) ($data['end_date_planned'] ?? '');
+        $valid = function ($d) { return preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $d, $m) && checkdate((int) $m[2], (int) $m[3], (int) $m[1]); };
+        if ($name === '' || mb_strlen($name) > 50) throw new RuntimeException('Nama periode wajib diisi (paling banyak 50 huruf).');
+        if (!$valid($start)) throw new RuntimeException('Tanggal mulai wajib diisi dengan benar.');
+        if ($end !== '' && !$valid($end)) throw new RuntimeException('Tanggal akhir rencana tidak sah.');
+        if ($end !== '' && $end < $start) throw new RuntimeException('Tanggal akhir rencana tidak boleh lebih awal dari tanggal mulai.');
+        if (!$this->governancePeriodEditable($id)) {
+            throw new RuntimeException('Acuan ini juga dipakai struktur di luar lingkup Anda, sehingga hanya admin yang lingkupnya mencakup semua pemakainya (Super Admin) yang boleh mengubahnya. Untuk struktur Anda sendiri, ganti acuannya lewat Ubah Periode.');
+        }
+        $end = $end === '' ? null : $end;
+        if ($name === $before['name'] && $start === $before['start_date'] && $end === $before['end_date_planned']) return 0;
+
+        // Acuan identik (kunci unik identity_key = nama + mulai + akhir rencana): rumusnya sama dengan kolom turunannya.
+        $dup = $this->db->prepare("SELECT id, name FROM governance_periods
+            WHERE identity_key = SHA2(CONCAT(:n, '#', :s, '#', COALESCE(:e, '')), 256) AND id <> :id LIMIT 1");
+        $dup->execute([':n' => $name, ':s' => $start, ':e' => $end, ':id' => $id]);
+        if ($row = $dup->fetch()) {
+            throw new RuntimeException('Sudah ada acuan dengan nama dan tanggal yang sama (' . $row['name'] . '). Pakai acuan itu: ganti acuan pada periode struktur lewat Ubah Periode, bukan mengubah acuan ini.');
+        }
+
+        // Nama periode unik per struktur (juga terhadap yang sudah dihapus, kuncinya tak membedakan).
+        $clash = $this->db->prepare("SELECT s.level, s.name FROM terms t JOIN structures s ON s.id = t.structure_id
+            WHERE t.governance_period_id = :id AND EXISTS (SELECT 1 FROM terms t2 WHERE t2.structure_id = t.structure_id AND t2.name = :n AND t2.governance_period_id <> :id2)
+            ORDER BY s.path LIMIT 1");
+        $clash->execute([':id' => $id, ':n' => $name, ':id2' => $id]);
+        if ($row = $clash->fetch()) {
+            throw new RuntimeException($row['level'] . ' ' . $row['name'] . ' sudah punya periode lain bernama "' . $name . '", jadi nama itu tak bisa dipakai acuan ini. Pilih nama lain, atau ganti acuan periode struktur itu.');
+        }
+
+        $early = $this->db->prepare("SELECT COUNT(*) FROM terms WHERE governance_period_id = :id AND deleted_at IS NULL AND end_date_actual IS NOT NULL AND end_date_actual < :s");
+        $early->execute([':id' => $id, ':s' => $start]);
+        if ((int) $early->fetchColumn() > 0) {
+            throw new RuntimeException('Ada periode yang akhir aktualnya lebih awal dari tanggal mulai yang baru. Betulkan akhir aktual periode itu lebih dulu.');
+        }
+
+        $this->db->beginTransaction();
+        try {
+            $this->db->prepare("UPDATE governance_periods SET name = :n, start_date = :s, end_date_planned = :e WHERE id = :id")
+                     ->execute([':n' => $name, ':s' => $start, ':e' => $end, ':id' => $id]);
+            $upd = $this->db->prepare("UPDATE terms SET name = :n, start_date = :s, end_date_planned = :e WHERE governance_period_id = :id");
+            $upd->execute([':n' => $name, ':s' => $start, ':e' => $end, ':id' => $id]);
+            $changed = $upd->rowCount();
+            $this->db->commit();
+        } catch (PDOException $e) {
+            $this->db->rollBack();
+            throw $e;
+        }
+        Audit::log('governance_periods', $id, 'update', $before, $this->governancePeriodFindById($id) + ['terms_changed' => $changed]);
+        return $changed;
     }
 
     public function attachGovernancePeriodToStructures($periodId, array $structureIds, $markCurrent = false) {
@@ -253,6 +330,16 @@ class TermModel {
 
         $isCurrent = !empty($data['is_current']) ? 1 : 0;
 
+        // Acuan diganti (periode ini keliru mengacu): nama, mulai, dan akhir rencana mengikuti acuan yang baru. Hanya bila governance_period_id
+        // diberikan dan berbeda; formulir lama / pemanggil lain yang tak mengirimnya tak mengubah acuan.
+        $newPeriod = null;
+        $newPeriodId = (int) ($data['governance_period_id'] ?? 0);
+        if ($newPeriodId > 0 && $newPeriodId !== (int) $before['governance_period_id']) {
+            $newPeriod = $this->governancePeriodFindById($newPeriodId);
+            if (!$newPeriod) throw new RuntimeException('Acuan Periode Kepengurusan tidak ditemukan.');
+            $this->assertPeriodFree((int) $before['structure_id'], $newPeriod, $id);
+        }
+
         $this->db->beginTransaction();
         try {
             if ($isCurrent) {
@@ -261,7 +348,8 @@ class TermModel {
 
             $stmt = $this->db->prepare("
                 UPDATE terms SET end_date_actual = :actual, status = :status, is_current = :current,
-                       sk_number = :sk_no, sk_date = :sk_date, notes = :notes
+                       sk_number = :sk_no, sk_date = :sk_date, notes = :notes"
+                . ($newPeriod ? ", governance_period_id = :gp, name = :name, start_date = :start, end_date_planned = :planned" : "") . "
                 WHERE id = :id
             ");
             $stmt->execute([
@@ -272,7 +360,7 @@ class TermModel {
                 ':sk_date' => $data['sk_date'] ?: null,
                 ':notes'   => $data['notes'] !== '' ? $data['notes'] : null,
                 ':id'      => $id,
-            ]);
+            ] + ($newPeriod ? [':gp' => (int) $newPeriod['id'], ':name' => $newPeriod['name'], ':start' => $newPeriod['start_date'], ':planned' => $newPeriod['end_date_planned']] : []));
 
             $this->db->commit();
             Audit::log('terms', $id, 'update', $before, $this->findById($id));
@@ -281,6 +369,19 @@ class TermModel {
             $this->db->rollBack();
             throw $e;
         }
+    }
+
+    // Boleh memasang $period pada periode $exceptId milik struktur ini? Satu struktur hanya punya satu baris untuk tiap acuan, dan namanya unik per
+    // struktur; kedua kuncinya juga menahan baris yang sudah dihapus, jadi yang itu dilaporkan terpisah (tak bisa dibereskan dari formulir).
+    private function assertPeriodFree($structureId, array $period, $exceptId) {
+        $stmt = $this->db->prepare("SELECT id, name, deleted_at FROM terms
+            WHERE structure_id = :s AND id <> :id AND (governance_period_id = :gp OR name = :n) ORDER BY deleted_at IS NOT NULL LIMIT 1");
+        $stmt->execute([':s' => (int) $structureId, ':id' => (int) $exceptId, ':gp' => (int) $period['id'], ':n' => $period['name']]);
+        if (!($row = $stmt->fetch())) return;
+        if ($row['deleted_at'] !== null) {
+            throw new RuntimeException('Struktur ini pernah punya periode "' . $row['name'] . '" yang sudah dihapus dan masih menahan acuan/nama ' . $period['name'] . '. Pilih acuan lain.');
+        }
+        throw new RuntimeException('Struktur ini sudah memakai periode "' . $row['name'] . '" (acuan ' . $period['name'] . '). Satu struktur hanya punya satu periode untuk tiap acuan: ubah periode itu, atau hapus salah satunya bila memang ganda dan kosong.');
     }
 
     // Menandai satu periode sebagai yang berjalan (satu aksi, tanpa membuka formulir): tanda dilepas dari periode lain di struktur yang sama
@@ -457,7 +558,7 @@ class TermModel {
         if ($lv !== '') { $whereLv .= ' AND s.level = :lv'; $paramsLv[':lv'] = $lv; }
         $total = $lv === '' ? array_sum($byLevel) : ($byLevel[$lv] ?? 0);
 
-        $order = "FIELD(s.level, " . implode(',', array_map(function ($l) { return "'" . $l . "'"; }, PeopleOverview::LEVEL_ORDER)) . ")";
+        $order = StructureLevels::orderSql('s.level');
         $stmt = $this->db->prepare("SELECT t.id, t.is_current, gp.name AS period, s.level, s.name AS structure_name, s.wing,
                        CASE WHEN $parentIn THEN sp.level END AS parent_level, CASE WHEN $parentIn THEN sp.name END AS parent_name,
                        CASE WHEN $parentIn THEN sp.tier END AS parent_tier" . $from . $whereLv . "

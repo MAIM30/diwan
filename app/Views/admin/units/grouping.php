@@ -329,7 +329,7 @@ $structureNode = function (array $e) use ($bucket, $canEdit, $groupRank, $openTe
     <span class="mon-sep" aria-hidden="true"></span>
     <?php foreach ($list as $level): $on = $lv === $level; ?>
       <a class="chip<?= $on ? ' on' : '' ?>" href="<?= e($url(['lv' => $on ? '' : $level])) ?>"<?= $on ? ' aria-current="true"' : '' ?>
-         title="<?= e(PeopleOverview::LEVEL_NAMES[$level] ?? $level) ?>"><?= e($level) ?> <span class="chip-n"><?= Ui::n($levelCounts[$level]) ?></span></a>
+         title="<?= e(PeopleOverview::levelName($level)) ?>"><?= e($level) ?> <span class="chip-n"><?= Ui::n($levelCounts[$level]) ?></span></a>
     <?php endforeach; ?>
   <?php endforeach; ?>
 </div>

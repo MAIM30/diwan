@@ -63,6 +63,9 @@ $nav = function ($key, $href, $icon, $label, $badge = 0) use ($navKey) {
       <div class="nav-label">Master Data</div>
       <?= $nav('units', 'units/catalog', 'grid', 'Unit Organisasi') ?>
       <?= $nav('positions', 'positions', 'award', 'Jabatan') ?>
+      <?php if (Auth::isSuperAdmin()): ?>
+        <?= $nav('levels', 'levels', 'route', 'Tingkat Struktur') ?>
+      <?php endif; ?>
 
       <div class="nav-label">Verifikasi</div>
       <?= $nav('registrations', 'registrations', 'inbox', 'Pendaftaran', $pendingCount) ?>

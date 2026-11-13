@@ -60,7 +60,7 @@ $chipGroups = PeopleOverview::chipGroups($levelCounts);
     <span class="mon-sep" aria-hidden="true"></span>
     <?php foreach ($list as $lv): $on = $level === $lv; ?>
       <a class="chip<?= $on ? ' on' : ($levelCounts[$lv] === 0 ? ' zero' : '') ?>" href="<?= e($qs(['lv' => $on ? '' : $lv, 'page' => ''])) ?>"<?= $on ? ' aria-current="true"' : '' ?>
-         title="<?= e((PeopleOverview::LEVEL_NAMES[$lv] ?? $lv) . ' · ' . Ui::n($structCounts[$lv] ?? 0) . ' struktur') ?>"><?= e($lv) ?> <span class="chip-n"><?= Ui::n($levelCounts[$lv]) ?></span></a>
+         title="<?= e((PeopleOverview::levelName($lv)) . ' · ' . Ui::n($structCounts[$lv] ?? 0) . ' struktur') ?>"><?= e($lv) ?> <span class="chip-n"><?= Ui::n($levelCounts[$lv]) ?></span></a>
     <?php endforeach; ?>
   <?php endforeach; ?>
 </div>

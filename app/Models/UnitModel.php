@@ -12,8 +12,8 @@ require_once ROOT_DIR . '/app/Models/PositionModel.php'; // PositionModel::CORE_
 require_once ROOT_DIR . '/app/Core/UnitKinds.php';        // daftar jenis unit (urutan, label, kelompok bawaan) -- dikelola, bukan konstanta
 
 class UnitModel {
-    // Sayap katalog (migrasi 022). Mengikuti structures.wing: struktur Muslimah (MWP, MWW, MWLN, MWD, MWC, MWRa) memakai katalog
-    // 'muslimah', yang lain 'umum'. Nama unit unik per sayap, bukan di seluruh katalog.
+    // Sayap katalog (migrasi 022). Mengikuti structures.wing: struktur bertingkat kelompok Muslimah (MWP, MWW, ...; daftar tingkatnya di
+    // Master Data > Tingkat Struktur) memakai katalog 'muslimah', yang lain 'umum'. Nama unit unik per sayap, bukan di seluruh katalog.
     const WINGS = ['umum' => 'Umum', 'muslimah' => 'Muslimah'];
 
     // Kelompok bawaan menurut jenis unit ada di unit_kinds.group_name / group_sort (UnitKinds::group): bawaannya Biro, Badan, dan Pusat tidak

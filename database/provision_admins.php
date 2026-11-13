@@ -48,6 +48,9 @@ try {
     ]);
 } catch (PDOException $e) { fail('Tidak bisa terhubung ke basis data: ' . $e->getMessage()); }
 
+// Sebutan tingkat di nama admin dibaca dari daftar tingkat (migrasi 027) lewat koneksi skrip ini; sebelum migrasi itu dipakai daftar bawaan.
+try { StructureLevels::load($pdo->query('SELECT * FROM structure_levels')->fetchAll()); } catch (PDOException $e) { /* tabel belum ada */ }
+
 $structures = $pdo->query("
     SELECT s.id, s.level, s.name, s.tier, s.path,
            (SELECT COUNT(*) FROM account_roles ar WHERE ar.role = 'admin_struktur' AND ar.scope_structure_id = s.id) AS admins

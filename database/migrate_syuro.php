@@ -148,8 +148,12 @@ try {
                 $id = (int) $row['id'];
                 if ($region !== null) $pdo->prepare("UPDATE structures SET region_code = ? WHERE id = ?")->execute([$region, $id]);
             } else {
-                $pdo->prepare("INSERT INTO structures (uuid, level, name, parent_id, region_code) VALUES (?,?,?,?,?)")
-                    ->execute([$uuid(), $o['level'], $o['name'], $pid, $region]);
+                // wing dan tier: salinan dari kelompok dan tier tingkatnya di structure_levels (migrasi 027).
+                $def = $pdo->prepare("SELECT grp, tier FROM structure_levels WHERE code = ?");
+                $def->execute([$o['level']]);
+                $d = $def->fetch() ?: fail("Tingkat {$o['level']} tidak ada di structure_levels.");
+                $pdo->prepare("INSERT INTO structures (uuid, level, name, parent_id, region_code, wing, tier) VALUES (?,?,?,?,?,?,?)")
+                    ->execute([$uuid(), $o['level'], $o['name'], $pid, $region, $d['grp'] === 'musl' ? 'muslimah' : 'umum', (int) $d['tier']]);
                 $id = (int) $pdo->lastInsertId();
                 $pp = '/'; $depth = 0;
                 if ($pid !== null) {

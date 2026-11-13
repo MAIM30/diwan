@@ -13,7 +13,7 @@ error_reporting(E_ALL);
 set_error_handler(function ($no, $msg, $file, $line) { throw new ErrorException($msg, 0, $no, $file, $line); });
 
 require ROOT_DIR . '/config/config.php';
-foreach (['Database', 'Controller', 'Audit', 'Text', 'Uuid', 'Csrf', 'Auth', 'Ui', 'Flash', 'AdminScope', 'Susunan', 'PeopleOverview', 'AdminNaming'] as $c) require_once ROOT_DIR . "/app/Core/$c.php";
+foreach (['Database', 'Controller', 'Audit', 'Text', 'Uuid', 'Csrf', 'Auth', 'Ui', 'Flash', 'AdminScope', 'Susunan', 'PeopleOverview', 'AdminNaming', 'StructureLevels'] as $c) require_once ROOT_DIR . "/app/Core/$c.php";
 require_once ROOT_DIR . '/app/Controllers/StructuresController.php';
 foreach (['StructureModel', 'UnitModel'] as $m) require_once ROOT_DIR . "/app/Models/$m.php";
 
@@ -65,30 +65,29 @@ $cleanup = function () use ($pdo, $prefix) {
 register_shutdown_function($cleanup);
 $mwlnBefore = $one("SELECT COUNT(*) FROM structures WHERE level = 'MWLN'");
 
-// ---------- 1. Konstanta, urutan, label ----------
-ok(StructureModel::BY_WING['muslimah'] === ['MWP', 'MWW', 'MWLN', 'MWD', 'MWC', 'MWRa'], '1: sayap Muslimah berurut MWP, MWW, MWLN, MWD, MWC, MWRa (MWLN setingkat MWW)', implode(',', StructureModel::BY_WING['muslimah']));
-ok(count(StructureModel::LEVELS) === count(array_unique(StructureModel::LEVELS)) && substr_count(implode(',', StructureModel::LEVELS), 'MWLN') === 1, '1: MWLN muncul tepat sekali di LEVELS');
-$lvl = StructureModel::LEVELS;
-ok(!array_diff($lvl, PeopleOverview::LEVEL_ORDER), '1: setiap tingkat StructureModel punya tempat di urutan PeopleOverview', implode(',', array_diff($lvl, PeopleOverview::LEVEL_ORDER)));
-ok(!array_diff(PeopleOverview::LEVEL_ORDER, array_keys(PeopleOverview::LEVEL_NAMES)), '1: setiap tingkat di urutan punya nama lengkap', implode(',', array_diff(PeopleOverview::LEVEL_ORDER, array_keys(PeopleOverview::LEVEL_NAMES))));
-$o = PeopleOverview::LEVEL_ORDER;
-ok(array_search('MWW', $o) < array_search('MWLN', $o) && array_search('MWLN', $o) < array_search('MWD', $o), '1: di urutan jenjang MWLN tepat sesudah MWW dan sebelum MWD');
-ok(PeopleOverview::LEVEL_NAMES['MWLN'] === 'Muslimah Luar Negeri', '1: nama lengkap "Muslimah Luar Negeri"');
+// ---------- 1. Daftar tingkat: urutan, label ----------
+$muslCodes = array_values(array_filter(StructureLevels::codes(), function ($c) { return StructureLevels::group($c) === 'musl'; }));
+ok($muslCodes === ['MWP', 'MWW', 'MWLN', 'MWD', 'MWC', 'MWRa'], '1: sayap Muslimah berurut MWP, MWW, MWLN, MWD, MWC, MWRa (MWLN setingkat MWW)', implode(',', $muslCodes));
+$lvl = StructureLevels::codes();
+ok(count($lvl) === count(array_unique($lvl)) && substr_count(implode(',', $lvl), 'MWLN') === 1, '1: MWLN muncul tepat sekali di daftar tingkat');
+ok(!array_filter($lvl, function ($c) { return StructureLevels::name($c) === $c; }), '1: setiap tingkat punya nama lengkap');
+ok(array_search('MWW', $lvl) < array_search('MWLN', $lvl) && array_search('MWLN', $lvl) < array_search('MWD', $lvl), '1: di urutan jenjang MWLN tepat sesudah MWW dan sebelum MWD');
+ok(PeopleOverview::levelName('MWLN') === 'Muslimah Luar Negeri', '1: nama lengkap "Muslimah Luar Negeri"');
 ok(PeopleOverview::wingOf('MWLN') === 'musl', '1: MWLN masuk kelompok Muslimah');
 ok(PeopleOverview::chipGroups(['MWW' => 1, 'MWLN' => 0, 'MWD' => 2, 'DPLN' => 0])['musl'] === ['MWW', 'MWLN', 'MWD'], '1: chip jenjang: MWLN ikut (walau 0 orang) di kelompok Muslimah, sesudah MWW');
 ok(AdminNaming::displayName('MWLN', 'Arab Saudi') === 'Admin Luar Negeri: MWLN Arab Saudi', '1: nama akun admin MWLN', AdminNaming::displayName('MWLN', 'Arab Saudi'));
 
-// ---------- 2. Database: ENUM, sayap, tier ----------
-$enum = (string) $pdo->query("SELECT COLUMN_TYPE FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'structures' AND column_name = 'level'")->fetchColumn();
-preg_match_all("/'([^']+)'/", $enum, $mm);
-ok(!array_diff($lvl, $mm[1]), '2: setiap tingkat yang dikenal kode ada di ENUM structures.level (migrasi 023 sudah dijalankan?)', implode(',', array_diff($lvl, $mm[1])));
-$pdo->beginTransaction();
-$pdo->prepare("INSERT INTO structures (uuid, level, name, parent_id, path) VALUES (?, 'MWLN', ?, ?, '')")->execute([Uuid::v4(), $prefix . '-SQL', $mwp]);
-$row = $pdo->query("SELECT level, wing, tier FROM structures WHERE name = '" . $prefix . "-SQL'")->fetch(PDO::FETCH_ASSOC);
-$pdo->rollBack();
-ok($row && $row['wing'] === 'muslimah' && (int) $row['tier'] === 2, '2: baris MWLN otomatis wing = muslimah, tier = 2 (setingkat MWW/DPLN)', json_encode($row));
+// ---------- 2. Database: daftar tingkat, sayap, tier ----------
+$type = (string) $pdo->query("SELECT DATA_TYPE FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'structures' AND column_name = 'level'")->fetchColumn();
+ok($type === 'varchar' && $one("SELECT COUNT(*) FROM structure_levels WHERE code = 'MWLN'") === 1, '2: structures.level berupa teks dan MWLN terdaftar di structure_levels (migrasi 027 sudah dijalankan?)', $type);
+ok($one("SELECT COUNT(*) FROM structures s LEFT JOIN structure_levels l ON l.code = s.level WHERE l.code IS NULL") === 0, '2: setiap struktur memakai tingkat yang terdaftar');
+$mw = $pdo->query("SELECT l.grp, l.tier FROM structure_levels l WHERE l.code = 'MWLN'")->fetch(PDO::FETCH_ASSOC);
+ok($mw && $mw['grp'] === 'musl' && (int) $mw['tier'] === 2, '2: MWLN: kelompok Muslimah, tier 2 (setingkat MWW/DPLN)', json_encode($mw));
+$bad = $one("SELECT COUNT(*) FROM structures s JOIN structure_levels l ON l.code = s.level
+    WHERE s.tier <> l.tier OR s.wing <> IF(l.grp = 'musl', 'muslimah', 'umum')");
+ok($bad === 0, '2: wing dan tier setiap struktur sama dengan kelompok dan tier tingkatnya', (string) $bad);
 $tiers = $pdo->query("SELECT level, tier FROM structures GROUP BY level, tier")->fetchAll(PDO::FETCH_KEY_PAIR);
-ok((int) ($tiers['MWW'] ?? 0) === 2 && (int) ($tiers['DPLN'] ?? 0) === 2 && (int) ($tiers['DPD'] ?? 0) === 3, '2: migrasi tak merusak tier tingkat lain (MWW=2, DPLN=2, DPD=3)', json_encode($tiers));
+ok((int) ($tiers['MWW'] ?? 0) === 2 && (int) ($tiers['DPLN'] ?? 0) === 2 && (int) ($tiers['DPD'] ?? 0) === 3, '2: tier tingkat lain utuh (MWW=2, DPLN=2, DPD=3)', json_encode($tiers));
 ok($one("SELECT COUNT(*) FROM structures WHERE wing = 'umum' AND level LIKE 'MW%'") === 0, '2: tak ada tingkat MW* yang tercatat sebagai sayap Umum');
 
 // ---------- 3. Pilihan tingkat menurut lingkup ----------
@@ -111,9 +110,9 @@ $h = formHtml();
 preg_match('/<select id="level".*?<\/select>/s', $h, $sel);
 $opts = preg_match_all('/<option value="([A-Za-z]*)"/', $sel[0] ?? '', $om) ? $om[1] : [];
 $opts = array_values(array_filter($opts));
-ok($opts === ['DPP', 'DPW', 'DPLN', 'DPD', 'DPC', 'DPRa', 'MWP', 'MWW', 'MWLN', 'MWD', 'MWC', 'MWRa'], '4: pilihan Tingkat berurut dan memuat MWLN antara MWW dan MWD', implode(',', $opts));
-ok(strpos($h, "{DPLN: 'DPP', MWLN: 'MWP', MWRa: 'MWC'}") !== false, '4: skrip form: MWLN menyaring pilihan Induk ke MWP');
-ok(strpos($h, 'MWLN (Luar Negeri) setingkat MWW di bawah MWP') !== false, '4: teks bantuan menjelaskan MWLN');
+ok($opts === StructureLevels::codes(true) && array_search('MWW', $opts) + 1 === array_search('MWLN', $opts) && array_search('MWLN', $opts) + 1 === array_search('MWD', $opts), '4: pilihan Tingkat mengikuti daftar tingkat (aktif) dan memuat MWLN antara MWW dan MWD', implode(',', $opts));
+ok(strpos($h, 'var requiredParent = {"DPLN":"DPP","MWLN":"MWP","MWRa":"MWC"};') !== false, '4: skrip form: induk wajib dibaca dari daftar tingkat (MWLN menyaring pilihan Induk ke MWP)');
+ok(strpos($h, 'data-info="Muslimah Luar Negeri · Muslimah · setingkat Wilayah · wajib di bawah MWP"') !== false, '4: keterangan pilihan MWLN: nama lengkap, kelompok, setingkat, dan induk wajib');
 sess('admin_struktur', [$dpw]);
 $h = formHtml();
 preg_match('/<select id="level".*?<\/select>/s', $h, $sel);
@@ -155,7 +154,7 @@ ok(!AdminScope::allows((int) $new['id']), '6: admin DPW tidak mencakup MWLN');
 sess('super_admin');
 $counts = (new StructureModel())->levelCountsInScope();
 ok(($counts['MWLN'] ?? 0) === $mwlnBefore + 2, '7: jumlah struktur per jenjang memuat MWLN', json_encode($counts['MWLN'] ?? null));
-ok(PeopleOverview::chipGroups($counts)['musl'] === array_values(array_intersect(PeopleOverview::LEVEL_ORDER, array_keys(array_filter($counts, function ($k) { return strpos($k, 'MW') === 0; }, ARRAY_FILTER_USE_KEY)))), '7: chip jenjang Muslimah memuat MWLN dalam urutan baku', implode(',', PeopleOverview::chipGroups($counts)['musl']));
+ok(PeopleOverview::chipGroups($counts)['musl'] === array_values(array_intersect(StructureLevels::codes(), array_keys(array_filter($counts, function ($k) { return strpos($k, 'MW') === 0; }, ARRAY_FILTER_USE_KEY)))), '7: chip jenjang Muslimah memuat MWLN dalam urutan baku', implode(',', PeopleOverview::chipGroups($counts)['musl']));
 $_GET = ['lv' => 'MWLN']; $_SERVER['REQUEST_METHOD'] = 'GET';
 ob_start(); (new TS)->index(); $h = ob_get_clean();
 ok(strpos($h, $prefix . '-A') !== false && strpos($h, '<span class="badge lv">MWLN</span>') !== false && strpos($h, '>MWLN <span class="chip-n">') !== false, '7: halaman Struktur: chip dan baris MWLN tampil');

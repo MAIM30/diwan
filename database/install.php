@@ -124,6 +124,8 @@ require_once __DIR__ . '/024_pengajuan_koreksi_penempatan.php';
 migrate_024_pengajuan_koreksi_penempatan($pdo, 'say');
 require_once __DIR__ . '/026_ketua_mww_mwd.php';
 migrate_026_ketua_mww_mwd($pdo, 'say');
+require_once __DIR__ . '/027_tingkat_struktur.php';
+migrate_027_tingkat_struktur($pdo, 'say');
 
 // ---------- Struktur akar ----------
 // DPP dibuat sebagai akar, MWP sebagai anaknya. Inilah yang membuat lingkup "Nasional" (akar)
@@ -143,8 +145,13 @@ function ensureStructure(PDO $pdo, $level, $name, $parentId) {
         return (int) $row['id'];
     }
 
-    $ins = $pdo->prepare("INSERT INTO structures (uuid, level, name, parent_id) VALUES (:u, :lv, :nm, :pid)");
-    $ins->execute([':u' => uuidV4(), ':lv' => $level, ':nm' => $name, ':pid' => $parentId]);
+    // wing dan tier adalah salinan dari kelompok dan tier tingkatnya (daftar tingkat: structure_levels, migrasi 027).
+    $lv = $pdo->prepare("SELECT grp, tier FROM structure_levels WHERE code = :c");
+    $lv->execute([':c' => $level]);
+    $def = $lv->fetch();
+    $ins = $pdo->prepare("INSERT INTO structures (uuid, level, name, parent_id, wing, tier) VALUES (:u, :lv, :nm, :pid, :w, :t)");
+    $ins->execute([':u' => uuidV4(), ':lv' => $level, ':nm' => $name, ':pid' => $parentId,
+                   ':w' => $def['grp'] === 'musl' ? 'muslimah' : 'umum', ':t' => (int) $def['tier']]);
     $id = (int) $pdo->lastInsertId();
 
     // path hanya bisa dihitung setelah id terbit (lihat StructureModel::writePath()).

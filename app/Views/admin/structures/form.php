@@ -21,13 +21,28 @@ $this->view('layouts/header', ['title' => $title]);
     <div class="grid-2">
       <div class="field">
         <label for="level">Tingkat</label>
+        <?php
+        // Keterangan tiap tingkat dibaca dari daftar tingkat (StructureLevels) dan ditampilkan di bawah pilihan begitu dipilih; induk wajib
+        // dipakai skrip di bawah untuk menyaring pilihan Induk.
+        $levelInfo = []; $levelParent = [];
+        foreach ($levels as $lv) {
+            $d = StructureLevels::find($lv);
+            if (!$d) continue;
+            $info = $d['name'] . ' · ' . (StructureLevels::GROUPS[$d['grp']] ?? $d['grp']) . ' · setingkat ' . Ui::tierName($d['tier']);
+            $req = StructureLevels::requiredParent($lv);
+            if ($req !== null) $info .= ' · wajib di bawah ' . $req;
+            elseif (StructureLevels::parentOf($lv) !== null) $info .= ' · lazimnya di bawah ' . StructureLevels::parentOf($lv);
+            $levelInfo[$lv] = $info;
+            if ($req !== null) $levelParent[$lv] = $req;
+        }
+        ?>
         <select id="level" name="level" required>
           <option value="">— pilih —</option>
           <?php foreach ($levels as $lv): ?>
-            <option value="<?= e($lv) ?>" <?= ($row['level'] ?? '') === $lv ? 'selected' : '' ?>><?= e($lv) ?></option>
+            <option value="<?= e($lv) ?>" data-info="<?= e($levelInfo[$lv] ?? '') ?>" <?= ($row['level'] ?? '') === $lv ? 'selected' : '' ?>><?= e($lv) ?><?= StructureLevels::find($lv) && empty(StructureLevels::find($lv)['is_active']) ? ' (nonaktif)' : '' ?></option>
           <?php endforeach; ?>
         </select>
-        <div class="help">DPLN setingkat DPW di bawah DPP. MWP/MWW/MWLN/MWD/MWC/MWRa = sayap Muslimah; MWLN (Luar Negeri) setingkat MWW di bawah MWP; MWRa berarti Ranting (Kelurahan) di bawah MWC.</div>
+        <div class="help" id="level-help">Pilih tingkat; keterangannya tampil di sini.<?php if (Auth::isSuperAdmin()): ?> Tingkat lain bisa ditambahkan di <a href="<?= BASEURL ?>/levels">Tingkat Struktur</a>.<?php endif; ?></div>
       </div>
 
       <div class="field">
@@ -77,8 +92,13 @@ $this->view('layouts/header', ['title' => $title]);
   var level = document.getElementById('level');
   var parent = document.getElementById('parent_id');
   if (!level || !parent) return;
+  var requiredParent = <?= json_encode($levelParent ?: new stdClass(), JSON_UNESCAPED_UNICODE) ?>;
+  var help = document.getElementById('level-help');
+  var helpDefault = help ? help.innerHTML : '';
   function syncParent() {
-    var required = {DPLN: 'DPP', MWLN: 'MWP', MWRa: 'MWC'}[level.value] || '';
+    var required = requiredParent[level.value] || '';
+    var info = level.selectedOptions[0] ? level.selectedOptions[0].getAttribute('data-info') : '';
+    if (help && info) help.textContent = info; else if (help) help.innerHTML = helpDefault;
     Array.prototype.forEach.call(parent.options, function (option) {
       if (!option.value) return;
       option.hidden = !!required && option.getAttribute('data-parent-level') !== required;

@@ -36,6 +36,17 @@ Aman dijalankan berulang (idempoten) — skrip ini melewati migrasi yang sudah p
 Migrasi 015 menambah tingkat DPLN/MWRa; migrasi 016 membuat acuan periode bersama dan menautkan periode lama
 berdasarkan nama serta tanggal yang sama. Migrasi 016 tidak menghapus atau mengganti penempatan.
 
+**Migrasi 027 (tingkat struktur menjadi daftar yang dikelola) mengubah kolom `structures.level/wing/tier`.** Aturannya:
+1. **Cadangkan dulu**, karena ini perubahan skema pada tabel yang hidup:
+   ```bash
+   mysqldump -u diwan -p --single-transaction --no-tablespaces --routines --triggers db_pengurus > ~/diwan_sebelum_027.sql
+   ```
+2. **Pull lalu langsung migrate, tanpa jeda.** Kode baru menulis `wing`/`tier` eksplisit (gagal pada skema lama), dan kode lama tak menulisnya
+   (gagal pada skema baru). Selama jeda itu halaman tetap terbuka, hanya membuat/mengubah struktur yang gagal.
+3. **Mundur** sesudah 027 berarti memulihkan dump di atas (kode lama tak cocok dengan skema baru), bukan sekadar `git reset`.
+4. Penanda berhasil: `SELECT COUNT(*) FROM structure_levels;` = 15 dan `SELECT data_type FROM information_schema.columns
+   WHERE table_schema = 'db_pengurus' AND table_name = 'structures' AND column_name = 'level';` = `varchar`.
+
 ## C. Perubahan DATA (bukan skema — isi tabel: orang, penempatan, dll.)
 
 **Hati-hati:** server sekarang LIVE. Kalau ada yang sudah mendaftar/mengubah data lewat Portal

@@ -4,7 +4,7 @@
 // membuat definisi "Pengurus Inti" berhenti menjadi CASE WHEN di kode (lihat PengurusInti di syuro)
 // dan menjadi data yang bisa diubah tanpa deploy.
 
-require_once ROOT_DIR . '/app/Models/StructureModel.php'; // StructureModel::LEVELS: urutan jenjang untuk tombol penyaring struktur
+require_once ROOT_DIR . '/app/Core/StructureLevels.php'; // urutan jenjang untuk tombol penyaring struktur
 require_once ROOT_DIR . '/app/Core/UnitKinds.php';        // daftar jenis unit (dikelola, bukan konstanta)
 
 class PositionModel {
@@ -135,7 +135,7 @@ class PositionModel {
     // Tombol penyaring dibuat dari empat Lembaga Tinggi (tabel lembaga_tinggi; tiap struktur sudah tertaut ke salah satunya).
     // Yang hanya punya satu jenjang (DSO, DSY, DPK) tampil lebih dulu, DPP yang membawahi DPW, DPD, MWP, MWW, MWD paling akhir,
     // sebab tombolnya membuka baris jenjang di bawahnya. Hasil: [['id', 'abbr', 'name', 'levels' => [...]]], jenjang berurut
-    // menurut StructureModel::LEVELS.
+    // menurut daftar tingkat (StructureLevels).
     public function structureFilters() {
         $rows = $this->db->query("
             SELECT lt.id, lt.abbreviation AS abbr, lt.name, lt.sort_order, s.level
@@ -150,7 +150,7 @@ class PositionModel {
             $by[$r['id']]['levels'][] = $r['level'];
         }
         foreach ($by as &$f) {
-            $order = array_flip(StructureModel::LEVELS);
+            $order = StructureLevels::order();
             usort($f['levels'], function ($a, $b) use ($order) { return ($order[$a] ?? 99) <=> ($order[$b] ?? 99); });
         }
         unset($f);
@@ -263,7 +263,7 @@ class PositionModel {
                    t.name AS term_name, t.is_current,
                    COALESCE(NULLIF(su.display_name, ''), c.name) AS unit_name
             $from
-            ORDER BY s.tier, s.level, s.name, ISNULL(pl.structure_unit_id) DESC, unit_name, p.name, p.id
+            ORDER BY s.tier, " . StructureLevels::orderSql('s.level') . ", s.name, ISNULL(pl.structure_unit_id) DESC, unit_name, p.name, p.id
             LIMIT :limit OFFSET :offset
         ");
         foreach ($params as $k => $v) $stmt->bindValue($k, $v);

@@ -8,6 +8,7 @@
 // (end_date kosong atau belum lewat).
 
 require_once ROOT_DIR . '/app/Models/PersonModel.php'; // PersonModel::scopeSql() dipakai query daftar orang
+require_once ROOT_DIR . '/app/Core/StructureLevels.php'; // tingkat berkelompok Dewan dikeluarkan dari rekap tier
 
 class DashboardModel {
     const CURRENT = "pl.deleted_at IS NULL AND t.deleted_at IS NULL AND t.is_current = 1
@@ -60,12 +61,14 @@ class DashboardModel {
     // (tier 1 juga) tapi bukan bagian dari tangga Pusat->Ranting, jadi direkap sendiri lewat
     // lembagaTinggi() -- kalau ikut di sini, "Pusat" akan melonjak tanpa penjelasan.
     public function byTier() {
+        // Tingkat berkelompok Dewan (DSO, DSY, DPK, dan yang kelak ditambahkan di Master Data > Tingkat Struktur).
+        $dewan = array_keys(array_filter(StructureLevels::all(), function ($r) { return $r['grp'] === 'dewan'; }));
+        $notDewan = $dewan ? ' AND s.level NOT IN (' . implode(',', array_map([$this->db, 'quote'], $dewan)) . ')' : '';
         return $this->db->query("
             SELECT s.tier, COUNT(DISTINCT pl.person_id) AS c
             FROM placements pl
             JOIN terms t ON t.id = pl.term_id JOIN structures s ON s.id = pl.structure_id
-            WHERE " . self::CURRENT . " AND " . $this->sc('s.id') . "
-              AND s.level NOT IN ('DSO', 'DSY', 'DPK')
+            WHERE " . self::CURRENT . " AND " . $this->sc('s.id') . $notDewan . "
             GROUP BY s.tier ORDER BY s.tier
         ")->fetchAll();
     }

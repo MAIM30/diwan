@@ -3,6 +3,8 @@
 // Formulir "Biodata / Profil Singkat Pengurus" yang diisi pengurus sendiri. Satu baris per orang
 // (upsert di person_id) -- lihat migrasi 010 dan app/Core/BiodataPdf.php.
 
+require_once ROOT_DIR . '/app/Core/StructureLevels.php';   // urutan jenjang pada daftar penempatan
+
 class BiodataModel {
     private $db;
 
@@ -204,7 +206,7 @@ class BiodataModel {
                        GROUP_CONCAT(DISTINCT CONCAT(s.level, ' ', s.name, ' - ',
                          COALESCE(ug.name, 'Pengurus Inti'), ' - ',
                          COALESCE(NULLIF(su.display_name, ''), NULLIF(uc.name, ''), 'Pengurus Inti'), ' - ', po.name)
-                         ORDER BY s.level, s.name, su.sort_order SEPARATOR ' | ') AS placement_labels
+                         ORDER BY " . StructureLevels::orderSql('s.level') . ", s.name, su.sort_order SEPARATOR ' | ') AS placement_labels
                 FROM placements pl
                 JOIN people p ON p.id = pl.person_id AND p.deleted_at IS NULL
                 JOIN terms t ON t.id = pl.term_id AND t.is_current = 1

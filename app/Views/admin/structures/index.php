@@ -108,7 +108,7 @@ $node = function (array $r) use (&$node, $kids, $openIds, $matchIds, $filtered, 
     <span class="mon-sep" aria-hidden="true"></span>
     <?php foreach ($list as $level): $on = $lv === $level; ?>
       <a class="chip<?= $on ? ' on' : ($levelCounts[$level] === 0 ? ' zero' : '') ?>" href="<?= e($qs(['lv' => $on ? '' : $level, 'page' => ''])) ?>"<?= $on ? ' aria-current="true"' : '' ?>
-         title="<?= e(PeopleOverview::LEVEL_NAMES[$level] ?? $level) ?>"><?= e($level) ?> <span class="chip-n"><?= Ui::n($levelCounts[$level]) ?></span></a>
+         title="<?= e(PeopleOverview::levelName($level)) ?>"><?= e($level) ?> <span class="chip-n"><?= Ui::n($levelCounts[$level]) ?></span></a>
     <?php endforeach; ?>
   <?php endforeach; ?>
 </div>
@@ -241,7 +241,7 @@ $node = function (array $r) use (&$node, $kids, $openIds, $matchIds, $filtered, 
 </div>
 
 <div class="note">
-  Sayap Muslimah (MWP/MWW/MWD/MWC/MWRa) adalah cabang paralel di bawah akar yang sama, bukan label lain
+  Sayap Muslimah (<?= e(implode('/', array_filter(StructureLevels::codes(true), function ($c) { return StructureLevels::group($c) === 'musl'; }))) ?>) adalah cabang paralel di bawah akar yang sama, bukan label lain
   dari struktur umum: &ldquo;DPW Sulawesi Tenggara&rdquo; dan &ldquo;MWW Sulawesi Tenggara&rdquo;
   adalah dua baris berbeda. Lingkup admin tidak pernah menyeberang antar cabang.
 </div>

@@ -102,6 +102,7 @@ database/
   024_pengajuan_koreksi_penempatan.php migrasi: antrean laporan pengurus untuk kekeliruan jabatan/penempatan
   025_jenis_unit.php          migrasi: jenis unit menjadi daftar yang dikelola (tabel unit_kinds); unit_catalog.kind ENUM -> VARCHAR; "Lainnya" -> "Belum ditentukan" (kode 'belum')
   026_ketua_mww_mwd.php       migrasi: jabatan "Ketua MWW" dan "Ketua MWD" (pucuk pimpinan Muslimah Wahdah Wilayah dan Daerah)
+  027_tingkat_struktur.php    migrasi: tingkat struktur menjadi daftar yang dikelola (tabel structure_levels); structures.level ENUM -> VARCHAR + foreign key; wing/tier generated -> kolom biasa (disalin dari tingkatnya oleh StructureModel); 015/017/023 melewati bagian ENUM-nya sesudah ini
   sinkron_ketua_dpw_dpd.php   memasukkan Ketua DPW/DPD dari tab DPW dan DPD (Google Sheet, atau berkas CSV lewat --dpw/--dpd, mis. sheet Data Peserta Mukernas); opsi
                               --ketua-lain-jadi-anggota ("Ketua" polos lain di struktur yang Ketuanya terpasang menjadi Anggota; yang sudah Anggota dianulir) dan
                               --buat-orang='Nama|HP|L' (CLI; dry-run bawaan, --commit untuk menyimpan; wajib mysqldump dulu)
@@ -492,7 +493,9 @@ Dibuat dari elemen `<details>` bawaan peramban (bisa dengan papan ketik, tetap b
 Lingkup admin (`AdminScope`) dihitung saat masuk; setelah admin menambah atau mengubah struktur lewat halaman ini lingkupnya dihitung ulang dari akar yang sama
 (`AdminScope::refresh`), sehingga struktur barunya langsung terlihat dan langkah berikutnya (form periode) tidak ditolak.
 
-**Pilihan Tingkat di form struktur mengikuti lingkup admin** (`StructureModel::levelsInScope`): di tiap sayap, mulai dari struktur tertingginya dalam lingkup ke bawah.
+**Tingkat struktur adalah daftar yang dikelola** (Master Data > Tingkat Struktur, hanya Super Admin; tabel `structure_levels`, kelas `StructureLevels`, `StructureLevelModel`): singkatan (tetap), nama lengkap, kelompok (Umum / Muslimah / Dewan), setingkat (tier 1-5), tingkat induk (dengan penanda *wajib*), sebutan di nama admin, urutan, dan aktif. Tingkat baru langsung muncul di formulir Struktur, chip jenjang, dan API (`level`); yang dipakai struktur tak bisa dihapus (nonaktifkan saja); DPP dan MWP bawaan sistem (dikenal kode akses). `structures.wing` dan `structures.tier` adalah SALINAN kelompok dan tier tingkatnya: ditulis `StructureModel::create/update`, dan diselaraskan `StructureLevelModel::save` bila tier sebuah tingkat diubah (kelompok Umum/Muslimah terkunci selama ada strukturnya). Diuji `tests/structure_levels_test.php`.
+
+**Pilihan Tingkat di form struktur mengikuti lingkup admin** (`StructureModel::levelsInScope`): tingkat yang aktif, mulai dari struktur tertingginya dalam lingkup ke bawah, menurut induk lazim di daftar tingkat.
 Admin DPW melihat DPW/DPD/DPC/DPRa, admin DPD melihat DPD/DPC/DPRa, dan seterusnya; admin DPP dapat membuat DPLN setingkat DPW, admin MWP dapat membuat MWLN setingkat MWW, dan admin MWC dapat membuat MWRa; sayap yang tak ada dalam lingkupnya (Muslimah bagi admin DPW) tidak muncul,
 sedangkan admin DPP dan Super Admin melihat semuanya. Batas yang sama dipaksakan di server saat menyimpan, jadi mengirim level lain secara manual ditolak.
 
@@ -574,6 +577,8 @@ peringatan. **Profil orang** (`/people/detail/ID`): penempatan yang belum berakh
 di Riwayat; kartunya dulu tampak kosong ("Tidak sedang menjabat di periode berjalan"). Kini kartu menjelaskannya ("Belum terhitung menjabat", struktur, periode, dan tombol Tandai berjalan yang
 kembali ke profil itu), dan Riwayat memberi lencana "belum ditandai berjalan". Hanya periode milik struktur yang BELUM punya periode berjalan yang dihitung menunggu; periode berikutnya milik
 struktur yang sudah punya periode berjalan bukan masalah. Diuji di `tests/term_current_test.php`.
+
+**Membetulkan periode yang keliru.** Ada dua kekeliruan yang berbeda, dengan dua perbaikan berbeda. (1) Sebuah struktur memilih ACUAN yang salah (mis. 2022-2027, seharusnya 2021-2026): buka periodenya, **Ubah Periode**, pilih acuan yang benar (`TermModel::update` menggantikan `governance_period_id`; nama dan tanggal periode mengikuti acuan baru; penempatan dan unit TETAP di periode itu; ditolak bila struktur itu sudah punya periode pada acuan/nama tersebut). (2) Acuannya sendiri bernama atau bertanggal salah: **Acuan Periode > Ubah** (`TermModel::updateGovernancePeriod`) memperbaikinya sekaligus di semua periode struktur pemakai, karena tiap periode menyimpan SALINAN nama/mulai/akhir rencana acuannya (satu transaksi; `updated_at` bergerak, jadi API mengirim ulang). Ditolak bila identik dengan acuan lain, bentrok nama per struktur, atau mendahului akhir aktual; dan hanya untuk admin yang lingkupnya mencakup SEMUA struktur pemakai (`governancePeriodEditable`), selain itu Super Admin. Struktur sebuah periode tetap tidak bisa dipindah (penempatannya terikat); periode yang keliru strukturnya dan masih kosong dihapus lalu dibuat ulang. Diuji `tests/term_period_edit_test.php`.
 
 **Periode Kepengurusan** (`/terms`) memakai pola saringan yang sama (dulu seluruh ~520 periode tampil sekaligus tanpa satu pun saringan): baris **Jenjang** (chip), baris **Acuan**
 (chip acuan periode, hanya bila ada lebih dari satu, mis. 2021-2026 dan 2026-2031; `?pr=`), kotak cari (`?q=`; setiap kata harus cocok di jenjang, nama, induk, acuan, nama periode, atau

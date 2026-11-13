@@ -167,11 +167,16 @@ class StructuresController extends Controller {
             $this->requireScope($row['id']);
         }
 
+        // Tingkat struktur yang sedang diubah tetap tampil di pilihan walau sudah dinonaktifkan: tanpa itu formulirnya diam-diam
+        // mengganti tingkatnya ke pilihan pertama.
+        $levels = $structures->levelsInScope();
+        if ($row && !in_array($row['level'], $levels, true)) $levels[] = $row['level'];
+
         $this->view('admin/structures/form', [
             'title'   => $id ? 'Ubah Struktur' : 'Tambah Struktur',
             'row'     => $row,
             'parents' => $structures->allInScope(),
-            'levels'  => $structures->levelsInScope(),
+            'levels'  => $levels,
         ]);
     }
 
@@ -191,17 +196,22 @@ class StructuresController extends Controller {
             'is_active'   => !empty($_POST['is_active']),
         ];
 
-        if ($data['name'] === '' || !in_array($data['level'], $structures->levelsInScope(), true)) {
+        // Tingkat yang boleh dipilih: yang ditawarkan formulir, ditambah tingkat struktur ini sendiri (juga bila sudah dinonaktifkan).
+        $allowedLevels = $structures->levelsInScope();
+        if ($id && ($cur = $structures->findById($id))) $allowedLevels[] = $cur['level'];
+        if ($data['name'] === '' || !in_array($data['level'], $allowedLevels, true)) {
             Flash::set('error', 'Nama dan tingkat struktur wajib diisi dengan benar.');
             $this->redirect('structures/form' . ($id ? '/' . $id : ''));
         }
+
+        // Induk wajib bagi tingkat ini (daftar tingkat: structure_levels.parent_strict), mis. DPLN hanya di bawah DPP.
+        $requiredParent = StructureLevels::requiredParent($data['level']);
 
         // Induk harus berada di dalam lingkup admin -- kalau tidak, admin DPW bisa menggantungkan
         // struktur baru di bawah DPW lain.
         if (!empty($data['parent_id'])) {
             $this->requireScope($data['parent_id']);
             $parent = $structures->findById($data['parent_id']);
-            $requiredParent = ['DPLN' => 'DPP', 'MWLN' => 'MWP', 'MWRa' => 'MWC'][$data['level']] ?? null;
             if ($requiredParent !== null && (!$parent || $parent['level'] !== $requiredParent)) {
                 Flash::set('error', $data['level'] . ' harus berada di bawah ' . $requiredParent . '.');
                 $this->redirect('structures/form' . ($id ? '/' . $id : ''));
@@ -209,7 +219,7 @@ class StructuresController extends Controller {
         } elseif (!AdminScope::isUnbounded()) {
             Flash::set('error', 'Hanya Super Admin yang boleh membuat struktur tanpa induk (akar).');
             $this->redirect('structures');
-        } elseif (in_array($data['level'], ['DPLN', 'MWLN', 'MWRa'], true)) {
+        } elseif ($requiredParent !== null) {
             Flash::set('error', $data['level'] . ' wajib memiliki induk yang sesuai.');
             $this->redirect('structures/form' . ($id ? '/' . $id : ''));
         }

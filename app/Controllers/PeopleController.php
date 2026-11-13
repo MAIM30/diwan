@@ -65,9 +65,9 @@ class PeopleController extends Controller {
         $facet = $keyword !== '' || $gender !== '' || $filter !== '' || $serving;
         $showEmpty = ($_GET['kosong'] ?? '') !== '0';
 
+        // Kolom L (laki-laki) ditampilkan bila lingkup admin memuat tingkat kelompok Umum, kolom P (perempuan) bila memuat kelompok Muslimah.
         $levels = $this->model('StructureModel')->levelsInScope();
-        $umum = ['DPP', 'DPW', 'DPLN', 'DPD', 'DPC', 'DPRa'];
-        $musl = ['MWP', 'MWW', 'MWLN', 'MWD', 'MWC', 'MWRa'];
+        $groups = array_map(['StructureLevels', 'group'], $levels);
 
         $data = [
             'title'    => 'Data Pengurus',
@@ -83,8 +83,8 @@ class PeopleController extends Controller {
             'perStruktur' => $perStruktur,
             'totalAll' => $people->countInScope('', []),
             'recap'    => $people->recapCounts($keyword, $level),
-            'showL'    => !empty(array_intersect($levels, $umum)),
-            'showP'    => !empty(array_intersect($levels, $musl)),
+            'showL'    => in_array('umum', $groups, true),
+            'showP'    => in_array('musl', $groups, true),
             'page'     => $page,
             'perPage'  => $perPage,
             'perPageOptions' => self::PER_PAGE_OPTIONS,

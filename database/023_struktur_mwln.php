@@ -18,6 +18,12 @@ function migrate_023_struktur_mwln(PDO $pdo, callable $say) {
     $read = function ($c) use ($col) { $col->execute([':c' => $c]); return $col->fetch(PDO::FETCH_ASSOC) ?: ['COLUMN_TYPE' => '', 'GENERATION_EXPRESSION' => '']; };
 
     $enum = (string) $read('level')['COLUMN_TYPE'];
+    // Sejak migrasi 027 structures.level bukan ENUM lagi dan MWLN hanyalah satu baris di structure_levels: tak ada yang perlu diselaraskan.
+    if (stripos($enum, 'enum(') !== 0) {
+        $say('  structures.level sudah bukan ENUM (migrasi 027), dilewati.');
+        $say('Migrasi 023 selesai.');
+        return;
+    }
     $okEnum = strpos($enum, "'MWLN'") !== false;
     $okWing = strpos((string) $read('wing')['GENERATION_EXPRESSION'], 'MWLN') !== false;
     $okTier = strpos((string) $read('tier')['GENERATION_EXPRESSION'], 'MWLN') !== false;

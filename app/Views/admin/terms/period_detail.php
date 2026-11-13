@@ -6,7 +6,10 @@ $this->view('layouts/header', ['title' => $title]);
 <div class="crumb"><a href="<?= BASEURL ?>/terms">Periode</a> &rsaquo; <a href="<?= BASEURL ?>/terms/period_catalog">Acuan Periode</a> &rsaquo; <?= e($period['name']) ?></div>
 <div class="page-head">
   <h1>Rekap <?= e($period['name']) ?></h1>
-  <?php if (Auth::canEdit()): ?><div class="actions"><a class="btn" href="<?= BASEURL ?>/terms/form?governance_period_id=<?= (int) $period['id'] ?>">Gunakan periode ini untuk struktur</a></div><?php endif; ?>
+  <?php if (Auth::canEdit()): ?><div class="actions">
+    <?php if (!empty($canEditPeriod)): ?><a class="btn secondary" href="<?= BASEURL ?>/terms/period_form/<?= (int) $period['id'] ?>">Ubah acuan</a><?php endif; ?>
+    <a class="btn" href="<?= BASEURL ?>/terms/form?governance_period_id=<?= (int) $period['id'] ?>">Gunakan periode ini untuk struktur</a>
+  </div><?php endif; ?>
 </div>
 
 <div class="card">

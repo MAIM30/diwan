@@ -502,8 +502,8 @@ Field bertanda *nullable* bisa bernilai `null`.
 |---|---|---|
 | `uuid` | string | Kunci utama di salinan lokal Anda |
 | `parent_uuid` | string \| null | `null` untuk akar (DPP, DSO, DSY, DPK) |
-| `level` | enum | `DPP` `DPW` `DPLN` `DPD` `DPC` `DPRa` `MWP` `MWW` `MWLN` `MWD` `MWC` `MWRa` `DSO` `DSY` `DPK` |
-| `wing` | enum | `umum` (DP*) atau `muslimah` (MW*) |
+| `level` | string | Kode tingkat. Saat ini: `DPP` `DPW` `DPLN` `DPD` `DPC` `DPRa` `MWP` `MWW` `MWLN` `MWD` `MWC` `MWRa` `DSO` `DSY` `DPK`. **Daftarnya dikelola admin DIWAN dan bisa bertambah**: perlakukan sebagai teks bebas, jangan sebagai enum tetap |
+| `wing` | enum | `umum` (DP* dan lembaga tinggi) atau `muslimah` (MW*); ditetapkan per tingkat |
 | `tier` | int | `1` Pusat, `2` Wilayah, `3` Daerah, `4` Cabang, `5` Ranting |
 | `name` | string | Nama wilayah, mis. `"Sulawesi Tenggara"` |
 | `region_code` | string \| null | Kode wilayah resmi bila ada |
@@ -1064,6 +1064,8 @@ terdampak dikirim lewat `/sync/changes` seperti pembaruan biasa (uuid-nya tetap;
 
 | Tanggal | Perubahan | Yang perlu Anda lakukan |
 |---|---|---|
+| 2026-11-13 | Periode yang keliru kini bisa dibetulkan di DIWAN: `governance_period_uuid`, `name`, `start_date`, dan `end_date_planned` sebuah periode (`terms`) dapat berubah pada `uuid` yang sama (acuannya diganti), dan perubahan nama/tanggal sebuah acuan ikut mengubah semua periode yang memakainya. Penempatan tidak berubah. Periode yang berubah dikirim lewat `/sync/changes`. | Jangan menganggap `governance_period_uuid` sebuah periode tetap selamanya; perbarui dari `/sync/changes`. |
+| 2026-11-13 | Daftar tingkat struktur (`level`) kini dikelola admin DIWAN, bukan daftar tetap: tingkat baru bisa muncul di `/structures`. `wing` dan `tier` tetap dua kolom yang sama, tetapi ditetapkan per tingkat. Tidak ada struktur yang berubah nilainya. | Jangan mengeraskan daftar `level` (mis. enum atau `switch` yang gagal pada kode asing); tampilkan kode yang tak dikenal apa adanya dan andalkan `tier` untuk perbandingan. |
 | 2026-11-12 | Penempatan Ketua MWW dan Ketua MWD berganti `position_code` dari `ketua` menjadi `ketua_mww` / `ketua_mwd` (195 penempatan saat itu). | Terima `ketua_mww`/`ketua_mwd` sebagai Ketua; jangan hanya mencocokkan `ketua`. |
 | 2026-11-12 | Mengubah kode, nama, urutan, atau tanda inti sebuah jabatan kini membuat penempatan jabatan itu dikirim ulang lewat `/sync/changes`. Sebelumnya tidak dikirim, sehingga perubahan pada hari-hari sebelumnya (baris di bawah) mungkin belum sampai ke salinan lokal Anda. | Bila salinan Anda terakhir menyinkron sebelum tanggal ini, tarik ulang penempatan (`/sync/full`) untuk memastikan kode jabatannya mutakhir. |
 | 2026-11-11 | `wakil_ketua_departemen_lembaga` dipecah menjadi `wakil_ketua_departemen` (27 penempatan) dan `wakil_ketua_lembaga`; jabatan `ketua_dewan` dan `pemimpin_umum` ditambahkan ke katalog; urutan (`order`) beberapa jabatan berubah. | Jangan mengeraskan daftar kode; lihat catatan di bagian 7. |

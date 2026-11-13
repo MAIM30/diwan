@@ -151,6 +151,7 @@ class TermsController extends Controller {
             'rows' => $rows,
             'availableStructures' => $terms->structuresNotUsingGovernancePeriod($id),
             'placementCount' => array_sum(array_column($rows, 'placement_count')),
+            'canEditPeriod' => Auth::canEdit() && $terms->governancePeriodEditable($id),
         ]);
     }
 
@@ -186,10 +187,20 @@ class TermsController extends Controller {
         $this->redirect('terms/period_detail/' . $periodId);
     }
 
-    public function period_form() {
+    // $id > 0: mengubah acuan yang keliru (nama atau tanggalnya); selain itu membuat acuan baru.
+    public function period_form($id = 0) {
         $this->requireLogin();
         if (!Auth::canEdit()) $this->denied();
-        $this->view('admin/terms/period_form', ['title' => 'Buat Acuan Periode Kepengurusan']);
+
+        $terms = $this->model('TermModel');
+        $row = null;
+        if ($id) {
+            $row = $terms->governancePeriodFindById($id);
+            if (!$row) $this->notFound('Acuan periode tidak ditemukan.');
+            if (!$terms->governancePeriodEditable($id)) $this->denied('Acuan ini juga dipakai struktur di luar lingkup Anda; hanya admin yang lingkupnya mencakup semua pemakainya (Super Admin) yang boleh mengubahnya.');
+            $row['terms'] = $terms->termsForGovernancePeriod($id);
+        }
+        $this->view('admin/terms/period_form', ['title' => $row ? 'Ubah Acuan Periode Kepengurusan' : 'Buat Acuan Periode Kepengurusan', 'row' => $row]);
     }
 
     public function period_save() {
@@ -197,6 +208,9 @@ class TermsController extends Controller {
         if (!Auth::canEdit()) $this->denied();
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') $this->redirect('terms/period_catalog');
 
+        $id = (int) ($_POST['id'] ?? 0);
+        $back = 'terms/period_form' . ($id ? '/' . $id : '');
+        $terms = $this->model('TermModel');
         $data = [
             'name' => trim($_POST['name'] ?? ''),
             'start_date' => $_POST['start_date'] ?? '',
@@ -204,15 +218,33 @@ class TermsController extends Controller {
         ];
         if ($data['name'] === '' || $data['start_date'] === '') {
             Flash::set('error', 'Nama periode dan tanggal mulai wajib diisi.');
-            $this->redirect('terms/period_form');
+            $this->redirect($back);
         }
         if ($data['end_date_planned'] !== '' && $data['end_date_planned'] < $data['start_date']) {
             Flash::set('error', 'Tanggal akhir rencana tidak boleh lebih awal dari tanggal mulai.');
-            $this->redirect('terms/period_form');
+            $this->redirect($back);
+        }
+
+        if ($id) {
+            if (!$terms->governancePeriodFindById($id)) $this->notFound('Acuan periode tidak ditemukan.');
+            try {
+                $changed = $terms->updateGovernancePeriod($id, $data);
+                Flash::set('success', $changed
+                    ? 'Acuan periode diperbarui. ' . $changed . ' periode struktur yang memakainya ikut disesuaikan (nama dan tanggalnya); penempatan tidak berubah.'
+                    : 'Tidak ada perubahan.');
+            } catch (RuntimeException $e) {
+                Flash::set('error', $e->getMessage());
+                $this->redirect($back);
+            } catch (PDOException $e) {
+                error_log('Ubah acuan periode gagal: ' . $e->getMessage());
+                Flash::set('error', 'Acuan periode tidak bisa disimpan.');
+                $this->redirect($back);
+            }
+            $this->redirect('terms/period_detail/' . $id);
         }
 
         try {
-            $this->model('TermModel')->createGovernancePeriod($data);
+            $terms->createGovernancePeriod($data);
             Flash::set('success', 'Acuan periode dibuat. Sekarang pilih periode ini saat menambahkan periode pada setiap struktur.');
         } catch (PDOException $e) {
             Flash::set('error', 'Acuan dengan nama dan rentang tanggal tersebut sudah tersedia.');
@@ -321,6 +353,7 @@ class TermsController extends Controller {
             'structures'  => $structures->allInScope(),
             'governancePeriods' => $terms->governancePeriodsInScope(),
             'governancePeriodId' => (int) ($_GET['governance_period_id'] ?? 0),
+            'placementCount' => $id ? $terms->skCoverage($id)['total'] : 0,
             'structureId' => $structureId,
         ]);
     }
@@ -344,7 +377,8 @@ class TermsController extends Controller {
 
         $data = [
             'structure_id'     => $structureId,
-            'governance_period_id' => (int) ($_POST['governance_period_id'] ?? 0),
+            // Periode yang sudah ada: tanpa pilihan acuan di permintaan (bukan dari formulir ini) acuannya dibiarkan, bukan dianggap salah.
+            'governance_period_id' => (int) (($_POST['governance_period_id'] ?? '') !== '' ? $_POST['governance_period_id'] : ($existingTerm['governance_period_id'] ?? 0)),
             'end_date_actual'  => $_POST['end_date_actual'] ?? '',
             'status'           => in_array($_POST['status'] ?? '', ['draft','active','ended'], true) ? $_POST['status'] : 'draft',
             'is_current'       => !empty($_POST['is_current']),
@@ -353,7 +387,8 @@ class TermsController extends Controller {
             'notes'            => trim($_POST['notes'] ?? ''),
         ];
 
-        if (!$id && !$terms->governancePeriodFindById($data['governance_period_id'])) {
+        $newAnchor = $terms->governancePeriodFindById($data['governance_period_id']);
+        if (!$newAnchor) {
             Flash::set('error', 'Pilih acuan Periode Kepengurusan yang tersedia.');
             $this->redirect('terms/form' . ($id ? '/' . $id : '/0/' . $structureId));
         }
@@ -366,7 +401,8 @@ class TermsController extends Controller {
         }
         // Berjalan = Aktif (sama seperti saat menautkan acuan ke banyak struktur): Draf yang ditandai berjalan menjadi Aktif.
         if ($data['is_current'] && $data['status'] === 'draft') $data['status'] = 'active';
-        $dateAnchor = $id ? $terms->findById($id) : $terms->governancePeriodFindById($data['governance_period_id']);
+        // Tanggal mulai pembanding akhir aktual: acuan yang dipilih (periode baru, atau acuan yang menggantikan yang keliru), bukan yang lama.
+        $dateAnchor = $newAnchor;
         if (!empty($data['end_date_actual']) && $data['end_date_actual'] < $dateAnchor['start_date']) {
             Flash::set('error', 'Tanggal akhir aktual tidak boleh lebih awal dari tanggal mulai periode.');
             $this->redirect('terms/form' . ($id ? '/' . $id : '/0/' . $structureId));
@@ -390,8 +426,8 @@ class TermsController extends Controller {
                 $this->redirect('terms/detail/' . $newId);
             }
         } catch (PDOException $e) {
-            if (strpos($e->getMessage(), 'uq_terms_structure_name') !== false) {
-                Flash::set('error', 'Periode dengan nama itu sudah ada di struktur ini.');
+            if (strpos($e->getMessage(), 'uq_terms_structure_name') !== false || strpos($e->getMessage(), 'uq_terms_structure_period') !== false) {
+                Flash::set('error', 'Periode dengan nama atau acuan itu sudah ada di struktur ini.');
             } else {
                 error_log('Simpan periode gagal: ' . $e->getMessage());
                 Flash::set('error', 'Periode tidak bisa disimpan.');

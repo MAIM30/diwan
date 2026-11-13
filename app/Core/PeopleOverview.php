@@ -10,25 +10,18 @@
 // satu provinsi berdampingan. Jenjang yang hanya punya SATU struktur (DPP, MWP, DSO, DSY, DPK) tidak menampilkan baris struktur: baris
 // jenjangnya sekaligus baris strukturnya.
 
+require_once __DIR__ . '/StructureLevels.php';
+
 class PeopleOverview {
-    // Urutan jenjang di halaman: sayap Umum, lalu Muslimah, lalu ketiga Dewan.
-    const LEVEL_ORDER = ['DPP', 'DPW', 'DPLN', 'DPD', 'DPC', 'DPRa', 'MWP', 'MWW', 'MWLN', 'MWD', 'MWC', 'MWRa', 'DSO', 'DSY', 'DPK'];
-
-    const LEVEL_NAMES = [
-        'DPP' => 'Dewan Pimpinan Pusat', 'DPW' => 'Dewan Pimpinan Wilayah', 'DPLN' => 'Dewan Pimpinan Luar Negeri',
-        'DPD' => 'Dewan Pimpinan Daerah', 'DPC' => 'Dewan Pimpinan Cabang', 'DPRa' => 'Dewan Pimpinan Ranting',
-        'MWP' => 'Muslimah Wahdah Islamiyah Pusat', 'MWW' => 'Muslimah Wilayah', 'MWLN' => 'Muslimah Luar Negeri', 'MWD' => 'Muslimah Daerah',
-        'MWC' => 'Muslimah Cabang', 'MWRa' => 'Muslimah Ranting',
-        'DSO' => 'Dewan Syura', 'DSY' => 'Dewan Syariah', 'DPK' => 'Dewan Pengawas Keuangan',
-    ];
-
+    // Urutan, nama lengkap, dan kelompok jenjang (DPP, DPW, MWW, ...) dibaca dari daftar tingkat (StructureLevels, tabel structure_levels):
+    // urutan Umum, lalu Muslimah, lalu Dewan, atau mengikuti kolom Urutan di Master Data > Tingkat Struktur.
     const WING_LABELS = ['umum' => 'Umum', 'musl' => 'Muslimah', 'dewan' => 'Dewan'];
 
+    // Nama lengkap jenjang: "Dewan Pimpinan Luar Negeri" untuk DPLN; kode yang tak dikenal ditampilkan apa adanya.
+    public static function levelName($level) { return StructureLevels::name($level); }
+
     // 'umum' | 'musl' | 'dewan': pengelompok chip jenjang dan warna garis di tepi baris jenjang.
-    public static function wingOf($level) {
-        if (in_array($level, ['DSO', 'DSY', 'DPK'], true)) return 'dewan';
-        return strpos($level, 'MW') === 0 ? 'musl' : 'umum';
-    }
+    public static function wingOf($level) { return StructureLevels::group($level); }
 
     // Nama struktur untuk baris di bawah jenjangnya: "Muslimah Wahdah Islamiyah Wilayah Aceh" cukup "Aceh", sebab jenjangnya sudah tertulis.
     public static function shortName($name) {
@@ -44,10 +37,10 @@ class PeopleOverview {
         return $out;
     }
 
-    // Jenjang menurut LEVEL_ORDER; jenjang yang belum tercantum di sana (kelak) menyusul di akhir.
+    // Jenjang menurut urutan daftar tingkat; kode yang tak ada di daftar (tingkat yang sudah dihapus tetapi datanya masih ada) menyusul di akhir.
     public static function orderedLevels(array $levels) {
-        $known = array_values(array_filter(self::LEVEL_ORDER, function ($l) use ($levels) { return in_array($l, $levels, true); }));
-        $other = array_values(array_diff($levels, self::LEVEL_ORDER));
+        $known = array_values(array_filter(StructureLevels::codes(), function ($l) use ($levels) { return in_array($l, $levels, true); }));
+        $other = array_values(array_diff($levels, StructureLevels::codes()));
         sort($other);
         return array_merge($known, $other);
     }
@@ -94,7 +87,7 @@ class PeopleOverview {
 
             $single = count($rows) === 1;
             $blocks[] = [
-                'level' => $level, 'name' => self::LEVEL_NAMES[$level] ?? $level, 'wing' => self::wingOf($level),
+                'level' => $level, 'name' => self::levelName($level), 'wing' => self::wingOf($level),
                 'strukt' => count($rows), 'inti_lengkap' => count(array_filter($rows, function ($r) { return $r['inti_ok']; })),
                 'num' => $overview['levels'][$level],
                 'single' => $single, 'flags' => $single ? $rows[0]['flags'] : null, 'term_id' => $single ? $rows[0]['term_id'] : null,
