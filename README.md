@@ -325,10 +325,11 @@ Halaman **Data Saya > Ubah data saya** (`pengurus/ubah`). Karena sesi portal han
 | **Nama** | gelar depan, nama asli, gelar belakang | tampil terisi; nama asli wajib; gelar yang terlanjur diketik di kolom nama dipindah otomatis (`MemberModel::NAME_FIELDS`) |
 | **Kasar** | kelurahan/desa, kecamatan, kota/kabupaten, provinsi, tempat lahir, pekerjaan | tampil terisi; boleh diubah atau dikosongkan |
 | **Sensitif (tulis-saja)** | jalan/BTN/lorong, tanggal lahir, email, HP keluarga | **tidak ditampilkan ulang** (hanya lencana "sudah terisi"); kosong = jangan ubah; terganti hanya bila diketik yang baru |
-| **Tak bisa diubah** | nomor WhatsApp, NIK, jenis kelamin | lewat admin |
+| **NIK** | NIK 16 digit | ditampilkan di formulir dan bisa dikoreksi sendiri; harus unik; kosong = jangan ubah |
+| **Tak bisa diubah** | nomor WhatsApp, jenis kelamin | lewat admin |
 
-Nomor WA dan NIK sengaja tak bisa diubah dari portal: kalau bisa, siapa pun yang tahu nomor seseorang bisa memindahkannya ke nomornya sendiri dan mengunci pemilik aslinya.
-Daftar putih kolom ada di `MemberModel::SELF_FIELDS` (kiriman lain, termasuk `id`/`person_id`/`phone`/`nik`, diabaikan); validasi **semua-atau-tidak-sama-sekali**;
+Nomor WA tetap dikelola admin karena menjadi tujuan OTP. NIK dapat dikoreksi oleh pemilik sesi portal yang sudah terverifikasi; format 16 digit dan keunikannya diperiksa.
+Daftar putih kolom ada di `MemberModel::SELF_FIELDS` (kiriman lain, termasuk `id`/`person_id`/`phone`, diabaikan); validasi **semua-atau-tidak-sama-sekali**;
 maks 10 perubahan per jam; setiap perubahan tercatat (`event: portal_edit`, nilai lama + baru) dan tampil di riwayat aktivitas profil admin
 ("Diubah sendiri oleh pengurus: ..."), tetapi disaring dari umpan dasbor. Alamat disimpan bertingkat: Jalan/BTN/Lorong (`address_text`), Kelurahan (`village`),
 Kecamatan (`district`), Kota/Kabupaten (`city`), Provinsi (`province`); keempat yang terakhir dipilih bertingkat dari data wilayah resmi (bagian berikut).
@@ -410,7 +411,7 @@ lama sudah dilepas; persen berjalan kini gelembung pada garis periode.
 | Jabatan saat ini | nama jabatan, unit (atau Pengurus Inti / Pimpinan Lainnya), rantai struktur, **sisa masa jabatan sebagai angka besar** ("55 hari", "4 tahun 10 bulan"), garis periode dengan tanda tahun dan posisi hari ini. Molor: "+15 hari" kuning, label "Lewat dari tanggal akhir rencana" | `MemberModel::life`, `PortalHome::countdown/yearTicks`, `Ui::spanParts` |
 | Biodata | Isi / Ubah, Unduh PDF, status Drive | `BiodataModel` |
 | Jabatan lain | kartu dengan bar sisa waktu; ponsel: kartu geser, desktop: dua kolom; tampil paling banyak 4 (`PortalHome::OTHERS_MAX`), sisanya "+ N jabatan lainnya" ke Riwayat | `MemberModel::currentOf` |
-| Data saya | enam butir (donat n/6). Yang bisa diisi sendiri (email, tanggal lahir, alamat) bertombol **Isi** ke kolomnya di Ubah data; WhatsApp, NIK, foto profil "dikelola admin" tanpa tombol | `MemberModel::completeness` |
+| Data saya | enam butir (donat n/6). Yang bisa diisi sendiri (email, tanggal lahir, alamat) bertombol **Isi** ke kolomnya di Ubah data; NIK dikoreksi lewat **Ubah**; WhatsApp dan foto profil dikelola admin | `MemberModel::completeness` |
 | Rekan | 4 rekan se-unit (atau pimpinan struktur bila jabatannya tingkat struktur), nama + jabatan saja, "+ N rekan lainnya" | `colleagues`, `colleaguesCount` |
 | Perjalanan saya | tiga penempatan terbaru, kolom tahun di kiri | `PortalHome::career` |
 | Terakhir masuk | satu baris; enam masuk terakhir (waktu, IP tersamar) terbuka bila diketuk | `loginHistory` |

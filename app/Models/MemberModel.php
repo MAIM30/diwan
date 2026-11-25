@@ -204,10 +204,10 @@ class MemberModel {
     // DAFTAR PUTIH kolom yang boleh diubah pengurus dari portal. Yang TIDAK ada di sini tak bisa disentuh,
     // betapapun kiriman formulirnya (jenis kelamin, status, saklar portal, id orang, ...). Nama dan gelar
     // punya aturan sendiri (NAME_FIELDS, diproses bersama sebagai satu kesatuan), bukan bagian dari daftar ini.
-    // Nomor WA tetap dikelola admin karena menjadi tujuan OTP. NIK boleh DIISI sendiri bila masih kosong,
-    // tetapi sesudah tersimpan hanya admin yang dapat mengoreksinya karena NIK juga kredensial masuk.
-    //   [jenis, panjang maks, tulis-saja]. Tulis-saja = nilainya tak pernah ditampilkan ulang di formulir (sama
-    //   seperti halaman Data Saya yang menyembunyikannya): kosong berarti "jangan ubah", bukan "hapus".
+    // Nomor WA tetap dikelola admin karena menjadi tujuan OTP. Pengurus dapat mengoreksi NIK sendiri;
+    // format 16 digit dan keunikannya tetap diperiksa.
+    //   [jenis, panjang maks, kosong berarti jangan ubah]. Bidang yang kosongnya berarti jangan ubah
+    //   mempertahankan nilai lama; bidang lain yang dikosongkan akan dihapus.
     const SELF_FIELDS = [
         'nik'          => ['nik', 16, true],
         'address_text' => ['text', 255, true],
@@ -272,26 +272,23 @@ class MemberModel {
     // ['changed' => [kolom, ...], 'errors' => [kolom => pesan]].
     public function updateOwnProfile(array $person, array $post) {
         $errors = []; $set = [];
-        foreach (self::SELF_FIELDS as $col => [$type, $max, $writeOnly]) {
+        foreach (self::SELF_FIELDS as $col => [$type, $max, $emptyMeansUnchanged]) {
             if (!array_key_exists($col, $post)) continue;                     // tak dikirim = tak disentuh
             $label = Ui::PROFILE_LABELS[$col];
             if (!is_string($post[$col])) { $errors[$col] = "$label tidak valid."; continue; }   // kiriman bentuk larik
             $v = self::cleanText($post[$col]);
 
             if ($v === '') {
-                if ($writeOnly) continue;                                     // tulis-saja: kosong = jangan ubah
+                if ($emptyMeansUnchanged) continue;                           // kosong = jangan ubah
                 $new = null;                                                  // bidang kasar: kosong = hapus
             } else {
                 if ($type === 'nik') {
+                    $currentNik = trim((string) ($person['nik'] ?? ''));
+                    if ($v === $currentNik) continue;                         // NIK yang sama tidak perlu divalidasi/ditulis ulang
                     if (!preg_match('/^[0-9]{16}$/', $v)) { $errors[$col] = 'NIK harus tepat 16 digit angka.'; continue; }
                     $new = $v;
-                    $currentNik = trim((string) ($person['nik'] ?? ''));
-                    if ($currentNik !== '') {
-                        if ($new !== $currentNik) $errors[$col] = 'NIK yang sudah tercatat hanya dapat diubah oleh admin.';
-                        continue;
-                    }
                     if ($this->nikUsedByAnotherPerson($new, $person['id'])) {
-                        $errors[$col] = 'NIK belum dapat disimpan. Hubungi admin struktur untuk bantuan.';
+                        $errors[$col] = 'NIK ini sudah tercatat pada pengurus lain. Periksa kembali angka NIK Anda.';
                         continue;
                     }
                 } else {
@@ -346,7 +343,7 @@ class MemberModel {
         } catch (PDOException $e) {
             // Tetap tangani balapan dua peserta yang mengirim NIK sama; indeks unik nik_guard adalah penjaga terakhir.
             $duplicateNik = isset($set['nik']) && ($e->getCode() === '23000' || (int) ($e->errorInfo[1] ?? 0) === 1062);
-            if ($duplicateNik) return ['changed' => [], 'errors' => ['nik' => 'NIK belum dapat disimpan. Hubungi admin struktur untuk bantuan.']];
+            if ($duplicateNik) return ['changed' => [], 'errors' => ['nik' => 'NIK ini sudah tercatat pada pengurus lain. Periksa kembali angka NIK Anda.']];
             throw $e;
         }
         // home_structure_id ikut dicatat supaya umpan aktivitas admin wilayah bisa menyaring menurut lingkupnya.
@@ -354,8 +351,7 @@ class MemberModel {
         return ['changed' => array_keys($set), 'errors' => []];
     }
 
-    // Enam butir "Data saya" di Beranda: [kolom, label, ikon, bisa diisi pengurus sendiri]. NIK hanya bisa
-    // dilengkapi saat masih kosong; setelah itu perubahan tetap lewat admin.
+    // Enam butir "Data saya" di Beranda: [kolom, label, ikon, bisa diisi pengurus sendiri].
     const COMPLETENESS = [
         ['email',        'Email',          'mail',     true],
         ['birth_date',   'Tanggal lahir',  'calendar', true],
