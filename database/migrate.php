@@ -50,7 +50,8 @@ foreach ([['003_pisah_nama.php', 'migrate_003_pisah_nama'], ['004_portal_penguru
           ['025_jenis_unit.php', 'migrate_025_jenis_unit'],
           ['026_ketua_mww_mwd.php', 'migrate_026_ketua_mww_mwd'],
           ['027_tingkat_struktur.php', 'migrate_027_tingkat_struktur'],
-          ['028_kode_tingkat_bisa_diganti.php', 'migrate_028_kode_tingkat_bisa_diganti']] as [$file, $fn]) {
+          ['028_kode_tingkat_bisa_diganti.php', 'migrate_028_kode_tingkat_bisa_diganti'],
+          ['029_portal_remember_tokens.php', 'migrate_029_portal_remember_tokens']] as [$file, $fn]) {
     require_once __DIR__ . '/' . $file;
     $fn($pdo, $say);
 }

@@ -53,6 +53,8 @@ Penanda berhasil: `SELECT update_rule FROM information_schema.referential_constr
 AND constraint_name = 'fk_structures_level';` = `CASCADE`. **Mengganti singkatan sebuah tingkat itu sendiri** mengubah `level` semua struktur
 bertingkat itu (juga di API): lakukan dengan sadar, dan kabari pengelola aplikasi konsumen sebelumnya.
 
+**Migrasi 029 (sesi persisten Portal Pengurus)** menambahkan tabel token pemulihan per perangkat. Setelah login OTP, pengurus tetap masuk melewati browser ditutup atau sesi PHP dibersihkan sampai memilih Keluar atau akses portalnya dicabut. Token disimpan sebagai hash di basis data; sesi admin tidak diubah. Migrasi idempoten, jalankan `database/migrate.php` seperti biasa setelah pull.
+
 ## C. Perubahan DATA (bukan skema — isi tabel: orang, penempatan, dll.)
 
 **Hati-hati:** server sekarang LIVE. Kalau ada yang sudah mendaftar/mengubah data lewat Portal

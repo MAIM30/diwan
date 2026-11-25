@@ -44,9 +44,7 @@ if (!defined('API_PAGE_SIZE_MAX')) define('API_PAGE_SIZE_MAX', 1000);
 // ---------- Portal Pengurus (login pengurus dengan nomor WhatsApp) ----------
 // Saklar global: false mematikan seluruh portal (halaman masuk menolak semua), tanpa menyentuh data.
 if (!defined('PORTAL_ENABLED')) define('PORTAL_ENABLED', true);
-// Sesi portal sengaja pendek: nomor WA dan NIK sama-sama bukan rahasia.
-if (!defined('PORTAL_IDLE_MINUTES')) define('PORTAL_IDLE_MINUTES', 30);      // tanpa aktivitas -> keluar
-if (!defined('PORTAL_SESSION_HOURS')) define('PORTAL_SESSION_HOURS', 8);     // batas mutlak sejak masuk
+// Sesi Portal Pengurus bertahan sampai peserta keluar atau akses portalnya dicabut.
 // Pembatas percobaan GAGAL per alamat IP (bukan per nomor -- nomor yang salah memang tidak ada orangnya,
 // jadi menghitung per nomor tidak menghentikan penyapuan nomor).
 if (!defined('PORTAL_FAIL_MAX_SHORT')) define('PORTAL_FAIL_MAX_SHORT', 8);   // gagal per 15 menit

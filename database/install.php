@@ -128,6 +128,8 @@ require_once __DIR__ . '/027_tingkat_struktur.php';
 migrate_027_tingkat_struktur($pdo, 'say');
 require_once __DIR__ . '/028_kode_tingkat_bisa_diganti.php';
 migrate_028_kode_tingkat_bisa_diganti($pdo, 'say');
+require_once __DIR__ . '/029_portal_remember_tokens.php';
+migrate_029_portal_remember_tokens($pdo, 'say');
 
 // ---------- Struktur akar ----------
 // DPP dibuat sebagai akar, MWP sebagai anaknya. Inilah yang membuat lingkup "Nasional" (akar)
