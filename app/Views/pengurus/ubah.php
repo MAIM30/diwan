@@ -8,7 +8,8 @@
 //     dipilih bertingkat dari data wilayah resmi (app.js, data-lokasi), dan tetap bisa diketik bila daftarnya tak bisa dimuat;
 //   * bidang SENSITIF (jalan, tanggal lahir, email, HP keluarga) TIDAK ditampilkan -- hanya diberi lencana "sudah terisi";
 //     kolom kosong berarti "jangan ubah", dan isinya hanya terganti bila mengetik yang baru;
-//   * nomor WA dan NIK tidak bisa diubah dari sini (kredensial masuk).
+//   * NIK boleh diisi bila masih kosong, tetapi tidak dapat diubah lagi lewat portal setelah tersimpan;
+//   * nomor WA dan jenis kelamin tetap dikelola admin.
 $this->view('layouts/member_header', ['title' => $title, 'person' => $person, 'active' => 'data']);
 
 $val = function ($col) use ($old, $person) { return array_key_exists($col, $old) && is_string($old[$col]) ? $old[$col] : (string) ($person[$col] ?? ''); };
@@ -48,6 +49,22 @@ $mark = function ($col) use ($person) { return empty($person[$col]) ? '' : '<div
     <div class="name-preview" style="margin-bottom:0">
       <span class="k">Nama lengkap</span><span class="v" data-name-preview>—</span>
     </div>
+  </section>
+
+  <section class="card" id="nik">
+    <div class="card-head"><h2><?= Ui::icon('shield', 19) ?> NIK</h2></div>
+    <?php if (empty($person['nik'])): ?>
+      <div class="field">
+        <label for="nik_input">NIK (16 digit)</label>
+        <input type="text" id="nik_input" name="nik" inputmode="numeric" maxlength="16" pattern="[0-9]{16}"
+               value="<?= e($val('nik')) ?>" placeholder="Masukkan 16 digit NIK">
+        <div class="help">Boleh dikosongkan. NIK yang sudah tersimpan hanya dapat dikoreksi oleh admin struktur.</div>
+        <?= $err('nik') ?>
+      </div>
+    <?php else: ?>
+      <p class="small muted" style="margin:0">NIK sudah tercatat. Untuk mengoreksinya, hubungi admin struktur Anda.</p>
+      <?= $err('nik') ?>
+    <?php endif; ?>
   </section>
 
   <section class="card">
@@ -130,7 +147,7 @@ $mark = function ($col) use ($person) { return empty($person[$col]) ? '' : '<div
   <section class="card">
     <div class="card-head"><h2><?= Ui::icon('lock', 19) ?> Yang tidak bisa diubah di sini</h2></div>
     <p class="small muted" style="margin:0">
-      Jenis kelamin, <strong>nomor WhatsApp</strong>, dan <strong>NIK</strong> diubah lewat admin struktur Anda.
+      Jenis kelamin dan <strong>nomor WhatsApp</strong> diubah lewat admin struktur Anda.
     </p>
   </section>
 

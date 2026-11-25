@@ -204,12 +204,12 @@ class MemberModel {
     // DAFTAR PUTIH kolom yang boleh diubah pengurus dari portal. Yang TIDAK ada di sini tak bisa disentuh,
     // betapapun kiriman formulirnya (jenis kelamin, status, saklar portal, id orang, ...). Nama dan gelar
     // punya aturan sendiri (NAME_FIELDS, diproses bersama sebagai satu kesatuan), bukan bagian dari daftar ini.
-    // Khusus NOMOR WA dan NIK -- kredensial masuk -- sengaja tidak ada: sesi portal hanya bermodal nomor WA yang
-    // bukan rahasia, jadi bila nomor bisa diganti dari dalam, siapa pun yang tahu nomor seseorang bisa
-    // memindahkannya ke nomornya sendiri dan mengunci pemilik aslinya. Perubahan keduanya lewat admin.
+    // Nomor WA tetap dikelola admin karena menjadi tujuan OTP. NIK boleh DIISI sendiri bila masih kosong,
+    // tetapi sesudah tersimpan hanya admin yang dapat mengoreksinya karena NIK juga kredensial masuk.
     //   [jenis, panjang maks, tulis-saja]. Tulis-saja = nilainya tak pernah ditampilkan ulang di formulir (sama
     //   seperti halaman Data Saya yang menyembunyikannya): kosong berarti "jangan ubah", bukan "hapus".
     const SELF_FIELDS = [
+        'nik'          => ['nik', 16, true],
         'address_text' => ['text', 255, true],
         'village'      => ['text', 100, false],
         'district'     => ['text', 100, false],
@@ -240,6 +240,13 @@ class MemberModel {
         $stmt->bindValue(':m', (int) $minutes, PDO::PARAM_INT);
         $stmt->execute();
         return (int) $stmt->fetchColumn();
+    }
+
+    // NIK hanya bisa diklaim satu pengurus hidup. Soft-deleted tidak mengunci nomor karena nik_guard menjadi NULL.
+    private function nikUsedByAnotherPerson($nik, $personId) {
+        $stmt = $this->db->prepare('SELECT id FROM people WHERE nik_guard = :nik AND id <> :id LIMIT 1');
+        $stmt->execute([':nik' => $nik, ':id' => (int) $personId]);
+        return (bool) $stmt->fetchColumn();
     }
 
     // Perubahan terakhir oleh pemiliknya sendiri: waktu + NAMA bidangnya saja (nilainya tak ditampilkan).
@@ -275,8 +282,22 @@ class MemberModel {
                 if ($writeOnly) continue;                                     // tulis-saja: kosong = jangan ubah
                 $new = null;                                                  // bidang kasar: kosong = hapus
             } else {
-                if (mb_strlen($v) > $max) { $errors[$col] = "$label terlalu panjang (maksimal $max karakter)."; continue; }
-                $new = $v;
+                if ($type === 'nik') {
+                    if (!preg_match('/^[0-9]{16}$/', $v)) { $errors[$col] = 'NIK harus tepat 16 digit angka.'; continue; }
+                    $new = $v;
+                    $currentNik = trim((string) ($person['nik'] ?? ''));
+                    if ($currentNik !== '') {
+                        if ($new !== $currentNik) $errors[$col] = 'NIK yang sudah tercatat hanya dapat diubah oleh admin.';
+                        continue;
+                    }
+                    if ($this->nikUsedByAnotherPerson($new, $person['id'])) {
+                        $errors[$col] = 'NIK belum dapat disimpan. Hubungi admin struktur untuk bantuan.';
+                        continue;
+                    }
+                } else {
+                    if (mb_strlen($v) > $max) { $errors[$col] = "$label terlalu panjang (maksimal $max karakter)."; continue; }
+                    $new = $v;
+                }
                 if ($type === 'date') {
                     $d = DateTime::createFromFormat('!Y-m-d', $v);
                     $ok = $d && $d->format('Y-m-d') === $v && (int) $d->format('Y') >= 1930 && (int) $d->format('Y') <= (int) date('Y') - 10;
@@ -320,20 +341,27 @@ class MemberModel {
         // name_normalized (dasar pencarian dan deteksi data ganda) harus ikut dihitung ulang dari nama asli yang baru.
         if (isset($set['name'])) { $cols[] = 'name_normalized = ?'; $vals[] = Text::normalizeBase($set['name']); }
         $vals[] = (int) $person['id'];
-        $this->db->prepare('UPDATE people SET ' . implode(', ', $cols) . ' WHERE id = ?')->execute($vals);
+        try {
+            $this->db->prepare('UPDATE people SET ' . implode(', ', $cols) . ' WHERE id = ?')->execute($vals);
+        } catch (PDOException $e) {
+            // Tetap tangani balapan dua peserta yang mengirim NIK sama; indeks unik nik_guard adalah penjaga terakhir.
+            $duplicateNik = isset($set['nik']) && ($e->getCode() === '23000' || (int) ($e->errorInfo[1] ?? 0) === 1062);
+            if ($duplicateNik) return ['changed' => [], 'errors' => ['nik' => 'NIK belum dapat disimpan. Hubungi admin struktur untuk bantuan.']];
+            throw $e;
+        }
         // home_structure_id ikut dicatat supaya umpan aktivitas admin wilayah bisa menyaring menurut lingkupnya.
         Audit::log('people', $person['id'], 'update', $before, $set + ['event' => 'portal_edit', 'home_structure_id' => $person['home_structure_id']]);
         return ['changed' => array_keys($set), 'errors' => []];
     }
 
-    // Enam butir "Data saya" di Beranda: [kolom, label, ikon, bisa diisi pengurus sendiri]. Butir yang bisa diisi sendiri
-    // persis yang ada di SELF_FIELDS (dijaga uji); WhatsApp, NIK, dan foto profil hanya diisi admin.
+    // Enam butir "Data saya" di Beranda: [kolom, label, ikon, bisa diisi pengurus sendiri]. NIK hanya bisa
+    // dilengkapi saat masih kosong; setelah itu perubahan tetap lewat admin.
     const COMPLETENESS = [
         ['email',        'Email',          'mail',     true],
         ['birth_date',   'Tanggal lahir',  'calendar', true],
         ['address_text', 'Alamat',         'map-pin',  true],
         ['phone',        'Nomor WhatsApp', 'phone',    false],
-        ['nik',          'NIK',            'shield',   false],
+        ['nik',          'NIK',            'shield',   true],
         ['photo_path',   'Foto profil',    'camera',   false],
     ];
 
