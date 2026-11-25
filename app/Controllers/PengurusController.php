@@ -26,9 +26,14 @@ class PengurusController extends Controller {
 
     // Membuka sesi portal bagi pengurus yang sudah lolos semua pemeriksaan masuk, termasuk kode OTP. $via: lihat MemberModel::recordLogin.
     private function enter($members, array $person, $via = null) {
+        $firstLoginWithoutBiodata = !$members->loginHistory($person['id'], 1)
+            && !$this->model('BiodataModel')->findByPersonId($person['id']);
         unset($_SESSION['otp_pending']);
         Member::login($person);
         $members->recordLogin($person['id'], $via);
+        if ($firstLoginWithoutBiodata) {
+            Flash::set('warning', 'Selamat datang di Portal Pengurus. Biodata Anda belum diisi. Silakan segera tekan tombol “Isi Biodata” di beranda untuk melengkapinya.');
+        }
         $this->redirect('pengurus');
     }
 
